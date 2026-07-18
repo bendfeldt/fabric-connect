@@ -2,18 +2,34 @@
  * Lakehouse Panel Module: a webview panel to browse, attach, and detach
  * lakehouses for the active notebook (multiple attachments supported).
  * Lists lakehouses via the shared Fabric API Client and writes attachments
- * into the notebook's metadata through the Fidelity Module's model.
+ * into the notebook document's metadata with a WorkspaceEdit, so VS Code
+ * marks the document dirty, saving persists the change through the Fidelity
+ * Module, and attach/detach is undoable like any other edit.
+ *
+ * The panel never captures a document or model: every message looks the
+ * notebook up by URI, so a panel left open across close/reopen (or revert)
+ * always edits the live document — or fails loudly if it is gone.
  *
  * Webview safety: strict CSP, no remote script loading, plain vanilla JS
  * (no UI framework — Part 1's panel doesn't need one), and every value
  * from the API is HTML-escaped before rendering.
  */
 
+import * as crypto from "node:crypto";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { LakehouseError } from "../core/errors";
-import type { NotebookModel } from "../core/notebookCodec";
+import {
+  attachLakehouse,
+  detachLakehouse,
+  getLakehouseAttachments,
+} from "../core/notebookCodec";
 import type { IFabricApiClient, ITargetResolver } from "../core/types";
+import {
+  NOTEBOOK_TYPE,
+  fabricRootOf,
+  withFabricRoot,
+} from "./notebookSerializer";
 
 interface LakehouseListResponse {
   value?: Array<{ id?: string; displayName?: string }>;
@@ -23,38 +39,34 @@ interface PanelContext {
   readonly notebookUri: vscode.Uri;
   readonly workspaceId: string;
   readonly tenantId: string;
-  readonly model: NotebookModel;
 }
 
 export class LakehousePanel {
+  /** One panel per notebook; repeat invocations reveal the existing one. */
+  private readonly panels = new Map<string, vscode.WebviewPanel>();
+
   constructor(
     private readonly api: IFabricApiClient,
     private readonly targets: ITargetResolver,
-    private readonly getModel: (uri: vscode.Uri) => NotebookModel | undefined,
-    private readonly onModelChanged: (uri: vscode.Uri) => void,
   ) {}
 
   async show(notebookUri: vscode.Uri): Promise<void> {
     const folder = path.dirname(notebookUri.fsPath);
     const resolved = await this.targets.resolveTarget(folder);
-    const model = this.getModel(notebookUri);
-    if (model === undefined) {
-      throw new LakehouseError(
-        `Cannot manage lakehouses: notebook '${path.basename(notebookUri.fsPath)}' is not open as a Fabric notebook.`,
-        {
-          operation: "open Lakehouse panel",
-          entity: `notebook ${path.basename(notebookUri.fsPath)}`,
-          remediation:
-            "Open the file with 'Fabric: Open File as Fabric Notebook' first.",
-        },
-      );
-    }
+    this.findNotebook(notebookUri); // fail before opening a panel
     const context: PanelContext = {
       notebookUri,
       workspaceId: resolved.workspaceId,
       tenantId: resolved.tenantId,
-      model,
     };
+
+    const key = notebookUri.toString();
+    const existing = this.panels.get(key);
+    if (existing !== undefined) {
+      existing.reveal();
+      await this.render(existing, context);
+      return;
+    }
 
     const panel = vscode.window.createWebviewPanel(
       "fabricConnect.lakehouses",
@@ -62,10 +74,35 @@ export class LakehousePanel {
       vscode.ViewColumn.Beside,
       { enableScripts: true, localResourceRoots: [] },
     );
+    this.panels.set(key, panel);
+    panel.onDidDispose(() => {
+      this.panels.delete(key);
+    });
     panel.webview.onDidReceiveMessage(async (message: unknown) => {
       await this.handleMessage(panel, context, message);
     });
     await this.render(panel, context);
+  }
+
+  /** The open Fabric notebook for this URI, or a loud, actionable error. */
+  private findNotebook(uri: vscode.Uri): vscode.NotebookDocument {
+    const notebook = vscode.workspace.notebookDocuments.find(
+      (doc) =>
+        doc.uri.toString() === uri.toString() &&
+        doc.notebookType === NOTEBOOK_TYPE,
+    );
+    if (notebook === undefined || fabricRootOf(notebook) === undefined) {
+      throw new LakehouseError(
+        `Cannot manage lakehouses: notebook '${path.basename(uri.fsPath)}' is not open as a Fabric notebook.`,
+        {
+          operation: "open Lakehouse panel",
+          entity: `notebook ${path.basename(uri.fsPath)}`,
+          remediation:
+            "Open the file with 'Fabric: Open File as Fabric Notebook', then retry from the panel.",
+        },
+      );
+    }
+    return notebook;
   }
 
   private async handleMessage(
@@ -77,31 +114,68 @@ export class LakehousePanel {
       return;
     }
     const { command, id, name } = message as {
-      command?: string;
-      id?: string;
-      name?: string;
+      command?: unknown;
+      id?: unknown;
+      name?: unknown;
     };
+    const lakehouseName = typeof name === "string" ? name : undefined;
     try {
       if (command === "attach" && typeof id === "string") {
-        context.model.attachLakehouse(
-          { id, name, workspaceId: context.workspaceId },
-          false,
+        await this.applyAttachmentEdit(context, (root) =>
+          attachLakehouse(
+            root,
+            { id, name: lakehouseName, workspaceId: context.workspaceId },
+            false,
+          ),
         );
       } else if (command === "makeDefault" && typeof id === "string") {
-        context.model.attachLakehouse(
-          { id, name, workspaceId: context.workspaceId },
-          true,
+        await this.applyAttachmentEdit(context, (root) =>
+          attachLakehouse(
+            root,
+            { id, name: lakehouseName, workspaceId: context.workspaceId },
+            true,
+          ),
         );
       } else if (command === "detach" && typeof id === "string") {
-        context.model.detachLakehouse(id);
+        await this.applyAttachmentEdit(context, (root) =>
+          detachLakehouse(root, id),
+        );
       } else if (command !== "refresh") {
         return;
       }
-      this.onModelChanged(context.notebookUri);
       await this.render(panel, context);
     } catch (error) {
       void vscode.window.showErrorMessage(
         error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  /** Applies a metadata edit to the live document, marking it dirty. */
+  private async applyAttachmentEdit(
+    context: PanelContext,
+    update: (root: Record<string, unknown>) => Record<string, unknown>,
+  ): Promise<void> {
+    const notebook = this.findNotebook(context.notebookUri);
+    const root = fabricRootOf(notebook);
+    if (root === undefined) {
+      return; // findNotebook already guarantees this; keep the type narrow
+    }
+    const edit = new vscode.WorkspaceEdit();
+    edit.set(notebook.uri, [
+      vscode.NotebookEdit.updateNotebookMetadata(
+        withFabricRoot(notebook.metadata, update(root)),
+      ),
+    ]);
+    const applied = await vscode.workspace.applyEdit(edit);
+    if (!applied) {
+      throw new LakehouseError(
+        `Failed to update lakehouse attachments: VS Code rejected the metadata edit on '${path.basename(context.notebookUri.fsPath)}'.`,
+        {
+          operation: "update lakehouse attachment",
+          entity: `notebook ${path.basename(context.notebookUri.fsPath)}`,
+          remediation: "Retry; if it persists, reopen the notebook first.",
+        },
       );
     }
   }
@@ -136,7 +210,8 @@ export class LakehousePanel {
       );
     }
 
-    const attachments = context.model.getLakehouseAttachments();
+    const root = fabricRootOf(this.findNotebook(context.notebookUri));
+    const attachments = getLakehouseAttachments(root ?? {});
     const attachedIds = new Set(attachments.known.map((k) => k.id));
     const defaultId = attachments.defaultLakehouse?.id;
 
@@ -204,11 +279,5 @@ function escapeHtml(value: string): string {
 }
 
 function createNonce(): string {
-  const chars =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let nonce = "";
-  for (let i = 0; i < 32; i++) {
-    nonce += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return nonce;
+  return crypto.randomBytes(16).toString("base64url");
 }

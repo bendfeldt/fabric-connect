@@ -1,161 +1,112 @@
 /**
  * Bridges the Notebook Fidelity Module to VS Code's stable notebook API.
- * The parsed NotebookModel (which carries every unknown field and the
- * original bytes) is kept per open document so saving goes back through
- * the codec, preserving portal compatibility.
  *
- * VS Code's NotebookSerializer interface deliberately does not pass the
- * document URI, so association is explicit: `deserializeNotebook` queues
- * the parsed model and the extension calls `associate(uri)` from
- * `onDidOpenNotebookDocument`, which fires immediately after.
+ * The serializer is stateless: the fidelity payload (root object, original
+ * bytes, each cell's raw JSON) is stored in the notebook document's own
+ * metadata during deserialization and read back from the exact document
+ * being saved. VS Code round-trips that metadata through open, revert, and
+ * save, so a payload can never be paired with the wrong file — the failure
+ * mode a serializer-side model registry cannot rule out, because the
+ * NotebookSerializer API does not expose the document URI.
  */
 
 import * as vscode from "vscode";
-import type { INotebookCodec, NotebookModel } from "../core/notebookCodec";
+import {
+  defaultRawCell,
+  parseNotebook,
+  serializeNotebook,
+} from "../core/notebookCodec";
 
 export const NOTEBOOK_TYPE = "fabric-notebook";
 
+/** Notebook-level metadata keys carrying the fidelity payload. */
+const META_ROOT = "fabricRoot";
+const META_ORIGINAL_TEXT = "fabricOriginalText";
+/** Cell-level metadata key carrying the cell's raw ipynb object. */
+const META_CELL_RAW = "fabricRaw";
+
+/** The fidelity root stored in an open document's metadata, if present. */
+export function fabricRootOf(
+  notebook: vscode.NotebookDocument,
+): Record<string, unknown> | undefined {
+  const root = notebook.metadata?.[META_ROOT];
+  return isRecord(root) ? root : undefined;
+}
+
+/** Metadata for a metadata-edit that swaps in an updated fidelity root. */
+export function withFabricRoot(
+  metadata: { [key: string]: unknown } | undefined,
+  root: Record<string, unknown>,
+): { [key: string]: unknown } {
+  return { ...metadata, [META_ROOT]: root };
+}
+
 export class FabricNotebookSerializer implements vscode.NotebookSerializer {
-  /** Fidelity models for open documents, keyed by document URI. */
-  private readonly models = new Map<string, NotebookModel>();
-  /** Models parsed but not yet claimed by onDidOpenNotebookDocument. */
-  private readonly unclaimed: NotebookModel[] = [];
-  private activeModel: NotebookModel | undefined;
-
-  constructor(private readonly codec: INotebookCodec) {}
-
-  getModel(uri: vscode.Uri): NotebookModel | undefined {
-    return this.models.get(uri.toString());
-  }
-
-  /** Called by the panel after mutating metadata so the doc saves dirty. */
-  markDirty(uri: vscode.Uri): void {
-    this.models.get(uri.toString())?.markDirty();
-  }
-
-  /** Pairs the most recently parsed model with its document. */
-  associate(uri: vscode.Uri): void {
-    const model = this.unclaimed.shift();
-    if (model !== undefined) {
-      this.models.set(uri.toString(), model);
-      this.activeModel = model;
-    }
-  }
-
-  setActiveModel(uri: vscode.Uri): void {
-    const model = this.models.get(uri.toString());
-    if (model !== undefined) {
-      this.activeModel = model;
-    }
-  }
-
-  handleDocumentClosed(uri: vscode.Uri): void {
-    const model = this.models.get(uri.toString());
-    this.models.delete(uri.toString());
-    if (this.activeModel === model) {
-      this.activeModel = undefined;
-    }
-  }
-
   deserializeNotebook(
     content: Uint8Array,
     _token: vscode.CancellationToken,
   ): vscode.NotebookData {
     const text = new TextDecoder().decode(content);
-    const model = this.codec.parse(text, "notebook");
-    this.unclaimed.push(model);
+    const parsed = parseNotebook(text, "notebook");
 
-    const cells = model.cells.map((cell) => {
+    const cells = parsed.cells.map((cell) => {
       const kind =
         cell.cellType === "markdown"
           ? vscode.NotebookCellKind.Markup
           : vscode.NotebookCellKind.Code;
-      return new vscode.NotebookCellData(
+      const data = new vscode.NotebookCellData(
         kind,
         cell.source,
         cell.language ?? "python",
       );
+      data.metadata = { [META_CELL_RAW]: cell.raw };
+      return data;
     });
-    return new vscode.NotebookData(cells);
+    const notebook = new vscode.NotebookData(cells);
+    notebook.metadata = {
+      [META_ROOT]: parsed.root,
+      [META_ORIGINAL_TEXT]: text,
+    };
+    return notebook;
   }
 
   serializeNotebook(
     data: vscode.NotebookData,
     _token: vscode.CancellationToken,
   ): Uint8Array {
-    const model = this.findModelFor(data);
-    if (model === undefined) {
-      // Refuse to write a lossy file silently: without the fidelity model,
+    const root = data.metadata?.[META_ROOT];
+    const originalText = data.metadata?.[META_ORIGINAL_TEXT];
+    if (!isRecord(root) || typeof originalText !== "string") {
+      // Refuse to write a lossy file silently: without the fidelity payload,
       // portal metadata (including unknown fields) would be dropped.
       throw new Error(
-        "Cannot save: this notebook has no Fabric fidelity model attached, so saving would lose portal metadata. Reopen the file and try again.",
+        "Cannot save: this notebook has no Fabric fidelity payload attached, so saving would lose portal metadata. Reopen the file and try again.",
       );
     }
-    syncCells(model, data);
-    return new TextEncoder().encode(this.codec.serialize(model));
-  }
-
-  /**
-   * The serializer API gives us NotebookData without a URI. Prefer an open
-   * model whose cell sources match; otherwise fall back to the active one.
-   */
-  private findModelFor(data: vscode.NotebookData): NotebookModel | undefined {
-    for (const model of this.models.values()) {
-      if (
-        model.cells.length === data.cells.length &&
-        model.cells.every((cell, i) => cell.source === data.cells[i].value)
-      ) {
-        return model;
-      }
-    }
-    if (this.activeModel !== undefined) {
-      return this.activeModel;
-    }
-    // Single open model: unambiguous even if edited.
-    const all = [...this.models.values()];
-    return all.length === 1 ? all[0] : undefined;
+    const cells = data.cells.map((cell) => {
+      const isMarkdown = cell.kind === vscode.NotebookCellKind.Markup;
+      const raw = cell.metadata?.[META_CELL_RAW];
+      return {
+        source: cell.value,
+        raw: isCompatibleRaw(raw, isMarkdown)
+          ? raw
+          : defaultRawCell(isMarkdown),
+      };
+    });
+    return new TextEncoder().encode(
+      serializeNotebook({ fileName: "notebook", root, originalText, cells }),
+    );
   }
 }
 
-function syncCells(model: NotebookModel, data: vscode.NotebookData): void {
-  let changed = false;
-  if (data.cells.length === model.cells.length) {
-    for (let i = 0; i < data.cells.length; i++) {
-      if (model.cells[i].source !== data.cells[i].value) {
-        model.cells[i].source = data.cells[i].value;
-        changed = true;
-      }
-    }
-  } else {
-    // Cells were added/removed in the editor: rebuild the cell list, keeping
-    // raw objects (and their unknown fields) for cells that still line up.
-    const rebuilt = data.cells.map((cell, i) => {
-      const existing = model.cells[i];
-      const isMarkdown = cell.kind === vscode.NotebookCellKind.Markup;
-      if (
-        existing !== undefined &&
-        (existing.cellType === "markdown") === isMarkdown
-      ) {
-        existing.source = cell.value;
-        return existing;
-      }
-      return {
-        cellType: isMarkdown ? "markdown" : "code",
-        language: isMarkdown ? "markdown" : cell.languageId,
-        source: cell.value,
-        raw: {
-          cell_type: isMarkdown ? "markdown" : "code",
-          ...(isMarkdown ? {} : { execution_count: null, outputs: [] }),
-          metadata: {},
-          source: [],
-        } as Record<string, unknown>,
-      };
-    });
-    model.cells.length = 0;
-    model.cells.push(...rebuilt);
-    changed = true;
-  }
-  if (changed) {
-    model.markDirty();
-  }
+/** A cell keeps its raw object only while its markdown/code kind matches. */
+function isCompatibleRaw(
+  raw: unknown,
+  isMarkdown: boolean,
+): raw is Record<string, unknown> {
+  return isRecord(raw) && (raw["cell_type"] === "markdown") === isMarkdown;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

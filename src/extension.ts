@@ -14,7 +14,7 @@ import * as vscode from "vscode";
 import { FABRIC_SCOPES } from "./core/constants";
 import { FabricApiClient } from "./core/fabricApiClient";
 import { LivySessionManager } from "./core/livySessionManager";
-import { NotebookCodec } from "./core/notebookCodec";
+import { getLakehouseAttachments } from "./core/notebookCodec";
 import { TargetResolver } from "./core/targetResolver";
 import { EntraAuthProvider } from "./vscode/authProvider";
 import { LakehousePanel } from "./vscode/lakehousePanel";
@@ -22,6 +22,7 @@ import { FabricNotebookController } from "./vscode/notebookController";
 import {
   FabricNotebookSerializer,
   NOTEBOOK_TYPE,
+  fabricRootOf,
 } from "./vscode/notebookSerializer";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -66,38 +67,15 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   });
 
-  const codec = new NotebookCodec();
-  const serializer = new FabricNotebookSerializer(codec);
-  const controller = new FabricNotebookController(
-    livyManager,
-    targetResolver,
-    (uri) => serializer.getModel(uri),
-  );
-  const lakehousePanel = new LakehousePanel(
-    apiClient,
-    targetResolver,
-    (uri) => serializer.getModel(uri),
-    (uri) => serializer.markDirty(uri),
-  );
+  const serializer = new FabricNotebookSerializer();
+  const controller = new FabricNotebookController(livyManager, targetResolver);
+  const lakehousePanel = new LakehousePanel(apiClient, targetResolver);
 
   context.subscriptions.push(
     output,
     controller,
     vscode.workspace.registerNotebookSerializer(NOTEBOOK_TYPE, serializer, {
       transientOutputs: true,
-    }),
-    vscode.workspace.onDidOpenNotebookDocument((doc) => {
-      if (doc.notebookType === NOTEBOOK_TYPE) {
-        serializer.associate(doc.uri);
-      }
-    }),
-    vscode.workspace.onDidCloseNotebookDocument((doc) => {
-      serializer.handleDocumentClosed(doc.uri);
-    }),
-    vscode.window.onDidChangeActiveNotebookEditor((editor) => {
-      if (editor?.notebook.notebookType === NOTEBOOK_TYPE) {
-        serializer.setActiveModel(editor.notebook.uri);
-      }
     }),
 
     vscode.commands.registerCommand("fabric-connect.signIn", () =>
@@ -153,8 +131,11 @@ export function activate(context: vscode.ExtensionContext): void {
         }
         const folder = path.dirname(notebook.uri.fsPath);
         const resolved = await targetResolver.resolveTarget(folder);
-        const model = serializer.getModel(notebook.uri);
-        const lakehouse = model?.getLakehouseAttachments().defaultLakehouse;
+        const root = fabricRootOf(notebook);
+        const lakehouse =
+          root === undefined
+            ? undefined
+            : getLakehouseAttachments(root).defaultLakehouse;
         if (lakehouse === undefined) {
           void vscode.window.showInformationMessage(
             "This notebook has no default Lakehouse, so it has no Livy session to stop.",
