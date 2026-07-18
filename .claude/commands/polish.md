@@ -16,7 +16,6 @@ Apply six existing quality skills to the changes already in the working tree, in
 
 1. Load the diff: `git diff HEAD` and `git status --short`. Fix on this set of changed files for the whole session; do not wander into untouched code.
 2. Apply each skill below in order. For each: read the skill file from `skills/<name>/SKILL.md` (repo layout) or `.claude/skills/<name>/SKILL.md` (installed layout), walk its checklist against the diff, and apply the fixes it authorises. If the skill does not apply to this diff (e.g. `a11y-pass` on a backend-only change), record `skipped` with a one-line reason and move on.
-
    1. **simplify** — collapse indirection you don't need.
    2. **reduce-nesting** — early returns, guard clauses.
    3. **kill-dead-code** — prove unreachable, then delete.

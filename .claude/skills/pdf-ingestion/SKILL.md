@@ -16,15 +16,15 @@ Three ways to feed a PDF to the model, in increasing order of preprocessing:
 
 ## Deciding which path
 
-| Doc shape | Path |
-|---|---|
-| <20 pages, layout matters (report, form, invoice) | Native |
-| <20 pages, pure prose (article, memo) | Text extraction |
-| 20-100 pages, mixed | Native, but chunk if context tight |
-| >100 pages | Extract → chunk → summarize |
-| Scanned PDF (no text layer) | OCR first (Tesseract or vision model), then treat as extracted text |
-| Tables are the point | Native — text extractors mangle tables |
-| Figures/diagrams are the point | Native + explicit "describe the figure on page N" prompt |
+| Doc shape                                         | Path                                                                |
+| ------------------------------------------------- | ------------------------------------------------------------------- |
+| <20 pages, layout matters (report, form, invoice) | Native                                                              |
+| <20 pages, pure prose (article, memo)             | Text extraction                                                     |
+| 20-100 pages, mixed                               | Native, but chunk if context tight                                  |
+| >100 pages                                        | Extract → chunk → summarize                                         |
+| Scanned PDF (no text layer)                       | OCR first (Tesseract or vision model), then treat as extracted text |
+| Tables are the point                              | Native — text extractors mangle tables                              |
+| Figures/diagrams are the point                    | Native + explicit "describe the figure on page N" prompt            |
 
 ## Native PDF — the good defaults
 

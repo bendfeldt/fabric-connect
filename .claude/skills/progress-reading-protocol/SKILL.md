@@ -20,7 +20,7 @@ Skipping steps is the failure mode. Sessions that skip the smoke-test step (6) r
 
 1. **`pwd`** — confirm you are in the project directory. You may only edit files below this path.
 2. **Read `claude-progress.txt`** (or whatever the project's shift-notes file is called). This is the previous session's prose handoff.
-2b. **Read `claude-decisions.json`** — the machine-readable ledger of decisions the loopkit `pre-compact` hook extracts before each compaction. Prose in `claude-progress.txt` tells you *what* the last session did; JSON in `claude-decisions.json` tells you *what was chosen and rejected*. If the two disagree on a specific choice, the JSON is the durable record. See [[active-memory-reminder]].
+   2b. **Read `claude-decisions.json`** — the machine-readable ledger of decisions the loopkit `pre-compact` hook extracts before each compaction. Prose in `claude-progress.txt` tells you _what_ the last session did; JSON in `claude-decisions.json` tells you _what was chosen and rejected_. If the two disagree on a specific choice, the JSON is the durable record. See [[active-memory-reminder]].
 3. **`git log --oneline -20`** — see what was actually committed. If the progress file and the git log disagree, trust the git log. The progress file can be truncated by a crashed write; the log is append-only.
 4. **Count remaining features** — `cat feature_list.json | jq '[.[] | select(.passes==false)] | length'`. Adjust the field name to the project's schema. This anchors you to the source of truth for completion state.
 5. **`./init.sh`** — bring up the dev server. If this fails, fixing it is your only job this session. Do not skip to feature work with a broken environment.

@@ -1,6 +1,7 @@
 ---
 name: adversarial-verify
-description: Review a diff against the goal spec assuming the code is BROKEN. The reviewer
+description:
+  Review a diff against the goal spec assuming the code is BROKEN. The reviewer
   that lives in the maker's head always agrees with itself — this pulls review into a
   hostile, separate pass. Invoke after every code change before marking work done.
 when_to_use: a code change is "done", before flipping a task to complete, before commit
@@ -33,7 +34,10 @@ Do not be polite. Do not propose fixes. Do not run the code. Just hunt.
 ## Output (JSON, no prose)
 
 ```json
-{"passes": false, "failures": [{"line": 42, "shortcut": "swallowed errors", "why": "..."}]}
+{
+  "passes": false,
+  "failures": [{ "line": 42, "shortcut": "swallowed errors", "why": "..." }]
+}
 ```
 
 If it genuinely passes, say so in one line. Most of the time, it doesn't.

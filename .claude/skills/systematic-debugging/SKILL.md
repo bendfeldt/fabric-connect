@@ -1,6 +1,7 @@
 ---
 name: systematic-debugging
-description: Use for ANY bug, test failure, crash, or unexpected behavior. Forces
+description:
+  Use for ANY bug, test failure, crash, or unexpected behavior. Forces
   reproduce-then-isolate before proposing a fix. Stops the agent from guessing.
 when_to_use: a test fails, a crash, wrong output, "it worked yesterday", a flaky failure
 ---

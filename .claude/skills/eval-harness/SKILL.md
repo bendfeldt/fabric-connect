@@ -37,6 +37,7 @@ If the runner is smart it will bias the eval. Keep it dumb.
 ## Stage 3 — verifier
 
 Fan out one subagent per row (see `subagent-fanout`). Each gets:
+
 - The input.
 - The expected output (or spec).
 - The actual output.

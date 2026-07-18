@@ -29,12 +29,12 @@ Inspired by Prithvi's March 2026 harness post on evaluator-generator separation 
 
 5. **Compare against baseline.**
    - Score within noise, cost/latency down → the component is dead weight. Delete.
-   - Score drops measurably → the component still earns its complexity. Restore and note *what failure mode* returned.
-   - Score *improves* → the component was actively harmful. Delete and investigate why (often: over-constraining a now-capable model).
+   - Score drops measurably → the component still earns its complexity. Restore and note _what failure mode_ returned.
+   - Score _improves_ → the component was actively harmful. Delete and investigate why (often: over-constraining a now-capable model).
 
 6. **Commit the delta.** Land the strip (or the restore-with-notes) as its own commit. Do not batch multiple strips into one change — you lose the ability to attribute the score movement.
 
-7. **Repeat for the next component.** Re-establish baseline from the *new* state each round, not the original. Compounding strips have compounding effects.
+7. **Repeat for the next component.** Re-establish baseline from the _new_ state each round, not the original. Compounding strips have compounding effects.
 
 ## Anti-patterns
 
