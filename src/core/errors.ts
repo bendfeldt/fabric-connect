@@ -61,7 +61,12 @@ export class LivyError extends FabricConnectError {
   readonly kind: LivyErrorKind;
 }
 
-export type LivyErrorKind = "session-start" | "session-expired" | "cancelled";
+export type LivyErrorKind =
+  | "session-start"
+  | "session-expired"
+  | "cancelled"
+  /** The Livy API returned a response missing required fields. */
+  | "protocol";
 
 export class FabricApiError extends FabricConnectError {
   readonly status?: number;

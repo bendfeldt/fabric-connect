@@ -18,7 +18,11 @@ const MICROSOFT_AUTH_PROVIDER = "microsoft";
 
 export class EntraAuthProvider implements IAuthProvider {
   async getToken(tenantId: string, scopes: readonly string[]): Promise<string> {
-    if (!/^[0-9a-f-]{36}$/i.test(tenantId)) {
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        tenantId,
+      )
+    ) {
       throw new AuthError(
         `Cannot acquire a token: '${tenantId}' is not a valid tenant ID (expected a GUID).`,
         {
