@@ -1,0 +1,115 @@
+# Releases on every push to main: infers the semver bump from conventional
+# commits since the last v* tag, bumps package.json, tags vX.Y.Z, packages
+# the .vsix, and publishes a GitHub Release with the artifact attached.
+#
+# Rapid successive merges are safe: runs queue (concurrency group), each run
+# checks out the live tip of main (not the frozen push SHA), and a run whose
+# HEAD is already tagged skips — so a queued run either releases the newer
+# commits or does nothing, never pushes stale state.
+#
+# Note: if main gains branch protection that blocks pushes from
+# github-actions, the "Push version bump and tag" step will fail; allow the
+# github-actions app to bypass, or switch the checkout/push to a PAT.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Belt-and-braces: GITHUB_TOKEN pushes never retrigger workflows, but
+    # skip release commits explicitly in case one arrives another way, and
+    # skip entirely on events without a head commit. The "already tagged"
+    # guard below also covers this (release commits carry a v* tag).
+    if: ${{ github.event.head_commit != null && !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main # live tip, not the frozen push SHA — see header comment
+          fetch-depth: 0 # full history + tags for bump inference
+
+      - name: Skip if HEAD is already released
+        id: guard
+        run: |
+          if git describe --exact-match --match 'v*' HEAD >/dev/null 2>&1; then
+            echo "HEAD already carries a release tag; nothing to release."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.guard.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.guard.outputs.skip != 'true'
+        run: npm ci
+
+      - name: Run tests
+        if: steps.guard.outputs.skip != 'true'
+        run: npm test
+
+      - name: Determine version bump
+        if: steps.guard.outputs.skip != 'true'
+        id: bump
+        run: |
+          last_tag="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+          if [ -n "$last_tag" ]; then
+            range="$last_tag..HEAD"
+          else
+            range="HEAD"
+          fi
+          subjects="$(git log --format='%s' "$range")"
+          bodies="$(git log --format='%b' "$range")"
+          if printf '%s\n' "$bodies" | grep -q 'BREAKING CHANGE' \
+            || printf '%s\n' "$subjects" | grep -Eq '^[a-z]+(\([^)]*\))?!:'; then
+            bump=major
+          elif printf '%s\n' "$subjects" | grep -Eq '^feat(\([^)]*\))?:'; then
+            bump=minor
+          else
+            bump=patch
+          fi
+          echo "Commits since ${last_tag:-start of history}: bump=$bump"
+          echo "bump=$bump" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version and tag
+        if: steps.guard.outputs.skip != 'true'
+        id: version
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          npm version "${{ steps.bump.outputs.bump }}" -m 'chore(release): v%s'
+          echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Package extension
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          npm run compile
+          npx --yes @vscode/vsce@3.9.2 package
+
+      - name: Push version bump and tag
+        if: steps.guard.outputs.skip != 'true'
+        run: git push origin HEAD:main --follow-tags
+
+      - name: Create GitHub Release
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version='${{ steps.version.outputs.version }}'
+          gh release create "v$version" \
+            --title "v$version" \
+            --generate-notes \
+            "fabric-connect-$version.vsix"
