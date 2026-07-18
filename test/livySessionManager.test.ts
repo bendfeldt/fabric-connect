@@ -298,3 +298,29 @@ test("stopSession deletes the session and clears persisted state", async () => {
   assert.equal(store.data.size, 0);
   assert.equal(api.calls.length, 1);
 });
+
+test("a statement response without an ID is a protocol error, not a poll of /undefined", async () => {
+  const api = scriptedApi([
+    [/POST .*\/sessions$/, () => ({ id: 7, state: "idle" })],
+    [/GET .*\/sessions\/7$/, () => ({ id: 7, state: "idle" })],
+    [/POST .*\/sessions\/7\/statements$/, () => ({ state: "waiting" })],
+  ]);
+  await assert.rejects(
+    manager(api, memoryStore()).execute(
+      TARGET,
+      "print(42)",
+      "pyspark",
+      NEVER_CANCELLED,
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof LivyError);
+      assert.equal(error.kind, "protocol");
+      assert.match(error.message, /statement ID/);
+      return true;
+    },
+  );
+  assert.ok(
+    !api.calls.some((c) => c.path.includes("undefined")),
+    "must not poll a statement path containing 'undefined'",
+  );
+});

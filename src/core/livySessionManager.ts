@@ -169,6 +169,18 @@ export class LivySessionManager implements ILivySessionManager {
     } catch (cause) {
       throw this.classifySessionLoss(cause, target, sessionId);
     }
+    if (typeof statement?.id !== "number") {
+      throw new LivyError(
+        "The Livy API accepted the statement but returned no statement ID, so its result cannot be polled.",
+        {
+          operation: "execute cell",
+          entity: `session ${sessionId}`,
+          kind: "protocol",
+          remediation:
+            "Run the cell again; if it persists, stop the Livy session and retry.",
+        },
+      );
+    }
 
     return this.pollStatement(target, sessionId, statement.id, token);
   }
@@ -294,6 +306,18 @@ export class LivySessionManager implements ILivySessionManager {
       session = response.body;
     } catch (cause) {
       throw this.sessionStartError(cause, target);
+    }
+    if (typeof session?.id !== "number") {
+      throw new LivyError(
+        "The Livy API accepted the session request but returned no session ID.",
+        {
+          operation: "start Livy session",
+          entity: `workspace (target tenant ${target.tenantId})`,
+          kind: "protocol",
+          remediation:
+            "Run the cell again; if it persists, check the workspace capacity in the Fabric portal.",
+        },
+      );
     }
     this.store.set(key, String(session.id));
     return this.waitForSessionReady(target, session.id, token);

@@ -7,14 +7,14 @@
 
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { FabricConnectError } from "../core/errors";
+import { FabricConnectError, LivyError } from "../core/errors";
 import type {
   ILivySessionManager,
   LivyTarget,
 } from "../core/livySessionManager";
-import type { NotebookModel } from "../core/notebookCodec";
+import { getLakehouseAttachments } from "../core/notebookCodec";
 import type { ITargetResolver } from "../core/types";
-import { NOTEBOOK_TYPE } from "./notebookSerializer";
+import { NOTEBOOK_TYPE, fabricRootOf } from "./notebookSerializer";
 
 const RENDERABLE_MIME_TYPES = new Set([
   "text/plain",
@@ -39,7 +39,6 @@ export class FabricNotebookController implements vscode.Disposable {
   constructor(
     private readonly livy: ILivySessionManager,
     private readonly targets: ITargetResolver,
-    private readonly getModel: (uri: vscode.Uri) => NotebookModel | undefined,
   ) {
     this.controller = vscode.notebooks.createNotebookController(
       "fabric-connect-livy",
@@ -107,6 +106,13 @@ export class FabricNotebookController implements vscode.Disposable {
       await execution.replaceOutput(this.renderData(result.data ?? {}));
       execution.end(true, Date.now());
     } catch (error) {
+      if (error instanceof LivyError && error.kind === "cancelled") {
+        // Cancelled while still queued: same clean outcome as a running
+        // cell that was cancelled, not a red error output.
+        await execution.clearOutput();
+        execution.end(undefined, Date.now());
+        return;
+      }
       await execution.replaceOutput(
         new vscode.NotebookCellOutput([
           vscode.NotebookCellOutputItem.error(toDisplayError(error)),
@@ -154,9 +160,11 @@ export class FabricNotebookController implements vscode.Disposable {
   ): Promise<LivyTarget> {
     const folder = path.dirname(notebook.uri.fsPath);
     const resolved = await this.targets.resolveTarget(folder);
-    const model = this.getModel(notebook.uri);
-    const attachments = model?.getLakehouseAttachments();
-    const lakehouse = attachments?.defaultLakehouse;
+    const root = fabricRootOf(notebook);
+    const lakehouse =
+      root === undefined
+        ? undefined
+        : getLakehouseAttachments(root).defaultLakehouse;
     if (lakehouse === undefined) {
       throw new FabricConnectError(
         "Cannot run this cell: the notebook has no default Lakehouse attached, so there is no Spark endpoint to execute against.",
