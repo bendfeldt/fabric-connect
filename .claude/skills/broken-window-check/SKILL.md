@@ -28,12 +28,12 @@ Do not pick new work on top of a broken previous feature. Ever.
 
 The check must exercise the path the user actually takes. Anything less is theater.
 
-| Feature shape | Valid check | Invalid check |
-|---|---|---|
-| Web UI button | Puppeteer/Playwright click → observe DOM | `expect(handler).toHaveBeenCalled()` |
-| HTTP endpoint | `curl` the route → check status + body | Unit test on the handler function |
-| CLI flag | Invoke the binary with the flag → observe output | Import the parser, assert on the AST |
-| Background job | Trigger it → wait → assert side effect | Assert the job function returns |
+| Feature shape  | Valid check                                      | Invalid check                        |
+| -------------- | ------------------------------------------------ | ------------------------------------ |
+| Web UI button  | Puppeteer/Playwright click → observe DOM         | `expect(handler).toHaveBeenCalled()` |
+| HTTP endpoint  | `curl` the route → check status + body           | Unit test on the handler function    |
+| CLI flag       | Invoke the binary with the flag → observe output | Import the parser, assert on the AST |
+| Background job | Trigger it → wait → assert side effect           | Assert the job function returns      |
 
 ## Red flags — the check is not doing its job
 
@@ -49,7 +49,7 @@ The check is 30-90 seconds per session in a healthy project. In a project that's
 ## Pairs with
 
 - `shift-notes` — the ledger the check reads and writes.
-- `adversarial-verify` — run this on the current session's diff *before* claiming done, so the next session doesn't have to broken-window you.
+- `adversarial-verify` — run this on the current session's diff _before_ claiming done, so the next session doesn't have to broken-window you.
 - `verification-before-completion` — the general form of "don't claim without evidence".
 
 If every session enforces the check, the compounding-error mode of shift-work agents stops compounding.

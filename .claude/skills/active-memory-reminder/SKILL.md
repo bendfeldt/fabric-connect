@@ -8,10 +8,10 @@ when_to_use: session start, after /clear, after compaction — before touching c
 
 Loopkit splits shift-notes across two files on purpose:
 
-- **`claude-progress.txt`** — free-form prose. Human-readable narrative of what the last session did, what is in flight, what to pick up next. Wins for context and intent. Loses when the model needs to *decide* whether a decision was made.
+- **`claude-progress.txt`** — free-form prose. Human-readable narrative of what the last session did, what is in flight, what to pick up next. Wins for context and intent. Loses when the model needs to _decide_ whether a decision was made.
 - **`claude-decisions.json`** — machine-readable array of `{ts, decision}` entries, appended by the loopkit `pre-compact` hook every time the transcript is about to be compacted. Wins for durability of specific choices ("chose Postgres over SQLite because…", "rejected the polling approach", "tried htmx and switched to Alpine").
 
-Compaction is where reasoning dies. The summarizer keeps the shape of the work but strips the *why*. `claude-decisions.json` is the durable side-channel that survives that. This is the same pattern Meta's NapMem paper calls out for behavioral-state-decay in long-running agents: prose degrades faster than structured facts because the model rewrites prose freely and edits structured data carefully (also why loopkit uses JSON for `feature_list.json`; see [[feature-list-json]]).
+Compaction is where reasoning dies. The summarizer keeps the shape of the work but strips the _why_. `claude-decisions.json` is the durable side-channel that survives that. This is the same pattern Meta's NapMem paper calls out for behavioral-state-decay in long-running agents: prose degrades faster than structured facts because the model rewrites prose freely and edits structured data carefully (also why loopkit uses JSON for `feature_list.json`; see [[feature-list-json]]).
 
 ## When to apply
 
@@ -25,13 +25,23 @@ Compaction is where reasoning dies. The summarizer keeps the shape of the work b
 
 ```json
 [
-  {"ts": "2026-07-14T18:22:09Z", "decision": "chose Playwright MCP over Puppeteer because Puppeteer's alert-modal blind spot bit us in run 41"},
-  {"ts": "2026-07-14T20:04:11Z", "decision": "rejected the daemon-per-project approach; switched to a single supervisor with per-project subdirs"},
-  {"ts": "2026-07-15T09:31:44Z", "decision": "tried and failed to cache the plan across sessions — plan went stale within two sessions, dropped"}
+  {
+    "ts": "2026-07-14T18:22:09Z",
+    "decision": "chose Playwright MCP over Puppeteer because Puppeteer's alert-modal blind spot bit us in run 41"
+  },
+  {
+    "ts": "2026-07-14T20:04:11Z",
+    "decision": "rejected the daemon-per-project approach; switched to a single supervisor with per-project subdirs"
+  },
+  {
+    "ts": "2026-07-15T09:31:44Z",
+    "decision": "tried and failed to cache the plan across sessions — plan went stale within two sessions, dropped"
+  }
 ]
 ```
 
 Constraints:
+
 - Append-only in normal operation. The `pre-compact` hook appends; sessions read.
 - You MAY add a decision by hand if you make one mid-session that the hook won't catch (e.g., a decision made in code, not prose). Use the same shape. Do not rewrite or delete existing entries — they are the durable record.
 - If entries contradict, newer wins, but note the contradiction in `claude-progress.txt` so the reason is captured.
@@ -42,7 +52,7 @@ Constraints:
 
 ## Anti-patterns
 
-- **Reading `claude-progress.txt` and skipping `claude-decisions.json`.** You will re-open settled questions. The prose file often omits *why we didn't do the other thing* — that's what the JSON is for.
+- **Reading `claude-progress.txt` and skipping `claude-decisions.json`.** You will re-open settled questions. The prose file often omits _why we didn't do the other thing_ — that's what the JSON is for.
 - **Editing or deleting past decisions to "clean them up."** Same rule as `feature_list.json` steps and descriptions: durable structured records are load-bearing. Contradict them in a new entry; don't erase the old one.
 - **Storing prose in `claude-decisions.json`.** It is not a second progress file. Entries are single decisions with a timestamp, nothing else.
 - **Assuming the hook caught it.** The regex catches most decisions but not all. If you made a decision the transcript won't obviously match, add it by hand before ending the session.

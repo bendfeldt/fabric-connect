@@ -28,7 +28,7 @@ export interface IFabricApiClient {
 }
 
 export interface FabricRequestOptions {
-  readonly method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  readonly method: "GET" | "POST" | "PATCH" | "DELETE";
   /** Path relative to the API base, e.g. `/workspaces/{id}/lakehouses`. */
   readonly path: string;
   readonly tenantId: string;

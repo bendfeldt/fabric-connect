@@ -22,12 +22,12 @@ If none of the above hold, do not escalate. Guessing is bad; escalating on a sol
 
 Read `LOOPKIT_HITL_CHANNEL`. Supported values:
 
-| Value | Shape |
-|---|---|
-| `telegram` | POST to `https://api.telegram.org/bot$LOOPKIT_HITL_TELEGRAM_TOKEN/sendMessage` with `chat_id=$LOOPKIT_HITL_TELEGRAM_CHAT`, `text=<question + repo + short context>`. |
-| `slack` | POST JSON `{"text": "..."}` to `$LOOPKIT_HITL_SLACK_WEBHOOK` (incoming-webhook URL). |
-| `dial` | Run `$LOOPKIT_HITL_DIAL_CMD` with the message on stdin. Whatever the operator wired up — SMS gateway, ntfy, phone call, pager. |
-| `none` (or unset) | Skip the primary action. Go straight to fallback. |
+| Value             | Shape                                                                                                                                                                |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `telegram`        | POST to `https://api.telegram.org/bot$LOOPKIT_HITL_TELEGRAM_TOKEN/sendMessage` with `chat_id=$LOOPKIT_HITL_TELEGRAM_CHAT`, `text=<question + repo + short context>`. |
+| `slack`           | POST JSON `{"text": "..."}` to `$LOOPKIT_HITL_SLACK_WEBHOOK` (incoming-webhook URL).                                                                                 |
+| `dial`            | Run `$LOOPKIT_HITL_DIAL_CMD` with the message on stdin. Whatever the operator wired up — SMS gateway, ntfy, phone call, pager.                                       |
+| `none` (or unset) | Skip the primary action. Go straight to fallback.                                                                                                                    |
 
 Message body — always these five lines, in this order:
 
@@ -49,15 +49,19 @@ Whether the primary succeeds or fails, always write `./BLOCKED.md` at the repo r
 # Blocked
 
 ## Question:
+
 <one sentence, answerable with a short reply>
 
 ## Context:
+
 <what feature, which file, which commit, why now — 3-6 lines>
 
 ## Attempted:
+
 <bulleted list of what you tried and why each fell short>
 
 ## Choices:
+
 - A) <option> — <consequence>
 - B) <option> — <consequence>
 - C) <option> — <consequence>

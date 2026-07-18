@@ -6,9 +6,9 @@ when_to_use: starting a coherent chunk of implementation work with an evaluator/
 
 # Sprint Contract
 
-The evaluator's leverage collapses when "done" is defined *after* the code exists. The generator ships something, the evaluator finds it plausible, the fuzzy spec silently reshapes to match what got built. Premature victory, dressed up.
+The evaluator's leverage collapses when "done" is defined _after_ the code exists. The generator ships something, the evaluator finds it plausible, the fuzzy spec silently reshapes to match what got built. Premature victory, dressed up.
 
-Fix the timing: write the contract *before* the generator writes a line of code. The evaluator's job for the sprint is then mechanical — hold the artifact against the contract, no re-negotiation mid-flight.
+Fix the timing: write the contract _before_ the generator writes a line of code. The evaluator's job for the sprint is then mechanical — hold the artifact against the contract, no re-negotiation mid-flight.
 
 Inspired by the planner/generator/evaluator split in Prithvi's March 2026 post on multi-agent harnesses.
 
@@ -49,7 +49,7 @@ Out of scope this sprint:
 ## Anti-patterns
 
 - **Predicates that are prose, not checks.** "Handles errors gracefully" is not a predicate. "Returns 400 with `{error: "missing_field"}` when `name` is absent" is.
-- **Renegotiating mid-sprint.** If the generator hits a wall, it does not edit the contract to route around it. It surfaces the wall, the *planner* revises scope, a new contract gets signed. Evaluator leniency comes from mid-flight edits — block them structurally.
+- **Renegotiating mid-sprint.** If the generator hits a wall, it does not edit the contract to route around it. It surfaces the wall, the _planner_ revises scope, a new contract gets signed. Evaluator leniency comes from mid-flight edits — block them structurally.
 - **Contract written by the generator alone.** The generator will write predicates its planned code happens to satisfy. Have the evaluator draft or at least sign off before code starts.
 - **No runtime path.** Without it, the evaluator falls back to reading unit tests — see [[broken-window-check]] for how that fails.
 - **Skipping the out-of-scope list.** This is the cheapest anti-drift device you have. Skip it and you'll ship a "small refactor" that broke two other features.
@@ -65,7 +65,7 @@ Two to five minutes of prose before code. In return: the evaluator has something
 ## Related
 
 - [[shift-notes]] — where the contract lives across sessions.
-- [[broken-window-check]] — what the evaluator runs *against* the contract at session start.
+- [[broken-window-check]] — what the evaluator runs _against_ the contract at session start.
 - [[adversarial-verify]] — the end-of-sprint pass that decides whether every predicate actually holds.
 
 ## When NOT to apply

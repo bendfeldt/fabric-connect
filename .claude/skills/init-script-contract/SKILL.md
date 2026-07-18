@@ -18,12 +18,12 @@ The names are load-bearing — [[shift-notes]] and [[broken-window-check]] both 
 
 ## The five scripts
 
-| Script | Contract |
-|---|---|
-| `init.sh` | Clean clone → dev server up on `localhost`. Idempotent. Under 120s. Zero prompts. |
-| `serve.sh` | Start the dev server only. Written when `init.sh` cannot fit under 120s. |
-| `test.sh` | Run the full test suite. Exit non-zero on any failure. |
-| `stop.sh` | Cleanly kill the dev server. Sessions run this before exiting. |
+| Script     | Contract                                                                                  |
+| ---------- | ----------------------------------------------------------------------------------------- |
+| `init.sh`  | Clean clone → dev server up on `localhost`. Idempotent. Under 120s. Zero prompts.         |
+| `serve.sh` | Start the dev server only. Written when `init.sh` cannot fit under 120s.                  |
+| `test.sh`  | Run the full test suite. Exit non-zero on any failure.                                    |
+| `stop.sh`  | Cleanly kill the dev server. Sessions run this before exiting.                            |
 | `reset.sh` | Wipe local DB and ephemeral state. Leave code untouched. Used by [[broken-window-check]]. |
 
 ## Procedure

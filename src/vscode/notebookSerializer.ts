@@ -10,10 +10,10 @@
  * `onDidOpenNotebookDocument`, which fires immediately after.
  */
 
-import * as vscode from 'vscode';
-import type { INotebookCodec, NotebookModel } from '../core/notebookCodec';
+import * as vscode from "vscode";
+import type { INotebookCodec, NotebookModel } from "../core/notebookCodec";
 
-export const NOTEBOOK_TYPE = 'fabric-notebook';
+export const NOTEBOOK_TYPE = "fabric-notebook";
 
 export class FabricNotebookSerializer implements vscode.NotebookSerializer {
   /** Fidelity models for open documents, keyed by document URI. */
@@ -62,15 +62,19 @@ export class FabricNotebookSerializer implements vscode.NotebookSerializer {
     _token: vscode.CancellationToken,
   ): vscode.NotebookData {
     const text = new TextDecoder().decode(content);
-    const model = this.codec.parse(text, 'notebook');
+    const model = this.codec.parse(text, "notebook");
     this.unclaimed.push(model);
 
     const cells = model.cells.map((cell) => {
       const kind =
-        cell.cellType === 'markdown'
+        cell.cellType === "markdown"
           ? vscode.NotebookCellKind.Markup
           : vscode.NotebookCellKind.Code;
-      return new vscode.NotebookCellData(kind, cell.source, cell.language ?? 'python');
+      return new vscode.NotebookCellData(
+        kind,
+        cell.source,
+        cell.language ?? "python",
+      );
     });
     return new vscode.NotebookData(cells);
   }
@@ -84,7 +88,7 @@ export class FabricNotebookSerializer implements vscode.NotebookSerializer {
       // Refuse to write a lossy file silently: without the fidelity model,
       // portal metadata (including unknown fields) would be dropped.
       throw new Error(
-        'Cannot save: this notebook has no Fabric fidelity model attached, so saving would lose portal metadata. Reopen the file and try again.',
+        "Cannot save: this notebook has no Fabric fidelity model attached, so saving would lose portal metadata. Reopen the file and try again.",
       );
     }
     syncCells(model, data);
@@ -128,16 +132,19 @@ function syncCells(model: NotebookModel, data: vscode.NotebookData): void {
     const rebuilt = data.cells.map((cell, i) => {
       const existing = model.cells[i];
       const isMarkdown = cell.kind === vscode.NotebookCellKind.Markup;
-      if (existing !== undefined && (existing.cellType === 'markdown') === isMarkdown) {
+      if (
+        existing !== undefined &&
+        (existing.cellType === "markdown") === isMarkdown
+      ) {
         existing.source = cell.value;
         return existing;
       }
       return {
-        cellType: isMarkdown ? 'markdown' : 'code',
-        language: isMarkdown ? 'markdown' : cell.languageId,
+        cellType: isMarkdown ? "markdown" : "code",
+        language: isMarkdown ? "markdown" : cell.languageId,
         source: cell.value,
         raw: {
-          cell_type: isMarkdown ? 'markdown' : 'code',
+          cell_type: isMarkdown ? "markdown" : "code",
           ...(isMarkdown ? {} : { execution_count: null, outputs: [] }),
           metadata: {},
           source: [],

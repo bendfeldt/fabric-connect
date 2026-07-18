@@ -1,16 +1,37 @@
 # Fabric Connect
 
-A VS Code extension for working with Microsoft Fabric notebooks: edit
-portal-compatible notebook files, attach Lakehouses, and run cells against
-your Fabric workspace over Livy — without leaving the editor.
+A VS Code extension that brings Microsoft Fabric development into the
+editor: work with the items in your Fabric workspaces — notebooks today,
+pipelines next — using files that stay 100% compatible with the Fabric
+portal, across multiple tenants, without leaving VS Code.
 
-This is **Part 1 (notebooks)** of the extension. Pipelines and other item
-types are a separate, later part; the module boundaries here (auth, target
-config, API client) are designed so Part 2 plugs in without changes to this
-code. See [`docs/design-part1-notebooks.md`](docs/design-part1-notebooks.md)
-for the full design.
+The goal is that a Fabric developer can clone a repo, map its folders to
+workspaces, sign in to the right tenant, and edit and run Fabric items
+locally, with everything they save opening cleanly in the portal (and vice
+versa). A shared foundation makes that work the same way for every item
+type:
 
-## Features
+- **Auth** — multi-tenant, user-delegated Entra ID sign-in; tokens cached
+  per tenant in SecretStorage and never overlapping between organizations.
+- **Target config** — folder-to-workspace mapping with the shareable target
+  shape committed to git and the actual workspace IDs in a gitignored local
+  file, so nothing ever silently runs against the wrong client's workspace.
+- **Fabric API client** — one typed HTTP client owning retries, backoff,
+  and error normalization for every module.
+
+New item types plug into this foundation through a registry instead of
+modifying it — which is how pipelines will arrive without touching the
+notebook code.
+
+## Status
+
+| Part               | Scope                                                                   | State                                                      |
+| ------------------ | ----------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Part 1 — Notebooks | Portal-compatible editing, Lakehouse attach/detach, Livy cell execution | **Implemented** ([design](docs/design-part1-notebooks.md)) |
+| Part 2 — Pipelines | Trigger, monitor, and eventually a visual canvas                        | Planned                                                    |
+| Later              | Other item types, Marketplace publishing                                | Not started                                                |
+
+## Features (notebooks)
 
 - **Portal-compatible notebook editing** — Fabric `.ipynb` files round-trip
   byte-for-byte when unmodified, and unknown metadata fields always survive
@@ -21,9 +42,6 @@ for the full design.
 - **Livy execution** — run cells against your workspace with session reuse,
   per-session queueing, cancellation, and reattachment to an existing
   session after a VS Code reload.
-- **Multi-tenant auth** — user-delegated Entra ID sign-in per tenant via VS
-  Code's built-in Microsoft authentication; tokens are cached per tenant in
-  SecretStorage and never overlap between organizations.
 
 ## Setup
 
@@ -53,7 +71,7 @@ for the full design.
    }
    ```
 
-   The split is deliberate: target *shape* is shared in git; the actual
+   The split is deliberate: target _shape_ is shared in git; the actual
    workspace IDs — which identify client/workspace relationships — stay on
    each developer's machine. Add `.fabric/local.json` to your repo's
    `.gitignore`.
@@ -63,16 +81,16 @@ for the full design.
 4. Open a notebook (`*.Notebook/notebook-content.ipynb` opens automatically;
    use **`Fabric: Open File as Fabric Notebook`** for other `.ipynb` files),
    attach a Lakehouse via **`Fabric: Manage Lakehouses for Active
-   Notebook`**, and run cells.
+Notebook`**, and run cells.
 
 ## Commands
 
-| Command | Purpose |
-| --- | --- |
-| `Fabric: Sign In` | Authenticate a tenant (interactive Entra ID sign-in) |
-| `Fabric: Open File as Fabric Notebook` | Open any `.ipynb` with the Fabric editor |
-| `Fabric: Manage Lakehouses for Active Notebook` | Attach/detach lakehouses, set the default |
-| `Fabric: Stop Livy Session` | Stop the active notebook's Livy session |
+| Command                                         | Purpose                                              |
+| ----------------------------------------------- | ---------------------------------------------------- |
+| `Fabric: Sign In`                               | Authenticate a tenant (interactive Entra ID sign-in) |
+| `Fabric: Open File as Fabric Notebook`          | Open any `.ipynb` with the Fabric editor             |
+| `Fabric: Manage Lakehouses for Active Notebook` | Attach/detach lakehouses, set the default            |
+| `Fabric: Stop Livy Session`                     | Stop the active notebook's Livy session              |
 
 Set `fabric-connect.debugLogging: true` to see redacted API request/response
 logs (retries included) in the **Fabric Connect** output channel. Tokens,
@@ -91,8 +109,8 @@ they run and test in plain Node. The VS Code adapters (`src/vscode/`) and
 the composition root (`src/extension.ts`) wire them to the editor with
 plain constructor calls; there is no DI container or framework to learn.
 
-## Out of scope for Part 1
-
-- Pipelines (trigger, monitor, visual canvas)
-- Item types other than notebooks
-- Marketplace packaging/publishing
+Design principles for the whole project: minimal dependencies (zero at
+runtime), no magic, explicit over generic, observable API traffic, and
+compatibility first — the Fabric REST API version is an explicit constant,
+and only VS Code's stable extension API is used. See
+[`docs/design-part1-notebooks.md`](docs/design-part1-notebooks.md).

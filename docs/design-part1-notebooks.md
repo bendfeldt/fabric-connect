@@ -50,6 +50,7 @@ Client unchanged, and what makes each module mockable/testable in isolation.
 ## Modules
 
 ### 1. Auth Module
+
 - Multi-tenant, user-delegated Entra ID auth (`az login`-style).
 - Interactive login, token cache + refresh, clean switching between tenants
   with no credential overlap.
@@ -58,8 +59,9 @@ Client unchanged, and what makes each module mockable/testable in isolation.
   No awareness of notebooks, targets, or item types.
 
 ### 2. Target Config Module
+
 - Resolves `folder path → target → workspace ID`.
-- Target *shape* (name, item type it governs) is committed to git; the
+- Target _shape_ (name, item type it governs) is committed to git; the
   actual workspace ID resolves from a local, gitignored override file
   (same pattern as the `local` tier in the existing `CLAUDE.md` hierarchy).
 - Item types are added via a **registry** (`registerItemType('notebook', handler)`)
@@ -71,6 +73,7 @@ Client unchanged, and what makes each module mockable/testable in isolation.
   Validate the resolved config against a schema before use.
 
 ### 3. Fabric API Client (shared)
+
 - A single typed HTTP client used by Fidelity, Lakehouse Panel, and Livy
   Session Manager — owns retries, backoff, and error normalization into
   one `FabricApiError` type.
@@ -79,6 +82,7 @@ Client unchanged, and what makes each module mockable/testable in isolation.
 - **Interface**: `IFabricApiClient.request<T>(...) → T`.
 
 ### 4. Notebook Fidelity Module
+
 - Reads/writes the Fabric notebook file format 1:1 with the portal —
   same metadata Fabric itself writes (default lakehouse + attached
   lakehouses).
@@ -90,12 +94,14 @@ Client unchanged, and what makes each module mockable/testable in isolation.
   `serialize(NotebookModel) → file`.
 
 ### 5. Lakehouse Panel Module
+
 - VS Code panel to browse, attach, and detach lakehouses for the active
   notebook; supports multiple lakehouses attached at once.
 - Calls the Fabric API Client to list available lakehouses, writes results
   into the notebook's metadata via the Fidelity Module's model.
 
 ### 6. Livy Session Manager
+
 - Owns session lifecycle against the workspace resolved by Target Config:
   start, reuse, idle timeout — mirroring standard portal notebook-run
   behavior.
@@ -109,11 +115,13 @@ Client unchanged, and what makes each module mockable/testable in isolation.
 - **Interface**: `ILivySessionManager.execute(cell, token) → rawResult`.
 
 ### 7. Execution/Output Module
+
 - Renders cell outputs (tables, plots, text, errors) in VS Code.
 - Consumes results from the Livy Session Manager; agnostic of how they
   were produced.
 
 ## Code principles: minimal, transparent, fast, compatible
+
 These constrain every module above — the interface/registry structure is
 the boundary needed for Part 2, not a license to add abstraction beyond
 that.
@@ -146,6 +154,7 @@ that.
   Phase 4 canvas, where it's actually justified.
 
 ## Error handling standard
+
 No generic "something went wrong" errors anywhere. Every thrown/surfaced
 error must state: **what operation failed, why (root cause if known), which
 entity it relates to** (tenant/workspace/file/session), **and the next step**
@@ -187,6 +196,7 @@ Failure points per module, and what their errors must convey:
   whole notebook's rendering.
 
 ## Testing strategy
+
 - **Unit tests** per module, dependencies mocked via the interfaces above.
 - **Integration tests** against recorded HTTP fixtures (nock/msw) — no live
   workspace required in CI.
@@ -199,6 +209,7 @@ Failure points per module, and what their errors must convey:
   are slow and flaky.
 
 ## Security considerations
+
 - **Token handling**: never logged, never written outside `SecretStorage`;
   tokens cached and keyed per-tenant so there's no path for a token from
   one client's tenant to be used against another's — directly enforcing
@@ -228,11 +239,13 @@ Failure points per module, and what their errors must convey:
   will hold credentials, and matters even more once Marketplace-published.
 
 ## Out of scope for Part 1
+
 - Pipelines (trigger, monitor, or visual canvas)
 - Any item type other than notebooks
 - Marketplace packaging/publishing
 
 ## Why this split works for Part 2 later
+
 Part 2 (pipelines) reuses the Auth Module, Target Config Module, and Fabric
 API Client unchanged, registers `pipeline` as a new item type via the
 registry, and adds its own sibling modules (Pipeline Fidelity,

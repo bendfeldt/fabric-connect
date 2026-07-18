@@ -25,43 +25,43 @@ Skills are files at `.claude/skills/<name>/SKILL.md`. Each has YAML frontmatter 
 
 ## Skill routing (49 skills, 10 tracks)
 
-| Task shape | First skill |
-|---|---|
-| "Fix this bug" / test failing / crash | `systematic-debugging`, then `read-the-trace` |
-| "It broke between two commits" | `bisect-regression` |
-| "Flaky test" | `flaky-hunter` |
-| "Add a feature" / write anything new | `spec-first`, then `write-failing-test-first` |
-| "Refactor" / dead code / deep nesting | `kill-dead-code`, `simplify`, `reduce-nesting` |
-| About to claim done / commit / open PR | `adversarial-verify` + `verification-before-completion` + `self-eval-bias` |
-| Review a diff | `adversarial-verify`, `pr-from-diff` |
-| Frontend / UI work | `design-system`, `a11y-pass`, `loading-empty-error-states` |
-| Security touch | `owasp-review`, `authz-check`, `input-validation`, `secret-scan`, `dependency-audit` |
-| Data / SQL / migrations | `sql-review`, `migration-writer`, `schema-diff` |
-| Docs / changelog / README | `changelog-from-diff`, `decision-record`, `readme-audit` |
-| Git ops | `clean-commits`, `pr-from-diff`, `rebase-safely`, `revert-surgical` |
-| Test suite gaps | `coverage-gaps`, `contract-test` |
-| Running out of context | `context-budget`, `tool-restraint` |
-| Parallel work | `subagent-fanout` |
-| Starting a fresh project / major feature | `planner-spec-expand`, then `feature-list-json`, then `init-script-contract` |
-| Bootstrapping into an existing multi-session project | `progress-reading-protocol` |
-| Entering an implementation sprint | `sprint-contract` |
-| Calibrating a reviewer / evaluator | `evaluator-calibration` |
-| New Claude/Sonnet/Opus model landed | `harness-stripping` |
+| Task shape                                           | First skill                                                                          |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| "Fix this bug" / test failing / crash                | `systematic-debugging`, then `read-the-trace`                                        |
+| "It broke between two commits"                       | `bisect-regression`                                                                  |
+| "Flaky test"                                         | `flaky-hunter`                                                                       |
+| "Add a feature" / write anything new                 | `spec-first`, then `write-failing-test-first`                                        |
+| "Refactor" / dead code / deep nesting                | `kill-dead-code`, `simplify`, `reduce-nesting`                                       |
+| About to claim done / commit / open PR               | `adversarial-verify` + `verification-before-completion` + `self-eval-bias`           |
+| Review a diff                                        | `adversarial-verify`, `pr-from-diff`                                                 |
+| Frontend / UI work                                   | `design-system`, `a11y-pass`, `loading-empty-error-states`                           |
+| Security touch                                       | `owasp-review`, `authz-check`, `input-validation`, `secret-scan`, `dependency-audit` |
+| Data / SQL / migrations                              | `sql-review`, `migration-writer`, `schema-diff`                                      |
+| Docs / changelog / README                            | `changelog-from-diff`, `decision-record`, `readme-audit`                             |
+| Git ops                                              | `clean-commits`, `pr-from-diff`, `rebase-safely`, `revert-surgical`                  |
+| Test suite gaps                                      | `coverage-gaps`, `contract-test`                                                     |
+| Running out of context                               | `context-budget`, `tool-restraint`                                                   |
+| Parallel work                                        | `subagent-fanout`                                                                    |
+| Starting a fresh project / major feature             | `planner-spec-expand`, then `feature-list-json`, then `init-script-contract`         |
+| Bootstrapping into an existing multi-session project | `progress-reading-protocol`                                                          |
+| Entering an implementation sprint                    | `sprint-contract`                                                                    |
+| Calibrating a reviewer / evaluator                   | `evaluator-calibration`                                                              |
+| New Claude/Sonnet/Opus model landed                  | `harness-stripping`                                                                  |
 
 Full list: `ls .claude/skills/`.
 
 ## Red Flags — STOP and check for a skill
 
-| Thought | Reality |
-|---|---|
-| "This is just a simple question" | Questions are tasks. Check first. |
-| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
-| "I remember this skill" | Skills evolve. Read the current SKILL.md. |
-| "The skill is overkill" | Simple things become complex. Use it. |
-| "I'll just do this one thing first" | Check BEFORE doing anything. |
-| "Tests pass, we're good" | `verification-before-completion` says: run the exact command, read the output, then claim. |
-| "I'll do both features while I'm in here" | `single-feature-discipline` says: one per session. Never two. |
-| "The reviewer will let this slide" | `self-eval-bias` says: assume it will confidently praise. Calibrate first. |
+| Thought                                   | Reality                                                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------ |
+| "This is just a simple question"          | Questions are tasks. Check first.                                                          |
+| "Let me explore the codebase first"       | Skills tell you HOW to explore. Check first.                                               |
+| "I remember this skill"                   | Skills evolve. Read the current SKILL.md.                                                  |
+| "The skill is overkill"                   | Simple things become complex. Use it.                                                      |
+| "I'll just do this one thing first"       | Check BEFORE doing anything.                                                               |
+| "Tests pass, we're good"                  | `verification-before-completion` says: run the exact command, read the output, then claim. |
+| "I'll do both features while I'm in here" | `single-feature-discipline` says: one per session. Never two.                              |
+| "The reviewer will let this slide"        | `self-eval-bias` says: assume it will confidently praise. Calibrate first.                 |
 
 ## Priority when multiple skills apply
 

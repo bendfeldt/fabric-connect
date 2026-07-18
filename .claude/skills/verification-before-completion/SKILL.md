@@ -5,7 +5,7 @@ description: Use before claiming work is complete, fixed, or passing — before 
 
 # Verification Before Completion
 
-Claiming work done without fresh verification is dishonesty, not efficiency. `adversarial-verify` is the *what*; this skill is the *when* — the gate you pass through right before any completion claim.
+Claiming work done without fresh verification is dishonesty, not efficiency. `adversarial-verify` is the _what_; this skill is the _when_ — the gate you pass through right before any completion claim.
 
 ## The Iron Law
 
@@ -29,15 +29,15 @@ Skip any step = you are lying to the user, not verifying.
 
 ## Common false claims → what they actually need
 
-| Claim | Requires | Not sufficient |
-|---|---|---|
-| Tests pass | Fresh test run, exit 0, 0 failures | "should pass", previous run, "logic looks right" |
-| Linter clean | Linter output, 0 errors | Partial check, extrapolating from unrelated files |
-| Build succeeds | Build command, exit 0 | Linter passing, editor squiggles gone |
-| Bug fixed | Reproduce original symptom, watch it not happen | Code changed, "assumed" fixed |
-| Regression test works | Red → green cycle verified (revert fix, watch test fail, restore, watch pass) | Test passes once |
-| Agent/subagent completed | Read the VCS diff, verify claimed changes exist | Agent's own "success" report |
-| Spec satisfied | Line-by-line checklist against the plan | "Tests pass, phase complete" |
+| Claim                    | Requires                                                                      | Not sufficient                                    |
+| ------------------------ | ----------------------------------------------------------------------------- | ------------------------------------------------- |
+| Tests pass               | Fresh test run, exit 0, 0 failures                                            | "should pass", previous run, "logic looks right"  |
+| Linter clean             | Linter output, 0 errors                                                       | Partial check, extrapolating from unrelated files |
+| Build succeeds           | Build command, exit 0                                                         | Linter passing, editor squiggles gone             |
+| Bug fixed                | Reproduce original symptom, watch it not happen                               | Code changed, "assumed" fixed                     |
+| Regression test works    | Red → green cycle verified (revert fix, watch test fail, restore, watch pass) | Test passes once                                  |
+| Agent/subagent completed | Read the VCS diff, verify claimed changes exist                               | Agent's own "success" report                      |
+| Spec satisfied           | Line-by-line checklist against the plan                                       | "Tests pass, phase complete"                      |
 
 ## Red flags — you are about to claim without verifying
 
@@ -50,36 +50,41 @@ Skip any step = you are lying to the user, not verifying.
 
 ## Rationalization prevention
 
-| Excuse | Reality |
-|---|---|
-| "Should work now" | RUN it. |
-| "I'm confident" | Confidence ≠ evidence. |
-| "Linter passed" | Linter ≠ compiler ≠ tests. |
-| "The agent said success" | Read the diff yourself. |
-| "Partial check is enough" | Partial proves nothing about the whole. |
-| "Different words, so rule doesn't apply" | Spirit over letter. |
+| Excuse                                   | Reality                                 |
+| ---------------------------------------- | --------------------------------------- |
+| "Should work now"                        | RUN it.                                 |
+| "I'm confident"                          | Confidence ≠ evidence.                  |
+| "Linter passed"                          | Linter ≠ compiler ≠ tests.              |
+| "The agent said success"                 | Read the diff yourself.                 |
+| "Partial check is enough"                | Partial proves nothing about the whole. |
+| "Different words, so rule doesn't apply" | Spirit over letter.                     |
 
 ## Patterns
 
 **Tests**
+
 - Run the test command. See `34/34 pass`. Then say "all tests pass".
 - Never: "should pass now".
 
 **Regression tests (real red-green)**
+
 - Write test → run (pass) → revert fix → run (MUST FAIL) → restore fix → run (pass).
 - Never: "I've added a regression test" without the red-green cycle.
 
 **Build**
+
 - Run the build. See exit 0. Then say "build passes".
 - Never: "linter passed, build should too".
 
 **Agent delegation**
+
 - Subagent reports success → check the VCS diff → verify the claimed change is actually there → report actual state.
 - Never: paste the agent's report and treat it as truth.
 
 ## When this fires
 
 Always, before:
+
 - Any variation of success / completion / fixed / passing / green
 - Committing, opening a PR, marking a task done, handing off
 - Moving to the next task

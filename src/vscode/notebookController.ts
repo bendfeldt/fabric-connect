@@ -5,29 +5,32 @@
  * LivyStatementResult.
  */
 
-import * as path from 'node:path';
-import * as vscode from 'vscode';
-import { FabricConnectError } from '../core/errors';
-import type { ILivySessionManager, LivyTarget } from '../core/livySessionManager';
-import type { NotebookModel } from '../core/notebookCodec';
-import type { ITargetResolver } from '../core/types';
-import { NOTEBOOK_TYPE } from './notebookSerializer';
+import * as path from "node:path";
+import * as vscode from "vscode";
+import { FabricConnectError } from "../core/errors";
+import type {
+  ILivySessionManager,
+  LivyTarget,
+} from "../core/livySessionManager";
+import type { NotebookModel } from "../core/notebookCodec";
+import type { ITargetResolver } from "../core/types";
+import { NOTEBOOK_TYPE } from "./notebookSerializer";
 
 const RENDERABLE_MIME_TYPES = new Set([
-  'text/plain',
-  'text/html',
-  'text/markdown',
-  'image/png',
-  'image/jpeg',
-  'image/svg+xml',
-  'application/json',
+  "text/plain",
+  "text/html",
+  "text/markdown",
+  "image/png",
+  "image/jpeg",
+  "image/svg+xml",
+  "application/json",
 ]);
 
 const LANGUAGE_TO_LIVY_KIND: Record<string, string> = {
-  python: 'pyspark',
-  scala: 'spark',
-  sql: 'sql',
-  r: 'sparkr',
+  python: "pyspark",
+  scala: "spark",
+  sql: "sql",
+  r: "sparkr",
 };
 
 export class FabricNotebookController implements vscode.Disposable {
@@ -39,9 +42,9 @@ export class FabricNotebookController implements vscode.Disposable {
     private readonly getModel: (uri: vscode.Uri) => NotebookModel | undefined,
   ) {
     this.controller = vscode.notebooks.createNotebookController(
-      'fabric-connect-livy',
+      "fabric-connect-livy",
       NOTEBOOK_TYPE,
-      'Fabric Livy',
+      "Fabric Livy",
     );
     this.controller.supportedLanguages = Object.keys(LANGUAGE_TO_LIVY_KIND);
     this.controller.supportsExecutionOrder = true;
@@ -72,8 +75,7 @@ export class FabricNotebookController implements vscode.Disposable {
     execution.start(Date.now());
     try {
       const target = await this.resolveLivyTarget(notebook);
-      const kind =
-        LANGUAGE_TO_LIVY_KIND[cell.document.languageId] ?? 'pyspark';
+      const kind = LANGUAGE_TO_LIVY_KIND[cell.document.languageId] ?? "pyspark";
       const result = await this.livy.execute(
         target,
         cell.document.getText(),
@@ -81,18 +83,18 @@ export class FabricNotebookController implements vscode.Disposable {
         execution.token,
       );
 
-      if (result.status === 'cancelled') {
+      if (result.status === "cancelled") {
         await execution.clearOutput();
         execution.end(undefined, Date.now());
         return;
       }
-      if (result.status === 'error') {
+      if (result.status === "error") {
         // The cell's own exception: shown as the notebook's traceback,
         // exactly as the portal would show it — not an extension error.
         const error = new Error(
-          `${result.errorName ?? 'Error'}: ${result.errorValue ?? ''}`,
+          `${result.errorName ?? "Error"}: ${result.errorValue ?? ""}`,
         );
-        error.stack = (result.traceback ?? []).join('\n');
+        error.stack = (result.traceback ?? []).join("\n");
         await execution.replaceOutput(
           new vscode.NotebookCellOutput([
             vscode.NotebookCellOutputItem.error(error),
@@ -123,26 +125,26 @@ export class FabricNotebookController implements vscode.Disposable {
         items.push(
           vscode.NotebookCellOutputItem.text(
             `[fabric-connect] Output of type '${mime}' is not supported yet and was not rendered.`,
-            'text/plain',
+            "text/plain",
           ),
         );
         continue;
       }
-      if (mime === 'image/png' || mime === 'image/jpeg') {
+      if (mime === "image/png" || mime === "image/jpeg") {
         items.push(
           new vscode.NotebookCellOutputItem(
-            Buffer.from(String(value), 'base64'),
+            Buffer.from(String(value), "base64"),
             mime,
           ),
         );
-      } else if (mime === 'application/json') {
+      } else if (mime === "application/json") {
         items.push(vscode.NotebookCellOutputItem.json(value, mime));
       } else {
         items.push(vscode.NotebookCellOutputItem.text(String(value), mime));
       }
     }
     if (items.length === 0) {
-      items.push(vscode.NotebookCellOutputItem.text('', 'text/plain'));
+      items.push(vscode.NotebookCellOutputItem.text("", "text/plain"));
     }
     return new vscode.NotebookCellOutput(items);
   }
@@ -157,9 +159,9 @@ export class FabricNotebookController implements vscode.Disposable {
     const lakehouse = attachments?.defaultLakehouse;
     if (lakehouse === undefined) {
       throw new FabricConnectError(
-        'Cannot run this cell: the notebook has no default Lakehouse attached, so there is no Spark endpoint to execute against.',
+        "Cannot run this cell: the notebook has no default Lakehouse attached, so there is no Spark endpoint to execute against.",
         {
-          operation: 'execute cell',
+          operation: "execute cell",
           entity: `notebook ${path.basename(notebook.uri.fsPath)}`,
           remediation:
             "Run 'Fabric: Manage Lakehouses for Active Notebook' and attach a default Lakehouse.",

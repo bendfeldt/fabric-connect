@@ -9,12 +9,12 @@
  * default anywhere in this module.
  */
 
-import * as path from 'node:path';
-import { TargetConfigError } from './errors';
-import type { ITargetResolver, ResolvedTarget } from './types';
+import * as path from "node:path";
+import { TargetConfigError } from "./errors";
+import type { ITargetResolver, ResolvedTarget } from "./types";
 
-export const TARGETS_FILE = path.join('.fabric', 'targets.json');
-export const LOCAL_OVERRIDE_FILE = path.join('.fabric', 'local.json');
+export const TARGETS_FILE = path.join(".fabric", "targets.json");
+export const LOCAL_OVERRIDE_FILE = path.join(".fabric", "local.json");
 
 /** Filesystem seam so the module is unit-testable without touching disk. */
 export interface TargetFileSystem {
@@ -58,10 +58,10 @@ export class TargetResolver implements ITargetResolver {
       throw new TargetConfigError(
         `Cannot resolve a Fabric target for '${folderPath}': it is outside the workspace folder '${this.workspaceRoot}'.`,
         {
-          operation: 'resolve target',
+          operation: "resolve target",
           entity: `folder ${folderPath}`,
           remediation:
-            'Open the folder inside the VS Code workspace, or fix the target mapping so it does not point outside the workspace.',
+            "Open the folder inside the VS Code workspace, or fix the target mapping so it does not point outside the workspace.",
         },
       );
     }
@@ -72,7 +72,7 @@ export class TargetResolver implements ITargetResolver {
       throw new TargetConfigError(
         `No Fabric target configuration found for folder '${folderPath}': '${TARGETS_FILE}' does not exist in the workspace.`,
         {
-          operation: 'resolve target',
+          operation: "resolve target",
           entity: `folder ${folderPath}`,
           remediation: `Create '${TARGETS_FILE}' declaring your targets, e.g. { "folders": { ".": "dev" }, "targets": { "dev": { "itemType": "notebook", "tenantId": "<tenant-guid>" } } }.`,
         },
@@ -85,7 +85,7 @@ export class TargetResolver implements ITargetResolver {
       throw new TargetConfigError(
         `Folder '${folderPath}' is not mapped to any target in '${TARGETS_FILE}'.`,
         {
-          operation: 'resolve target',
+          operation: "resolve target",
           entity: `folder ${folderPath}`,
           remediation: `Add a folder mapping in '${TARGETS_FILE}' under "folders", e.g. { "notebooks": "dev" }.`,
         },
@@ -97,7 +97,7 @@ export class TargetResolver implements ITargetResolver {
       throw new TargetConfigError(
         `Folder '${folderPath}' maps to target '${targetName}', but '${TARGETS_FILE}' does not declare that target.`,
         {
-          operation: 'resolve target',
+          operation: "resolve target",
           entity: `target ${targetName}`,
           remediation: `Declare target '${targetName}' under "targets" in '${TARGETS_FILE}'.`,
         },
@@ -108,9 +108,9 @@ export class TargetResolver implements ITargetResolver {
       throw new TargetConfigError(
         `Target '${targetName}' declares item type '${shape.itemType}', which is not registered with this extension.`,
         {
-          operation: 'resolve target',
+          operation: "resolve target",
           entity: `target ${targetName}`,
-          remediation: `Use a registered item type (${[...this.handlers.keys()].join(', ') || 'none registered'}) or install the extension part that provides '${shape.itemType}'.`,
+          remediation: `Use a registered item type (${[...this.handlers.keys()].join(", ") || "none registered"}) or install the extension part that provides '${shape.itemType}'.`,
         },
       );
     }
@@ -134,7 +134,7 @@ export class TargetResolver implements ITargetResolver {
       throw new TargetConfigError(
         `No local override file found while resolving target '${targetName}': '${LOCAL_OVERRIDE_FILE}' does not exist.`,
         {
-          operation: 'resolve workspace ID',
+          operation: "resolve workspace ID",
           entity: `target ${targetName}`,
           remediation: `Create the gitignored file '${LOCAL_OVERRIDE_FILE}' with { "targets": { "${targetName}": { "workspaceId": "<workspace-guid>" } } }.`,
         },
@@ -148,7 +148,7 @@ export class TargetResolver implements ITargetResolver {
       throw new TargetConfigError(
         `The local override file '${LOCAL_OVERRIDE_FILE}' is not valid JSON.`,
         {
-          operation: 'resolve workspace ID',
+          operation: "resolve workspace ID",
           entity: `target ${targetName}`,
           remediation: `Fix the JSON syntax in '${LOCAL_OVERRIDE_FILE}'.`,
           cause,
@@ -161,7 +161,7 @@ export class TargetResolver implements ITargetResolver {
       throw new TargetConfigError(
         `The local override file '${LOCAL_OVERRIDE_FILE}' has no workspace ID for target '${targetName}'.`,
         {
-          operation: 'resolve workspace ID',
+          operation: "resolve workspace ID",
           entity: `target ${targetName}`,
           remediation: `Add a workspace ID for target '${targetName}' in '${LOCAL_OVERRIDE_FILE}'.`,
         },
@@ -171,7 +171,7 @@ export class TargetResolver implements ITargetResolver {
       throw new TargetConfigError(
         `The workspace ID configured for target '${targetName}' in '${LOCAL_OVERRIDE_FILE}' is not a valid GUID: '${workspaceId}'.`,
         {
-          operation: 'resolve workspace ID',
+          operation: "resolve workspace ID",
           entity: `target ${targetName}`,
           remediation: `Copy the workspace's GUID from the Fabric portal URL into '${LOCAL_OVERRIDE_FILE}'.`,
         },
@@ -184,19 +184,19 @@ export class TargetResolver implements ITargetResolver {
     parsed: unknown,
     targetName: string,
   ): string | undefined {
-    if (typeof parsed !== 'object' || parsed === null) {
+    if (typeof parsed !== "object" || parsed === null) {
       return undefined;
     }
-    const targets = (parsed as Record<string, unknown>)['targets'];
-    if (typeof targets !== 'object' || targets === null) {
+    const targets = (parsed as Record<string, unknown>)["targets"];
+    if (typeof targets !== "object" || targets === null) {
       return undefined;
     }
     const entry = (targets as Record<string, unknown>)[targetName];
-    if (typeof entry !== 'object' || entry === null) {
+    if (typeof entry !== "object" || entry === null) {
       return undefined;
     }
-    const id = (entry as Record<string, unknown>)['workspaceId'];
-    return typeof id === 'string' ? id : undefined;
+    const id = (entry as Record<string, unknown>)["workspaceId"];
+    return typeof id === "string" ? id : undefined;
   }
 
   private parseTargetsFile(
@@ -210,7 +210,7 @@ export class TargetResolver implements ITargetResolver {
       throw new TargetConfigError(
         `The target configuration file '${filePath}' is not valid JSON.`,
         {
-          operation: 'resolve target',
+          operation: "resolve target",
           entity: filePath,
           remediation: `Fix the JSON syntax in '${TARGETS_FILE}'.`,
           cause,
@@ -222,44 +222,46 @@ export class TargetResolver implements ITargetResolver {
       new TargetConfigError(
         `The target configuration file '${filePath}' is malformed: ${why}.`,
         {
-          operation: 'resolve target',
+          operation: "resolve target",
           entity: filePath,
           remediation: `Fix '${TARGETS_FILE}' to the shape { "folders": { "<relative-folder>": "<target>" }, "targets": { "<target>": { "itemType": "notebook", "tenantId": "<guid>" } } }.`,
         },
       );
 
-    if (typeof parsed !== 'object' || parsed === null) {
-      throw bad('the root must be an object');
+    if (typeof parsed !== "object" || parsed === null) {
+      throw bad("the root must be an object");
     }
     const record = parsed as Record<string, unknown>;
-    const folders = record['folders'];
-    const targets = record['targets'];
-    if (typeof folders !== 'object' || folders === null) {
-      throw bad('"folders" must be an object mapping folder paths to target names');
+    const folders = record["folders"];
+    const targets = record["targets"];
+    if (typeof folders !== "object" || folders === null) {
+      throw bad(
+        '"folders" must be an object mapping folder paths to target names',
+      );
     }
-    if (typeof targets !== 'object' || targets === null) {
+    if (typeof targets !== "object" || targets === null) {
       throw bad('"targets" must be an object of target declarations');
     }
     for (const [name, value] of Object.entries(folders)) {
-      if (typeof value !== 'string') {
+      if (typeof value !== "string") {
         throw bad(`folder mapping '${name}' must name a target (string)`);
       }
     }
     const shapes: Record<string, TargetShape> = {};
     for (const [name, value] of Object.entries(targets)) {
-      if (typeof value !== 'object' || value === null) {
+      if (typeof value !== "object" || value === null) {
         throw bad(`target '${name}' must be an object`);
       }
       const entry = value as Record<string, unknown>;
-      if (typeof entry['itemType'] !== 'string') {
+      if (typeof entry["itemType"] !== "string") {
         throw bad(`target '${name}' is missing "itemType"`);
       }
-      if (typeof entry['tenantId'] !== 'string') {
+      if (typeof entry["tenantId"] !== "string") {
         throw bad(`target '${name}' is missing "tenantId"`);
       }
       shapes[name] = {
-        itemType: entry['itemType'],
-        tenantId: entry['tenantId'],
+        itemType: entry["itemType"],
+        tenantId: entry["tenantId"],
       };
     }
     return { folders: folders as Record<string, string>, targets: shapes };

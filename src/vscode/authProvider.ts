@@ -10,11 +10,11 @@
  * against another: there is no shared cache entry to overlap.
  */
 
-import * as vscode from 'vscode';
-import { AuthError } from '../core/errors';
-import type { IAuthProvider } from '../core/types';
+import * as vscode from "vscode";
+import { AuthError } from "../core/errors";
+import type { IAuthProvider } from "../core/types";
 
-const MICROSOFT_AUTH_PROVIDER = 'microsoft';
+const MICROSOFT_AUTH_PROVIDER = "microsoft";
 
 export class EntraAuthProvider implements IAuthProvider {
   async getToken(tenantId: string, scopes: readonly string[]): Promise<string> {
@@ -22,7 +22,7 @@ export class EntraAuthProvider implements IAuthProvider {
       throw new AuthError(
         `Cannot acquire a token: '${tenantId}' is not a valid tenant ID (expected a GUID).`,
         {
-          operation: 'acquire token',
+          operation: "acquire token",
           entity: `tenant ${tenantId}`,
           remediation:
             "Fix the tenantId in '.fabric/targets.json' (copy it from Entra admin center → Overview).",
@@ -45,7 +45,7 @@ export class EntraAuthProvider implements IAuthProvider {
           ? `Sign-in to tenant ${tenantId} was cancelled or consent was declined.`
           : `Failed to acquire a token for tenant ${tenantId}.`,
         {
-          operation: 'acquire token',
+          operation: "acquire token",
           entity: `tenant ${tenantId}`,
           remediation: declined
             ? "Run 'Fabric: Sign In' again and complete the sign-in prompt."
@@ -55,11 +55,14 @@ export class EntraAuthProvider implements IAuthProvider {
       );
     }
     if (session === undefined) {
-      throw new AuthError(`No authentication session exists for tenant ${tenantId}.`, {
-        operation: 'acquire token',
-        entity: `tenant ${tenantId}`,
-        remediation: "Run 'Fabric: Sign In' to authenticate this tenant.",
-      });
+      throw new AuthError(
+        `No authentication session exists for tenant ${tenantId}.`,
+        {
+          operation: "acquire token",
+          entity: `tenant ${tenantId}`,
+          remediation: "Run 'Fabric: Sign In' to authenticate this tenant.",
+        },
+      );
     }
     return session.accessToken;
   }
