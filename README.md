@@ -1,5 +1,7 @@
 # Fabric Connect
 
+[![Build](https://github.com/bendfeldt/fabric-connect/actions/workflows/build.yml/badge.svg)](https://github.com/bendfeldt/fabric-connect/actions/workflows/build.yml) [![Test](https://github.com/bendfeldt/fabric-connect/actions/workflows/test.yml/badge.svg)](https://github.com/bendfeldt/fabric-connect/actions/workflows/test.yml)
+
 A VS Code extension that brings Microsoft Fabric development into the
 editor: work with the items in your Fabric workspaces — notebooks today,
 pipelines next — using files that stay 100% compatible with the Fabric

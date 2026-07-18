@@ -1,0 +1,168 @@
+# Releases every change merged to main, without ever pushing to main directly,
+# so strict branch protection (require PR + required status checks) stays on
+# with no bypass list. Two phases, keyed on the pushed commit's message:
+#
+#   1. propose-bump — a normal merge lands on main: infer the semver bump from
+#      conventional commits since the last v* tag (BREAKING CHANGE/"!:" =>
+#      major, feat => minor, else patch), bump package.json on a
+#      bot/version-bump branch, open a PR titled "chore(release): vX.Y.Z",
+#      and enable auto-merge. The PR merges itself once required checks pass.
+#   2. publish-release — the bump PR's squash commit lands on main: package
+#      the .vsix and publish a GitHub Release, which creates the vX.Y.Z tag
+#      at that commit.
+#
+# Multi-developer convergence: propose-bump always rebuilds bot/version-bump
+# from the live tip of main and recomputes the bump over the full range since
+# the last tag, so overlapping merges force-update the same PR with one
+# cumulative, correctly-sized bump. Runs are serialized by the concurrency
+# group; a stale bump PR is refreshed by the next run, never merged stale
+# (enable "require branches to be up to date" on the ruleset).
+#
+# One-time repo setup required:
+#   - RELEASE_PAT secret: fine-grained PAT for this repo with read/write on
+#     Contents and Pull requests. The default GITHUB_TOKEN cannot be used for
+#     the bump PR: PRs it creates never trigger workflows, so required checks
+#     would sit pending forever and auto-merge would never fire.
+#   - Settings -> General: "Allow auto-merge" on, squash merging allowed.
+#   - Ruleset on main: require PR, require Build/Test status checks, and no
+#     required human approval (the bot cannot approve its own PR; requiring
+#     approval turns releases human-gated instead of automatic).
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  propose-bump:
+    # Skip the bump PR's own merge commit (handled by publish-release) and
+    # events without a head commit.
+    if: ${{ github.event.head_commit != null && !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Require RELEASE_PAT
+        env:
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+        run: |
+          if [ -z "$RELEASE_PAT" ]; then
+            echo "::error::RELEASE_PAT secret is not set. Create a fine-grained PAT" \
+              "(Contents + Pull requests: read/write) and add it as a repo secret;" \
+              "see the header comment in .github/workflows/release.yml."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main # live tip, not the frozen push SHA — see header comment
+          fetch-depth: 0 # full history + tags for bump inference
+          token: ${{ secrets.RELEASE_PAT }}
+
+      - name: Determine version bump
+        id: bump
+        run: |
+          last_tag="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+          if [ -n "$last_tag" ]; then
+            range="$last_tag..HEAD"
+          else
+            range="HEAD"
+          fi
+          subjects="$(git log --format='%s' "$range")"
+          bodies="$(git log --format='%b' "$range")"
+          if printf '%s\n' "$bodies" | grep -q 'BREAKING CHANGE' \
+            || printf '%s\n' "$subjects" | grep -Eq '^[a-z]+(\([^)]*\))?!:'; then
+            bump=major
+          elif printf '%s\n' "$subjects" | grep -Eq '^feat(\([^)]*\))?:'; then
+            bump=minor
+          else
+            bump=patch
+          fi
+          echo "Commits since ${last_tag:-start of history}: bump=$bump"
+          echo "bump=$bump" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version
+        id: version
+        run: |
+          npm version "${{ steps.bump.outputs.bump }}" --no-git-tag-version
+          echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Open version bump PR
+        id: pr
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.RELEASE_PAT }}
+          branch: bot/version-bump
+          base: main
+          commit-message: "chore(release): v${{ steps.version.outputs.version }}"
+          title: "chore(release): v${{ steps.version.outputs.version }}"
+          body: >
+            Automated ${{ steps.bump.outputs.bump }} version bump. Merging this
+            PR publishes the v${{ steps.version.outputs.version }} GitHub
+            Release with the packaged .vsix. Force-updated from the tip of
+            main on every merge until it lands.
+          delete-branch: true
+
+      - name: Enable auto-merge
+        if: steps.pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: gh pr merge --auto --squash '${{ steps.pr.outputs.pull-request-number }}'
+
+  publish-release:
+    if: ${{ github.event.head_commit != null && startsWith(github.event.head_commit.message, 'chore(release):') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4 # the pushed SHA is the release commit
+
+      - name: Skip if this version is already released
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release v$version already exists; nothing to publish."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.guard.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.guard.outputs.skip != 'true'
+        run: npm ci
+
+      - name: Run tests
+        if: steps.guard.outputs.skip != 'true'
+        run: npm test
+
+      - name: Package extension
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          npm run compile
+          npx --yes @vscode/vsce@3.9.2 package
+
+      - name: Create GitHub Release
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version='${{ steps.guard.outputs.version }}'
+          gh release create "v$version" \
+            --target '${{ github.sha }}' \
+            --title "v$version" \
+            --generate-notes \
+            "fabric-connect-$version.vsix"

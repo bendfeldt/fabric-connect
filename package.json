@@ -3,8 +3,13 @@
   "displayName": "Fabric Connect",
   "description": "Edit and run Microsoft Fabric notebooks from VS Code: Lakehouse attachment, Livy execution, portal-compatible files.",
   "version": "0.1.0",
+  "publisher": "bendfeldt",
   "license": "MIT",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bendfeldt/fabric-connect.git"
+  },
   "engines": {
     "vscode": "^1.85.0",
     "node": ">=18"
