@@ -1,0 +1,12 @@
+# Build output
+out/
+*.vsix
+
+# Dependencies
+node_modules/
+
+# Local (per-developer) Fabric target overrides.
+# NEVER commit this file: it maps this repo's targets to real client
+# workspace IDs. The committed .fabric/targets.json holds only target
+# shape; workspace IDs stay local.
+.fabric/local.json
