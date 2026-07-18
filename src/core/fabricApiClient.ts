@@ -6,14 +6,14 @@
  * visible, never silently swallowed.
  */
 
-import { FABRIC_API_BASE_URL, FABRIC_SCOPES } from './constants';
-import { FabricApiError } from './errors';
+import { FABRIC_API_BASE_URL, FABRIC_SCOPES } from "./constants";
+import { FabricApiError } from "./errors";
 import type {
   FabricRequestOptions,
   FabricResponse,
   IAuthProvider,
   IFabricApiClient,
-} from './types';
+} from "./types";
 
 export interface ApiClientLogger {
   debug(message: string): void;
@@ -34,7 +34,7 @@ const GUID_PATTERN =
 
 /** Workspace/item GUIDs must never appear in logs; redact them from paths. */
 export function redactPath(p: string): string {
-  return p.replace(GUID_PATTERN, '<redacted-id>');
+  return p.replace(GUID_PATTERN, "<redacted-id>");
 }
 
 export class FabricApiClient implements IFabricApiClient {
@@ -53,7 +53,8 @@ export class FabricApiClient implements IFabricApiClient {
     this.logger = options.logger;
     this.maxAttempts = options.maxAttempts ?? 4;
     this.sleep =
-      options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+      options.sleep ??
+      ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
 
   async request<T>(options: FabricRequestOptions): Promise<FabricResponse<T>> {
@@ -66,23 +67,28 @@ export class FabricApiClient implements IFabricApiClient {
       const token = await this.auth.getToken(options.tenantId, scopes);
       let response: Response;
       try {
-        this.logger?.debug(`→ ${logPath} (attempt ${attempt}/${this.maxAttempts})`);
+        this.logger?.debug(
+          `→ ${logPath} (attempt ${attempt}/${this.maxAttempts})`,
+        );
         response = await this.fetchFn(url, {
           method: options.method,
           headers: {
             Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
-          body: options.body === undefined ? undefined : JSON.stringify(options.body),
+          body:
+            options.body === undefined
+              ? undefined
+              : JSON.stringify(options.body),
         });
       } catch (cause) {
         lastError = new FabricApiError(
           `The Fabric API request '${logPath}' failed at the network level.`,
           {
-            operation: 'call Fabric API',
+            operation: "call Fabric API",
             entity: logPath,
             remediation:
-              'Check your network connection and proxy settings, then retry.',
+              "Check your network connection and proxy settings, then retry.",
             cause,
           },
         );
@@ -92,8 +98,8 @@ export class FabricApiClient implements IFabricApiClient {
       }
 
       const correlationId =
-        response.headers.get('x-ms-request-id') ??
-        response.headers.get('requestid') ??
+        response.headers.get("x-ms-request-id") ??
+        response.headers.get("requestid") ??
         undefined;
       this.logger?.debug(`← ${logPath} ${response.status}`);
 
@@ -103,21 +109,26 @@ export class FabricApiClient implements IFabricApiClient {
       }
 
       lastError = await this.toApiError(response, logPath, correlationId);
-      if (!RETRYABLE_STATUS.has(response.status) || attempt === this.maxAttempts) {
+      if (
+        !RETRYABLE_STATUS.has(response.status) ||
+        attempt === this.maxAttempts
+      ) {
         throw lastError;
       }
-      const retryAfter = response.headers.get('retry-after');
+      const retryAfter = response.headers.get("retry-after");
       this.logger?.debug(
         `↻ ${logPath} ${response.status} is retryable, backing off (attempt ${attempt})`,
       );
       await this.backoff(attempt, retryAfter);
     }
     // Only reachable via repeated network-level failures.
-    throw lastError ??
+    throw (
+      lastError ??
       new FabricApiError(`The Fabric API request '${logPath}' failed.`, {
-        operation: 'call Fabric API',
+        operation: "call Fabric API",
         entity: logPath,
-      });
+      })
+    );
   }
 
   private async parseBody<T>(
@@ -135,12 +146,12 @@ export class FabricApiClient implements IFabricApiClient {
       throw new FabricApiError(
         `The Fabric API returned a malformed (non-JSON) response for '${logPath}'.`,
         {
-          operation: 'call Fabric API',
+          operation: "call Fabric API",
           entity: logPath,
           status: response.status,
           correlationId,
           remediation:
-            'Retry the operation; if it persists, open a support case citing the correlation ID.',
+            "Retry the operation; if it persists, open a support case citing the correlation ID.",
           cause,
         },
       );
@@ -152,48 +163,48 @@ export class FabricApiClient implements IFabricApiClient {
     logPath: string,
     correlationId: string | undefined,
   ): Promise<FabricApiError> {
-    let detail = '';
+    let detail = "";
     try {
       const body = (await response.json()) as {
         message?: string;
         error?: { message?: string };
       };
-      detail = body.error?.message ?? body.message ?? '';
+      detail = body.error?.message ?? body.message ?? "";
     } catch {
       // Non-JSON error body: the status-based message below is sufficient.
     }
     const explanations: Record<number, { why: string; next: string }> = {
       401: {
-        why: 'the request was not authenticated',
+        why: "the request was not authenticated",
         next: "Run 'Fabric: Sign In' to re-authenticate the tenant.",
       },
       403: {
-        why: 'the signed-in identity lacks permission on this resource',
-        next: 'Ask a workspace admin to grant your account access, or switch tenants.',
+        why: "the signed-in identity lacks permission on this resource",
+        next: "Ask a workspace admin to grant your account access, or switch tenants.",
       },
       404: {
-        why: 'the resource does not exist (or is not visible to this identity)',
-        next: 'Verify the workspace ID in .fabric/local.json points at the intended workspace.',
+        why: "the resource does not exist (or is not visible to this identity)",
+        next: "Verify the workspace ID in .fabric/local.json points at the intended workspace.",
       },
       429: {
-        why: 'the API throttled the request',
-        next: 'Wait for the throttling window to pass; the client already retried with backoff.',
+        why: "the API throttled the request",
+        next: "Wait for the throttling window to pass; the client already retried with backoff.",
       },
     };
     const known = explanations[response.status];
     const why =
       known?.why ??
       (response.status >= 500
-        ? 'the Fabric service reported an internal error'
-        : 'the request was rejected');
+        ? "the Fabric service reported an internal error"
+        : "the request was rejected");
     const next =
       known?.next ??
-      'Retry the operation; if it persists, open a support case citing the correlation ID.';
+      "Retry the operation; if it persists, open a support case citing the correlation ID.";
     return new FabricApiError(
       `The Fabric API request '${logPath}' failed with HTTP ${response.status} because ${why}.` +
-        (detail ? ` Service message: ${detail}` : ''),
+        (detail ? ` Service message: ${detail}` : ""),
       {
-        operation: 'call Fabric API',
+        operation: "call Fabric API",
         entity: logPath,
         status: response.status,
         correlationId,
@@ -202,7 +213,10 @@ export class FabricApiClient implements IFabricApiClient {
     );
   }
 
-  private async backoff(attempt: number, retryAfter: string | null | undefined): Promise<void> {
+  private async backoff(
+    attempt: number,
+    retryAfter: string | null | undefined,
+  ): Promise<void> {
     if (attempt >= this.maxAttempts) {
       return;
     }

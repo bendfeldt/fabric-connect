@@ -9,11 +9,11 @@
  * from the API is HTML-escaped before rendering.
  */
 
-import * as path from 'node:path';
-import * as vscode from 'vscode';
-import { LakehouseError } from '../core/errors';
-import type { NotebookModel } from '../core/notebookCodec';
-import type { IFabricApiClient, ITargetResolver } from '../core/types';
+import * as path from "node:path";
+import * as vscode from "vscode";
+import { LakehouseError } from "../core/errors";
+import type { NotebookModel } from "../core/notebookCodec";
+import type { IFabricApiClient, ITargetResolver } from "../core/types";
 
 interface LakehouseListResponse {
   value?: Array<{ id?: string; displayName?: string }>;
@@ -42,7 +42,7 @@ export class LakehousePanel {
       throw new LakehouseError(
         `Cannot manage lakehouses: notebook '${path.basename(notebookUri.fsPath)}' is not open as a Fabric notebook.`,
         {
-          operation: 'open Lakehouse panel',
+          operation: "open Lakehouse panel",
           entity: `notebook ${path.basename(notebookUri.fsPath)}`,
           remediation:
             "Open the file with 'Fabric: Open File as Fabric Notebook' first.",
@@ -57,8 +57,8 @@ export class LakehousePanel {
     };
 
     const panel = vscode.window.createWebviewPanel(
-      'fabricConnect.lakehouses',
-      'Fabric Lakehouses',
+      "fabricConnect.lakehouses",
+      "Fabric Lakehouses",
       vscode.ViewColumn.Beside,
       { enableScripts: true, localResourceRoots: [] },
     );
@@ -73,7 +73,7 @@ export class LakehousePanel {
     context: PanelContext,
     message: unknown,
   ): Promise<void> {
-    if (typeof message !== 'object' || message === null) {
+    if (typeof message !== "object" || message === null) {
       return;
     }
     const { command, id, name } = message as {
@@ -82,19 +82,19 @@ export class LakehousePanel {
       name?: string;
     };
     try {
-      if (command === 'attach' && typeof id === 'string') {
+      if (command === "attach" && typeof id === "string") {
         context.model.attachLakehouse(
           { id, name, workspaceId: context.workspaceId },
           false,
         );
-      } else if (command === 'makeDefault' && typeof id === 'string') {
+      } else if (command === "makeDefault" && typeof id === "string") {
         context.model.attachLakehouse(
           { id, name, workspaceId: context.workspaceId },
           true,
         );
-      } else if (command === 'detach' && typeof id === 'string') {
+      } else if (command === "detach" && typeof id === "string") {
         context.model.detachLakehouse(id);
-      } else if (command !== 'refresh') {
+      } else if (command !== "refresh") {
         return;
       }
       this.onModelChanged(context.notebookUri);
@@ -113,21 +113,24 @@ export class LakehousePanel {
     let available: Array<{ id: string; name: string }>;
     try {
       const response = await this.api.request<LakehouseListResponse>({
-        method: 'GET',
+        method: "GET",
         path: `/workspaces/${context.workspaceId}/lakehouses`,
         tenantId: context.tenantId,
       });
       available = (response.body.value ?? [])
-        .filter((lh): lh is { id: string; displayName?: string } => typeof lh.id === 'string')
+        .filter(
+          (lh): lh is { id: string; displayName?: string } =>
+            typeof lh.id === "string",
+        )
         .map((lh) => ({ id: lh.id, name: lh.displayName ?? lh.id }));
     } catch (cause) {
       throw new LakehouseError(
         `Failed to list lakehouses in the target workspace.`,
         {
-          operation: 'list lakehouses',
-          entity: 'target workspace',
+          operation: "list lakehouses",
+          entity: "target workspace",
           remediation:
-            'Check that your account has at least Viewer access to the workspace, then refresh the panel.',
+            "Check that your account has at least Viewer access to the workspace, then refresh the panel.",
           cause,
         },
       );
@@ -143,16 +146,16 @@ export class LakehousePanel {
         const isDefault = lh.id === defaultId;
         const name = escapeHtml(lh.name);
         const id = escapeHtml(lh.id);
-        const badge = isDefault ? ' <span class="badge">default</span>' : '';
+        const badge = isDefault ? ' <span class="badge">default</span>' : "";
         const actions = attached
           ? `<button data-cmd="detach" data-id="${id}">Detach</button>` +
             (isDefault
-              ? ''
+              ? ""
               : ` <button data-cmd="makeDefault" data-id="${id}" data-name="${name}">Make default</button>`)
           : `<button data-cmd="attach" data-id="${id}" data-name="${name}">Attach</button>`;
         return `<li><span class="name">${name}</span>${badge}<span class="actions">${actions}</span></li>`;
       })
-      .join('\n');
+      .join("\n");
 
     const nonce = createNonce();
     const csp = `default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';`;
@@ -172,7 +175,7 @@ export class LakehousePanel {
 </head>
 <body>
 <h3>Lakehouses in target workspace</h3>
-<ul>${rows.length > 0 ? rows : '<li>No lakehouses found in this workspace.</li>'}</ul>
+<ul>${rows.length > 0 ? rows : "<li>No lakehouses found in this workspace.</li>"}</ul>
 <button data-cmd="refresh">Refresh</button>
 <script nonce="${nonce}">
   const vscodeApi = acquireVsCodeApi();
@@ -193,16 +196,17 @@ export class LakehousePanel {
 
 function escapeHtml(value: string): string {
   return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function createNonce(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let nonce = '';
+  const chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let nonce = "";
   for (let i = 0; i < 32; i++) {
     nonce += chars.charAt(Math.floor(Math.random() * chars.length));
   }

@@ -10,7 +10,7 @@
  *    original text byte-for-byte.
  */
 
-import { NotebookFidelityError } from './errors';
+import { NotebookFidelityError } from "./errors";
 
 export interface INotebookCodec {
   parse(text: string, fileName: string): NotebookModel;
@@ -61,21 +61,21 @@ export class NotebookModel {
     if (dep === undefined) {
       return { known: [] };
     }
-    const defaultId = asString(dep['default_lakehouse']);
+    const defaultId = asString(dep["default_lakehouse"]);
     const defaultLakehouse: LakehouseAttachment | undefined =
       defaultId === undefined
         ? undefined
         : {
             id: defaultId,
-            name: asString(dep['default_lakehouse_name']),
-            workspaceId: asString(dep['default_lakehouse_workspace_id']),
+            name: asString(dep["default_lakehouse_name"]),
+            workspaceId: asString(dep["default_lakehouse_workspace_id"]),
           };
-    const knownRaw = dep['known_lakehouses'];
+    const knownRaw = dep["known_lakehouses"];
     const known: LakehouseAttachment[] = [];
     if (Array.isArray(knownRaw)) {
       for (const entry of knownRaw) {
-        if (typeof entry === 'object' && entry !== null) {
-          const id = asString((entry as Record<string, unknown>)['id']);
+        if (typeof entry === "object" && entry !== null) {
+          const id = asString((entry as Record<string, unknown>)["id"]);
           if (id !== undefined) {
             known.push({ id });
           }
@@ -88,16 +88,16 @@ export class NotebookModel {
   attachLakehouse(lakehouse: LakehouseAttachment, makeDefault: boolean): void {
     const dep = this.lakehouseMetadata(true)!;
     const known = this.knownList(dep);
-    if (!known.some((k) => asString(k['id']) === lakehouse.id)) {
+    if (!known.some((k) => asString(k["id"]) === lakehouse.id)) {
       known.push({ id: lakehouse.id });
     }
-    if (makeDefault || dep['default_lakehouse'] === undefined) {
-      dep['default_lakehouse'] = lakehouse.id;
+    if (makeDefault || dep["default_lakehouse"] === undefined) {
+      dep["default_lakehouse"] = lakehouse.id;
       if (lakehouse.name !== undefined) {
-        dep['default_lakehouse_name'] = lakehouse.name;
+        dep["default_lakehouse_name"] = lakehouse.name;
       }
       if (lakehouse.workspaceId !== undefined) {
-        dep['default_lakehouse_workspace_id'] = lakehouse.workspaceId;
+        dep["default_lakehouse_workspace_id"] = lakehouse.workspaceId;
       }
     }
     this.markDirty();
@@ -109,12 +109,12 @@ export class NotebookModel {
       return;
     }
     const known = this.knownList(dep);
-    const filtered = known.filter((k) => asString(k['id']) !== lakehouseId);
-    dep['known_lakehouses'] = filtered;
-    if (dep['default_lakehouse'] === lakehouseId) {
-      delete dep['default_lakehouse'];
-      delete dep['default_lakehouse_name'];
-      delete dep['default_lakehouse_workspace_id'];
+    const filtered = known.filter((k) => asString(k["id"]) !== lakehouseId);
+    dep["known_lakehouses"] = filtered;
+    if (dep["default_lakehouse"] === lakehouseId) {
+      delete dep["default_lakehouse"];
+      delete dep["default_lakehouse_name"];
+      delete dep["default_lakehouse_workspace_id"];
     }
     this.markDirty();
   }
@@ -126,17 +126,17 @@ export class NotebookModel {
     }
     for (let i = 0; i < this.cells.length; i++) {
       const cell = this.cells[i];
-      cell.raw['source'] = splitSource(cell.source);
+      cell.raw["source"] = splitSource(cell.source);
     }
-    this.root['cells'] = this.cells.map((c) => c.raw);
-    return JSON.stringify(this.root, undefined, IPYNB_INDENT) + '\n';
+    this.root["cells"] = this.cells.map((c) => c.raw);
+    return JSON.stringify(this.root, undefined, IPYNB_INDENT) + "\n";
   }
 
   private knownList(dep: Record<string, unknown>): Record<string, unknown>[] {
-    let known = dep['known_lakehouses'];
+    let known = dep["known_lakehouses"];
     if (!Array.isArray(known)) {
       known = [];
-      dep['known_lakehouses'] = known;
+      dep["known_lakehouses"] = known;
     }
     return known as Record<string, unknown>[];
   }
@@ -144,15 +144,15 @@ export class NotebookModel {
   private lakehouseMetadata(
     create: boolean,
   ): Record<string, unknown> | undefined {
-    const metadata = this.ensureObject(this.root, 'metadata', create);
+    const metadata = this.ensureObject(this.root, "metadata", create);
     if (metadata === undefined) {
       return undefined;
     }
-    const dependencies = this.ensureObject(metadata, 'dependencies', create);
+    const dependencies = this.ensureObject(metadata, "dependencies", create);
     if (dependencies === undefined) {
       return undefined;
     }
-    return this.ensureObject(dependencies, 'lakehouse', create);
+    return this.ensureObject(dependencies, "lakehouse", create);
   }
 
   private ensureObject(
@@ -161,7 +161,7 @@ export class NotebookModel {
     create: boolean,
   ): Record<string, unknown> | undefined {
     const value = parent[key];
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
       return value as Record<string, unknown>;
     }
     if (!create) {
@@ -182,78 +182,80 @@ export class NotebookCodec implements INotebookCodec {
       throw new NotebookFidelityError(
         `Failed to read notebook '${fileName}': the file is not valid JSON (corrupt or not an .ipynb file).`,
         {
-          operation: 'parse notebook',
+          operation: "parse notebook",
           entity: `file ${fileName}`,
           remediation:
-            'Restore the file from git or re-export it from the Fabric portal.',
+            "Restore the file from git or re-export it from the Fabric portal.",
           cause,
         },
       );
     }
-    if (typeof root !== 'object' || root === null || Array.isArray(root)) {
+    if (typeof root !== "object" || root === null || Array.isArray(root)) {
       throw new NotebookFidelityError(
         `Failed to read notebook '${fileName}': the top-level value is not an object.`,
         {
-          operation: 'parse notebook',
+          operation: "parse notebook",
           entity: `file ${fileName}`,
-          remediation: 'Re-export the notebook from the Fabric portal.',
+          remediation: "Re-export the notebook from the Fabric portal.",
         },
       );
     }
     const record = root as Record<string, unknown>;
-    const nbformat = record['nbformat'];
+    const nbformat = record["nbformat"];
     if (nbformat !== undefined && nbformat !== 4) {
       throw new NotebookFidelityError(
         `Failed to read notebook '${fileName}': unsupported notebook schema version (nbformat ${String(nbformat)}); only nbformat 4 is supported.`,
         {
-          operation: 'parse notebook',
+          operation: "parse notebook",
           entity: `file ${fileName}`,
           remediation:
-            'Convert the notebook to nbformat 4, or re-export it from the Fabric portal.',
+            "Convert the notebook to nbformat 4, or re-export it from the Fabric portal.",
         },
       );
     }
-    const rawCells = record['cells'];
+    const rawCells = record["cells"];
     if (!Array.isArray(rawCells)) {
       throw new NotebookFidelityError(
         `Failed to read notebook '${fileName}': the 'cells' section is missing or not a list.`,
         {
-          operation: 'parse notebook',
+          operation: "parse notebook",
           entity: `file ${fileName}, section 'cells'`,
-          remediation: 'Re-export the notebook from the Fabric portal.',
+          remediation: "Re-export the notebook from the Fabric portal.",
         },
       );
     }
 
     const defaultLanguage = readDefaultLanguage(record);
     const cells: NotebookCellModel[] = rawCells.map((raw, index) => {
-      if (typeof raw !== 'object' || raw === null) {
+      if (typeof raw !== "object" || raw === null) {
         throw new NotebookFidelityError(
           `Failed to read notebook '${fileName}': cell ${index} is not an object.`,
           {
-            operation: 'parse notebook',
+            operation: "parse notebook",
             entity: `file ${fileName}, cell ${index}`,
-            remediation: 'Re-export the notebook from the Fabric portal.',
+            remediation: "Re-export the notebook from the Fabric portal.",
           },
         );
       }
       const cell = raw as Record<string, unknown>;
-      const cellType = asString(cell['cell_type']);
+      const cellType = asString(cell["cell_type"]);
       if (cellType === undefined) {
         throw new NotebookFidelityError(
           `Failed to read notebook '${fileName}': cell ${index} has no 'cell_type' field.`,
           {
-            operation: 'parse notebook',
+            operation: "parse notebook",
             entity: `file ${fileName}, cell ${index}`,
-            remediation: 'Re-export the notebook from the Fabric portal.',
+            remediation: "Re-export the notebook from the Fabric portal.",
           },
         );
       }
       return {
         cellType,
         language:
-          cellType === 'markdown' ? 'markdown' : cellLanguage(cell) ?? defaultLanguage,
-        source: joinSource(cell['source']),
+          cellType === "markdown"
+            ? "markdown"
+            : (cellLanguage(cell) ?? defaultLanguage),
+        source: joinSource(cell["source"]),
         raw: cell,
       };
     });
@@ -268,10 +270,10 @@ export class NotebookCodec implements INotebookCodec {
       throw new NotebookFidelityError(
         `Failed to write notebook '${model.fileName}': serialization failed.`,
         {
-          operation: 'serialize notebook',
+          operation: "serialize notebook",
           entity: `file ${model.fileName}`,
           remediation:
-            'Undo the last change, or restore the file from git, then retry saving.',
+            "Undo the last change, or restore the file from git, then retry saving.",
           cause,
         },
       );
@@ -280,40 +282,40 @@ export class NotebookCodec implements INotebookCodec {
 }
 
 function asString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
+  return typeof value === "string" ? value : undefined;
 }
 
 function readDefaultLanguage(root: Record<string, unknown>): string {
-  const metadata = root['metadata'];
-  if (typeof metadata === 'object' && metadata !== null) {
-    const languageInfo = (metadata as Record<string, unknown>)['language_info'];
-    if (typeof languageInfo === 'object' && languageInfo !== null) {
-      const name = asString((languageInfo as Record<string, unknown>)['name']);
+  const metadata = root["metadata"];
+  if (typeof metadata === "object" && metadata !== null) {
+    const languageInfo = (metadata as Record<string, unknown>)["language_info"];
+    if (typeof languageInfo === "object" && languageInfo !== null) {
+      const name = asString((languageInfo as Record<string, unknown>)["name"]);
       if (name !== undefined) {
         return name;
       }
     }
   }
-  return 'python';
+  return "python";
 }
 
 function cellLanguage(cell: Record<string, unknown>): string | undefined {
-  const metadata = cell['metadata'];
-  if (typeof metadata === 'object' && metadata !== null) {
-    return asString((metadata as Record<string, unknown>)['language']);
+  const metadata = cell["metadata"];
+  if (typeof metadata === "object" && metadata !== null) {
+    return asString((metadata as Record<string, unknown>)["language"]);
   }
   return undefined;
 }
 
 /** ipynb sources are string-or-line-array; normalize to one string. */
 function joinSource(source: unknown): string {
-  if (typeof source === 'string') {
+  if (typeof source === "string") {
     return source;
   }
   if (Array.isArray(source)) {
-    return source.filter((line) => typeof line === 'string').join('');
+    return source.filter((line) => typeof line === "string").join("");
   }
-  return '';
+  return "";
 }
 
 /** Write back in Jupyter's canonical line-array form. */
@@ -321,8 +323,8 @@ function splitSource(source: string): string[] {
   if (source.length === 0) {
     return [];
   }
-  const lines = source.split('\n');
-  return lines.map((line, i) => (i < lines.length - 1 ? line + '\n' : line)).filter(
-    (line, i, all) => !(i === all.length - 1 && line === ''),
-  );
+  const lines = source.split("\n");
+  return lines
+    .map((line, i) => (i < lines.length - 1 ? line + "\n" : line))
+    .filter((line, i, all) => !(i === all.length - 1 && line === ""));
 }

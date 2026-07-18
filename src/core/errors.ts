@@ -29,7 +29,7 @@ export class FabricConnectError extends Error {
     if (details.remediation) {
       parts.push(`Next step: ${details.remediation}`);
     }
-    super(parts.join(' '), { cause: details.cause });
+    super(parts.join(" "), { cause: details.cause });
     this.name = new.target.name;
     this.operation = details.operation;
     this.entity = details.entity;
@@ -61,7 +61,7 @@ export class LivyError extends FabricConnectError {
   readonly kind: LivyErrorKind;
 }
 
-export type LivyErrorKind = 'session-start' | 'session-expired' | 'cancelled';
+export type LivyErrorKind = "session-start" | "session-expired" | "cancelled";
 
 export class FabricApiError extends FabricConnectError {
   readonly status?: number;

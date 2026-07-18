@@ -12,9 +12,9 @@
  *    traceback, exactly as the portal shows it.
  */
 
-import { LIVY_API_VERSION } from './constants';
-import { FabricApiError, LivyError } from './errors';
-import type { CancelToken, IFabricApiClient } from './types';
+import { LIVY_API_VERSION } from "./constants";
+import { FabricApiError, LivyError } from "./errors";
+import type { CancelToken, IFabricApiClient } from "./types";
 
 export interface LivyTarget {
   readonly tenantId: string;
@@ -23,7 +23,7 @@ export interface LivyTarget {
 }
 
 export interface LivyStatementResult {
-  readonly status: 'ok' | 'error' | 'cancelled';
+  readonly status: "ok" | "error" | "cancelled";
   /** MIME bundle on success, e.g. { 'text/plain': '42' }. */
   readonly data?: Record<string, unknown>;
   /** Populated when the cell itself raised: portal-style traceback. */
@@ -66,9 +66,15 @@ interface LivyStatement {
   };
 }
 
-const SESSION_READY_STATES = new Set(['idle', 'busy', 'running']);
-const SESSION_DEAD_STATES = new Set(['error', 'dead', 'killed', 'success', 'shutting_down']);
-const STATEMENT_FINAL_STATES = new Set(['available', 'error', 'cancelled']);
+const SESSION_READY_STATES = new Set(["idle", "busy", "running"]);
+const SESSION_DEAD_STATES = new Set([
+  "error",
+  "dead",
+  "killed",
+  "success",
+  "shutting_down",
+]);
+const STATEMENT_FINAL_STATES = new Set(["available", "error", "cancelled"]);
 
 export interface LivySessionManagerOptions {
   readonly pollIntervalMs?: number;
@@ -92,7 +98,8 @@ export class LivySessionManager implements ILivySessionManager {
     this.pollIntervalMs = options.pollIntervalMs ?? 1000;
     this.sessionStartTimeoutMs = options.sessionStartTimeoutMs ?? 5 * 60 * 1000;
     this.sleep =
-      options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+      options.sleep ??
+      ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
 
   async execute(
@@ -120,7 +127,7 @@ export class LivySessionManager implements ILivySessionManager {
     }
     try {
       await this.api.request({
-        method: 'DELETE',
+        method: "DELETE",
         path: `${livyBase(target)}/sessions/${sessionId}`,
         tenantId: target.tenantId,
       });
@@ -153,7 +160,7 @@ export class LivySessionManager implements ILivySessionManager {
     let statement: LivyStatement;
     try {
       const response = await this.api.request<LivyStatement>({
-        method: 'POST',
+        method: "POST",
         path: `${base}/sessions/${sessionId}/statements`,
         tenantId: target.tenantId,
         body: { code, kind },
@@ -176,12 +183,12 @@ export class LivySessionManager implements ILivySessionManager {
     for (;;) {
       if (token.isCancellationRequested) {
         await this.cancelStatement(target, sessionId, statementId);
-        return { status: 'cancelled' };
+        return { status: "cancelled" };
       }
       let statement: LivyStatement;
       try {
         const response = await this.api.request<LivyStatement>({
-          method: 'GET',
+          method: "GET",
           path: `${base}/sessions/${sessionId}/statements/${statementId}`,
           tenantId: target.tenantId,
         });
@@ -198,20 +205,20 @@ export class LivySessionManager implements ILivySessionManager {
   }
 
   private toResult(statement: LivyStatement): LivyStatementResult {
-    if (statement.state === 'cancelled') {
-      return { status: 'cancelled' };
+    if (statement.state === "cancelled") {
+      return { status: "cancelled" };
     }
     const output = statement.output;
-    if (output?.status === 'error') {
+    if (output?.status === "error") {
       // The cell's own exception: a notebook traceback, not an extension error.
       return {
-        status: 'error',
-        errorName: output.ename ?? 'Error',
-        errorValue: output.evalue ?? '',
+        status: "error",
+        errorName: output.ename ?? "Error",
+        errorValue: output.evalue ?? "",
         traceback: output.traceback ?? [],
       };
     }
-    return { status: 'ok', data: output?.data ?? {} };
+    return { status: "ok", data: output?.data ?? {} };
   }
 
   private async cancelStatement(
@@ -221,7 +228,7 @@ export class LivySessionManager implements ILivySessionManager {
   ): Promise<void> {
     try {
       await this.api.request({
-        method: 'POST',
+        method: "POST",
         path: `${livyBase(target)}/sessions/${sessionId}/statements/${statementId}/cancel`,
         tenantId: target.tenantId,
       });
@@ -260,7 +267,7 @@ export class LivySessionManager implements ILivySessionManager {
     if (persisted !== undefined) {
       try {
         const response = await this.api.request<LivySessionInfo>({
-          method: 'GET',
+          method: "GET",
           path: `${base}/sessions/${persisted}`,
           tenantId: target.tenantId,
         });
@@ -279,7 +286,7 @@ export class LivySessionManager implements ILivySessionManager {
     let session: LivySessionInfo;
     try {
       const response = await this.api.request<LivySessionInfo>({
-        method: 'POST',
+        method: "POST",
         path: `${base}/sessions`,
         tenantId: target.tenantId,
         body: {},
@@ -304,7 +311,7 @@ export class LivySessionManager implements ILivySessionManager {
       let session: LivySessionInfo;
       try {
         const response = await this.api.request<LivySessionInfo>({
-          method: 'GET',
+          method: "GET",
           path: `${base}/sessions/${sessionId}`,
           tenantId: target.tenantId,
         });
@@ -320,23 +327,23 @@ export class LivySessionManager implements ILivySessionManager {
         throw new LivyError(
           `The Livy session for this notebook entered state '${session.state}' before becoming ready.`,
           {
-            operation: 'start Livy session',
+            operation: "start Livy session",
             entity: `session ${sessionId}`,
-            kind: 'session-start',
+            kind: "session-start",
             remediation:
-              'Check that the workspace capacity is running and its Spark pool exists, then run the cell again.',
+              "Check that the workspace capacity is running and its Spark pool exists, then run the cell again.",
           },
         );
       }
       if (Date.now() >= deadline) {
         throw new LivyError(
-          'Timed out waiting for the Livy session to become ready.',
+          "Timed out waiting for the Livy session to become ready.",
           {
-            operation: 'start Livy session',
+            operation: "start Livy session",
             entity: `session ${sessionId}`,
-            kind: 'session-start',
+            kind: "session-start",
             remediation:
-              'The capacity may be under heavy load or starting cold. Wait a moment and run the cell again.',
+              "The capacity may be under heavy load or starting cold. Wait a moment and run the cell again.",
           },
         );
       }
@@ -348,25 +355,30 @@ export class LivySessionManager implements ILivySessionManager {
     if (cause instanceof LivyError) {
       return cause;
     }
-    let why = 'the session could not be started';
+    let why = "the session could not be started";
     let next =
-      'Check the Fabric portal for the workspace state, then run the cell again.';
+      "Check the Fabric portal for the workspace state, then run the cell again.";
     if (cause instanceof FabricApiError) {
       if (cause.status === 403) {
-        why = 'the signed-in identity lacks permission to run Spark in this workspace';
-        next = 'Ask a workspace admin for Contributor (or higher) access.';
+        why =
+          "the signed-in identity lacks permission to run Spark in this workspace";
+        next = "Ask a workspace admin for Contributor (or higher) access.";
       } else if (cause.status === 404) {
-        why = 'the workspace or Lakehouse was not found (wrong workspace ID, or no Spark pool)';
-        next = 'Verify the workspace ID in .fabric/local.json and the attached Lakehouse.';
+        why =
+          "the workspace or Lakehouse was not found (wrong workspace ID, or no Spark pool)";
+        next =
+          "Verify the workspace ID in .fabric/local.json and the attached Lakehouse.";
       } else if (cause.status !== undefined && cause.status >= 500) {
-        why = 'the Fabric service failed to start the session (capacity may be paused)';
-        next = 'Resume the capacity in the Fabric portal, then run the cell again.';
+        why =
+          "the Fabric service failed to start the session (capacity may be paused)";
+        next =
+          "Resume the capacity in the Fabric portal, then run the cell again.";
       }
     }
     return new LivyError(`Failed to start a Livy session: ${why}.`, {
-      operation: 'start Livy session',
+      operation: "start Livy session",
       entity: `workspace (target tenant ${target.tenantId})`,
-      kind: 'session-start',
+      kind: "session-start",
       remediation: next,
       cause,
     });
@@ -382,13 +394,13 @@ export class LivySessionManager implements ILivySessionManager {
       this.sessions.delete(sessionKey(target));
       this.store.set(sessionKey(target), undefined);
       return new LivyError(
-        'The Livy session expired or was stopped while the cell was running.',
+        "The Livy session expired or was stopped while the cell was running.",
         {
-          operation: 'execute cell',
+          operation: "execute cell",
           entity: `session ${sessionId}`,
-          kind: 'session-expired',
+          kind: "session-expired",
           remediation:
-            'Run the cell again — a fresh session will be started automatically.',
+            "Run the cell again — a fresh session will be started automatically.",
           cause,
         },
       );
@@ -398,10 +410,10 @@ export class LivySessionManager implements ILivySessionManager {
 
   private throwIfCancelled(token: CancelToken, target: LivyTarget): void {
     if (token.isCancellationRequested) {
-      throw new LivyError('Execution was cancelled before it started.', {
-        operation: 'execute cell',
+      throw new LivyError("Execution was cancelled before it started.", {
+        operation: "execute cell",
         entity: `workspace (target tenant ${target.tenantId})`,
-        kind: 'cancelled',
+        kind: "cancelled",
       });
     }
   }
