@@ -1,0 +1,69 @@
+{
+  "name": "fabric-connect",
+  "displayName": "Fabric Connect",
+  "description": "Edit and run Microsoft Fabric notebooks from VS Code: Lakehouse attachment, Livy execution, portal-compatible files.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0",
+    "node": ">=18"
+  },
+  "categories": [
+    "Notebooks",
+    "Data Science"
+  ],
+  "main": "./out/src/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "notebooks": [
+      {
+        "type": "fabric-notebook",
+        "displayName": "Fabric Notebook",
+        "selector": [
+          {
+            "filenamePattern": "**/*.Notebook/notebook-content.ipynb"
+          }
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "fabric-connect.signIn",
+        "title": "Fabric: Sign In"
+      },
+      {
+        "command": "fabric-connect.openAsFabricNotebook",
+        "title": "Fabric: Open File as Fabric Notebook"
+      },
+      {
+        "command": "fabric-connect.manageLakehouses",
+        "title": "Fabric: Manage Lakehouses for Active Notebook"
+      },
+      {
+        "command": "fabric-connect.stopLivySession",
+        "title": "Fabric: Stop Livy Session"
+      }
+    ],
+    "configuration": {
+      "title": "Fabric Connect",
+      "properties": {
+        "fabric-connect.debugLogging": {
+          "type": "boolean",
+          "default": false,
+          "description": "Log redacted Fabric API requests/responses to the 'Fabric Connect' output channel."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "tsc -p ./ && node --test out/test/*.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  }
+}
