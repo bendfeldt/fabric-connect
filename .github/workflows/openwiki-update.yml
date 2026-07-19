@@ -15,10 +15,11 @@
 #     workflows, so the required Build/Test checks would sit pending forever.
 name: OpenWiki
 
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: "0 8 * * *"
+# Triggers disabled — uncomment to re-enable.
+# on:
+#   workflow_dispatch:
+#   schedule:
+#     - cron: "0 8 * * *"
 
 permissions:
   contents: read
