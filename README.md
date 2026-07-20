@@ -45,7 +45,19 @@ notebook code.
   per-session queueing, cancellation, and reattachment to an existing
   session after a VS Code reload.
 
+## Documentation
+
+- **[Installation guide](docs/installation.md)** — install from a released
+  `.vsix`, build one from source, or run the extension from source.
+- **[User guide](docs/user-guide.md)** — targets, sign-in, notebook
+  editing, Lakehouse attachment, running cells, and troubleshooting.
+- **[Design doc](docs/design-part1-notebooks.md)** — architecture and
+  principles behind Part 1.
+
 ## Setup
+
+The short version — the [user guide](docs/user-guide.md) covers each step
+in detail:
 
 1. **Declare targets** (committed) in `.fabric/targets.json` at your
    workspace root:
