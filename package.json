@@ -2,7 +2,7 @@
   "name": "fabric-connect",
   "displayName": "Fabric Connect",
   "description": "Edit and run Microsoft Fabric notebooks from VS Code: Lakehouse attachment, Livy execution, portal-compatible files.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "bendfeldt",
   "license": "MIT",
   "private": true,
