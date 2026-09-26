@@ -21,7 +21,6 @@ import { LocalItemIndex } from "./core/localItemIndex";
 import { TargetResolver } from "./core/targetResolver";
 import { EntraAuthProvider } from "./vscode/authProvider";
 import { ComputeConnection } from "./vscode/computeConnection";
-import { makeLakehouseCreator } from "./vscode/lakehouseCreation";
 import { LakehousePanel } from "./vscode/lakehousePanel";
 import {
   FabricNotebookController,
@@ -104,7 +103,6 @@ export function activate(context: vscode.ExtensionContext): void {
     apiClient,
     workspaceRoot,
     () => promptTenantId(context),
-    makeLakehouseCreator(apiClient),
   );
   const compute = () => computeConnection.current();
 
