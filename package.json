@@ -50,6 +50,15 @@
             "filenamePattern": "**/*.Notebook/notebook-content.r"
           }
         ]
+      },
+      {
+        "type": "fabric-api-notebook",
+        "displayName": "Fabric REST API Notebook",
+        "selector": [
+          {
+            "filenamePattern": "*.fabnb"
+          }
+        ]
       }
     ],
     "commands": [
@@ -156,6 +165,10 @@
         "title": "Open in Fabric",
         "category": "Fabric",
         "icon": "$(link-external)"
+      },
+      {
+        "command": "fabric-connect.newApiNotebook",
+        "title": "Fabric: New API Notebook"
       }
     ],
     "configuration": {
@@ -326,6 +339,12 @@
         "extensions": [
           ".graphql",
           ".gql"
+        ]
+      },
+      {
+        "id": "fabric-api",
+        "aliases": [
+          "Fabric API"
         ]
       }
     ],

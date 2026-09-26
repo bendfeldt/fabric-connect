@@ -47,11 +47,18 @@ Source of truth for scope: `docs/plan-local-first.md` (local-first, no deploymen
   confined to the item folder, never overwrites); GUID hover from listings
   and local logicalIds. Allowlist gained getDefinition (read) only.
 
+- M5 — API notebooks (`.fabnb`): `%api` / `%cmd` cells, variables,
+  `$(_cells[-n]…)` references, list responses as tables; all requests
+  through the shared client, so the write policy applies; only Fabric API
+  URLs accepted.
+
 ## Next
 
-The user asked for all milestones in one run (overriding the
-one-feature-per-session default); they ship as stacked PRs, one per
-milestone. Next: M5 — API notebook.
+All planned milestones (M0–M5) are implemented, as stacked PRs (one per
+milestone; the user asked for all of them in one run, overriding the
+one-feature-per-session default). Next steps belong to the user: review
+and merge the PR stack, then smoke-test against a real tenant (the VS Code
+UI and live Fabric calls could not be exercised in the build environment).
 
 Remaining milestones M1–M5: see `docs/plan-local-first.md`.
 
