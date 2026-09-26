@@ -19,7 +19,6 @@ import {
 } from "../core/computeProfile";
 import { ComputeError } from "../core/errors";
 import {
-  type CapacityInfo,
   type NamedItem,
   listCapacities,
   listEnvironments,
@@ -28,13 +27,6 @@ import {
 } from "../core/fabricCatalog";
 import { LOCAL_OVERRIDE_FILE } from "../core/targetResolver";
 import type { IFabricApiClient } from "../core/types";
-
-/** Offers to create a Lakehouse when none fits; returns it, or undefined. */
-export type LakehouseCreator = (
-  tenantId: string,
-  workspace: { id: string; displayName: string },
-  capacity: CapacityInfo,
-) => Promise<NamedItem | undefined>;
 
 export class ComputeConnection implements vscode.Disposable {
   private readonly statusBar: vscode.StatusBarItem;
@@ -48,7 +40,6 @@ export class ComputeConnection implements vscode.Disposable {
     private readonly api: IFabricApiClient,
     private readonly workspaceRoot: string | undefined,
     private readonly promptTenantId: () => Promise<string | undefined>,
-    private readonly createLakehouse: LakehouseCreator,
   ) {
     this.statusBar = vscode.window.createStatusBarItem(
       "fabric-connect.compute",
@@ -163,7 +154,7 @@ export class ComputeConnection implements vscode.Disposable {
       return;
     }
 
-    const lakehouse = await this.pickLakehouse(tenantId, workspace, capacity);
+    const lakehouse = await this.pickLakehouse(tenantId, workspace);
     if (lakehouse === undefined) {
       return;
     }
@@ -230,33 +221,30 @@ export class ComputeConnection implements vscode.Disposable {
     );
   }
 
+  /**
+   * Picks an existing Lakehouse. The extension never creates one (decision
+   * D3): Lakehouses are infrastructure, provisioned outside Fabric Connect.
+   */
   private async pickLakehouse(
     tenantId: string,
     workspace: { id: string; displayName: string },
-    capacity: CapacityInfo,
   ): Promise<NamedItem | undefined> {
     const lakehouses = await listLakehouses(this.api, tenantId, workspace.id);
-    const create = { id: "", displayName: "" };
-    const chosen = await pick(
-      [
-        ...lakehouses.map((l) => ({ label: l.displayName, value: l })),
+    if (lakehouses.length === 0) {
+      throw new ComputeError(
+        `Workspace '${workspace.displayName}' has no Lakehouse to host Spark sessions.`,
         {
-          label: "$(add) Create a Lakehouse…",
-          description:
-            lakehouses.length === 0
-              ? "this workspace has none"
-              : "asks for confirmation",
-          value: create,
+          operation: "connect to compute",
+          entity: `workspace ${workspace.displayName}`,
+          remediation:
+            "Create a Lakehouse in the Fabric portal (or through your infrastructure tooling), then run 'Fabric: Connect to Compute' again — Fabric Connect never creates items.",
         },
-      ],
+      );
+    }
+    return pick(
+      lakehouses.map((l) => ({ label: l.displayName, value: l })),
       `Pick the Lakehouse that hosts Spark sessions in ${workspace.displayName}`,
     );
-    if (chosen === undefined) {
-      return undefined;
-    }
-    return chosen.id === ""
-      ? this.createLakehouse(tenantId, workspace, capacity)
-      : chosen;
   }
 
   private async save(
