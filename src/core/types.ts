@@ -1,5 +1,3 @@
-import type { UserConfirmation } from "./writePolicy";
-
 /**
  * Shared structural types. Core modules depend only on these interfaces —
  * never on the `vscode` module or on each other's internals — so every
@@ -53,7 +51,6 @@ export interface FabricRequestOptions {
   /** The API the path belongs to; the Fabric REST API when omitted. */
   readonly service?: ServiceTarget;
   /** Required only by allowlist rules for confirmed infrastructure writes. */
-  readonly confirmation?: UserConfirmation;
 }
 
 export interface FabricResponse<T> {

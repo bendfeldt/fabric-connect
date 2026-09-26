@@ -6,29 +6,18 @@ import {
   writeComputeProfile,
   type ComputeProfile,
 } from "../src/core/computeProfile";
-import {
-  ComputeError,
-  LakehouseError,
-  LocalFirstViolationError,
-  TargetConfigError,
-} from "../src/core/errors";
-import { FabricApiClient } from "../src/core/fabricApiClient";
+import { ComputeError, TargetConfigError } from "../src/core/errors";
 import {
   listAll,
   listCapacities,
   listWorkspaces,
 } from "../src/core/fabricCatalog";
-import {
-  createLakehouse,
-  validateLakehouseName,
-} from "../src/core/lakehouseProvisioning";
 import { resolveLivyHost } from "../src/core/livyHost";
 import type {
   FabricRequestOptions,
   FabricResponse,
   IFabricApiClient,
 } from "../src/core/types";
-import { mintUserConfirmation } from "../src/core/writePolicy";
 
 const TENANT = "87654321-4321-4321-4321-cba987654321";
 const OTHER_TENANT = "99999999-4321-4321-4321-cba987654321";
@@ -218,128 +207,6 @@ test("catalog failures are wrapped with operation and next step", async () => {
       error.operation === "list capacities" &&
       error.cause instanceof Error,
   );
-});
-
-// --- lakehouse provisioning (D3) --------------------------------------------
-
-test("lakehouse names follow Fabric's rule", () => {
-  assert.equal(validateLakehouseName("fabric_connect_scratch"), undefined);
-  assert.notEqual(validateLakehouseName("1abc"), undefined);
-  assert.notEqual(validateLakehouseName("has space"), undefined);
-  assert.notEqual(validateLakehouseName(""), undefined);
-});
-
-test("create returns the new lakehouse on 201 and passes the confirmation", async () => {
-  const confirmation = mintUserConfirmation("create-lakehouse", WS, "scratch");
-  const api = fakeApi((options) => {
-    if (options.method === "GET") {
-      return { status: 200, body: { value: [] } };
-    }
-    assert.equal(options.confirmation, confirmation);
-    assert.deepEqual(options.body, { displayName: "scratch" });
-    return { status: 201, body: { id: LH, displayName: "scratch" } };
-  });
-  assert.deepEqual(
-    await createLakehouse(api, TENANT, WS, "scratch", confirmation),
-    { id: LH, displayName: "scratch" },
-  );
-});
-
-test("create waits for a 202 provisioning to show up in the list", async () => {
-  let lists = 0;
-  const api = fakeApi((options) => {
-    if (options.method === "POST") {
-      return { status: 202, body: undefined };
-    }
-    lists++;
-    return {
-      status: 200,
-      body: { value: lists < 3 ? [] : [{ id: LH, displayName: "scratch" }] },
-    };
-  });
-  const created = await createLakehouse(
-    api,
-    TENANT,
-    WS,
-    "scratch",
-    mintUserConfirmation("create-lakehouse", WS, "scratch"),
-    { sleep: async () => undefined },
-  );
-  assert.equal(created.id, LH);
-});
-
-test("create refuses an existing name before calling the API", async () => {
-  const api = fakeApi((options) => {
-    assert.equal(options.method, "GET");
-    return {
-      status: 200,
-      body: { value: [{ id: LH, displayName: "scratch" }] },
-    };
-  });
-  await assert.rejects(
-    createLakehouse(
-      api,
-      TENANT,
-      WS,
-      "scratch",
-      mintUserConfirmation("create-lakehouse", WS, "scratch"),
-    ),
-    LakehouseError,
-  );
-  assert.ok(api.calls.every((c) => c.method === "GET"));
-});
-
-test("create times out loudly when provisioning never finishes", async () => {
-  const api = fakeApi((options) =>
-    options.method === "POST"
-      ? { status: 202, body: undefined }
-      : { status: 200, body: { value: [] } },
-  );
-  await assert.rejects(
-    createLakehouse(
-      api,
-      TENANT,
-      WS,
-      "scratch",
-      mintUserConfirmation("create-lakehouse", WS, "scratch"),
-      { sleep: async () => undefined, timeoutMs: 0 },
-    ),
-    LakehouseError,
-  );
-});
-
-test("through the real client, create without a confirmation never leaves the machine", async () => {
-  let posted = false;
-  const client = new FabricApiClient(
-    { getToken: async () => "token" },
-    {
-      fetchFn: (async (_url: unknown, init?: RequestInit) => {
-        if (init?.method === "POST") {
-          posted = true;
-        }
-        return new Response(JSON.stringify({ value: [] }), { status: 200 });
-      }) as typeof fetch,
-      sleep: async () => undefined,
-    },
-  );
-  const forged = {
-    action: "create-lakehouse",
-    workspaceId: WS,
-    displayName: "scratch",
-  };
-  await assert.rejects(
-    createLakehouse(
-      client,
-      TENANT,
-      WS,
-      "scratch",
-      forged as unknown as Parameters<typeof createLakehouse>[4],
-    ),
-    (error: unknown) =>
-      error instanceof LakehouseError &&
-      error.cause instanceof LocalFirstViolationError,
-  );
-  assert.equal(posted, false);
 });
 
 // --- Livy host precedence (M0.4) ---------------------------------------------

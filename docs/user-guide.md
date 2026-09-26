@@ -118,7 +118,7 @@ Compute`** (or click the Fabric item in the status bar) and pick:
 1. the **capacity** (shown with SKU and region) — the capacity that is
    billed; a paused capacity is refused;
 2. a **workspace** assigned to that capacity;
-3. the **host Lakehouse** for Spark sessions — or _Create a Lakehouse…_;
+3. an existing **host Lakehouse** for Spark sessions;
 4. optionally an **Environment** (libraries and Spark settings); otherwise
    the workspace starter pool is used.
 
@@ -134,12 +134,13 @@ names resolve against that host, so a second status-bar item shows which
 one is in effect for the active notebook. If a folder's target and the
 connected compute are in different tenants, running is refused.
 
-**Creating a Lakehouse.** Lakehouses are infrastructure: Fabric Connect
-creates one only from _Create a Lakehouse…_, and only after a confirmation
-dialog naming the Lakehouse, the workspace and the capacity. It never
-updates or deletes Lakehouses, and every other write to a workspace (item
-create/update/delete, definition updates, job runs, git and deployment
-APIs) is blocked in code before any request leaves your machine.
+**Lakehouses are never created by the extension.** They are
+infrastructure: create them in the Fabric portal (or with your
+infrastructure tooling). If the chosen workspace has no Lakehouse, Connect
+to Compute stops and says so. Every write that would change a workspace —
+creating any item (Lakehouses included), updating or deleting items,
+definition updates, job runs, git and deployment APIs — is blocked in code
+before any request leaves your machine.
 
 ## 6. Run cells
 

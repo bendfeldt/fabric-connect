@@ -30,7 +30,6 @@ import {
 import { CodeRunner } from "./vscode/codeRunner";
 import { FabricExplorer } from "./vscode/explorer";
 import { ComputeConnection } from "./vscode/computeConnection";
-import { makeLakehouseCreator } from "./vscode/lakehouseCreation";
 import { LakehousePanel } from "./vscode/lakehousePanel";
 import { ModuleStager } from "./vscode/moduleStager";
 import { QueryRunner } from "./vscode/queryRunner";
@@ -116,7 +115,6 @@ export function activate(context: vscode.ExtensionContext): void {
     apiClient,
     workspaceRoot,
     () => promptTenantId(context),
-    makeLakehouseCreator(apiClient),
   );
   const compute = () => computeConnection.current();
 
