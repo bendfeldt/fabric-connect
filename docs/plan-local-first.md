@@ -25,7 +25,7 @@ We are **local-first**, like Databricks Connect:
 | Compute is a connection, not an item.                 | You connect to a capacity/workspace once per repo (status bar, like a Databricks cluster); every file runs against it.                     |
 | Run context comes from local files.                   | Target resolves from `.fabric/targets.json` + `local.json`, `.platform` files and notebook metadata — never from what's clicked in a tree. |
 | Remote uploads are ephemeral staging, not deployment. | Local modules/job files are staged to a per-session scratch OneLake path and deleted afterwards. No code item is created or updated.       |
-| Lakehouses are infrastructure, not code.              | Created only when a run needs one and none fits, and only after explicit confirmation (D3). Never updated or deleted by us.                |
+| Lakehouses are infrastructure, not code.              | Never created, updated or deleted by the extension (D3). You pick an existing one; provisioning happens outside Fabric Connect.            |
 | Editing works offline.                                | Network is needed only to run, browse, or pull.                                                                                            |
 
 ## The honest constraint: there is no Spark Connect in Fabric
@@ -47,8 +47,8 @@ Two consequences to design around:
 1. **"Connect to a SKU" = capacity → workspace on it → host Lakehouse.** Spark
    bills to the capacity of the workspace that owns the host Lakehouse. We let
    the user pick the capacity (showing SKU/region), then a workspace assigned
-   to it, then a host Lakehouse. If the workspace has no suitable Lakehouse,
-   we offer to create one, per D3.
+   to it, then an existing host Lakehouse. A workspace without one is a loud
+   error pointing at the portal (D3): the extension never creates it.
 2. **Relative paths resolve to the host Lakehouse.** `Files/...` and
    unqualified `spark.sql("SELECT ... FROM t")` hit whichever Lakehouse hosts
    the session. Precedence rule: a notebook's own default Lakehouse (from its
@@ -63,17 +63,13 @@ Like round-trip fidelity, local-first must be enforced, not intended:
 - **Write allowlist in `FabricApiClient`.** Every non-GET request must match an
   explicit allowlist (Livy sessions/statements/batches, query endpoints,
   OneLake scratch paths). Anything else — `POST /items`, `updateDefinition`,
-  `PATCH /items/{id}`, job-scheduler runs, git/deployment-pipeline APIs —
-  throws a typed `LocalFirstViolationError` before any network call.
-- **The one infrastructure exception: Lakehouse create (D3).**
-  `POST /workspaces/{id}/lakehouses` is allowed only when the request carries a
-  `UserConfirmation` value that only the VS Code layer can mint (after a modal
-  naming the Lakehouse, workspace and capacity). Without it, the same
-  `LocalFirstViolationError`. Lakehouse update/delete stay forbidden.
+  `PATCH /items/{id}`, job-scheduler runs, git/deployment-pipeline APIs,
+  and creating any item, Lakehouses included (D3) — throws a typed
+  `LocalFirstViolationError` before any network call. There are no
+  exceptions.
 - **Unit test** that enumerates the allowlist and asserts item create/update/
-  delete/definition paths are rejected, and that Lakehouse create is rejected
-  without a confirmation. Changing the allowlist is a visible,
-  reviewed diff.
+  delete/definition paths (Lakehouse create included) are rejected. Changing
+  the allowlist is a visible, reviewed diff.
 - **Scratch hygiene test**: staged OneLake files live only under
   `Files/.fabric-connect/<session-id>/` in the host Lakehouse and are deleted
   on session stop.
@@ -147,9 +143,9 @@ Each numbered line is one session-sized feature with its own acceptance test.
 
 ### M0 — Connect to compute
 
-1. API write-allowlist + `LocalFirstViolationError` + confirmation-gated Lakehouse create + tests (lands first; every later feature must pass it).
+1. API write-allowlist + `LocalFirstViolationError` + tests (lands first; every later feature must pass it).
 2. `Fabric: Connect to Compute` — list capacities (SKU, region, state) → workspaces on it → host Lakehouse (+ optional Environment); stored as a compute profile; status-bar item showing the active connection; paused capacity is a loud error.
-3. Create-Lakehouse-on-demand: when the chosen workspace has no Lakehouse (or a notebook's attached one is missing), offer creation behind a modal confirm (D3).
+3. _(Removed — D3: the extension never creates Lakehouses.)_
 4. Decouple Livy host from notebook metadata with the precedence rule above, shown in the status bar.
 
 ### M1 — Notebooks, complete
@@ -185,11 +181,12 @@ Each numbered line is one session-sized feature with its own acceptance test.
 - **D2 — T-SQL: not included.** Use the Microsoft `mssql` extension for
   Warehouse / SQL endpoint / SQL database queries. We add no TDS client and
   no `tedious` dependency.
-- **D3 — Lakehouses are infrastructure.** Created only when needed (no
-  suitable one exists for the run being started) and only after explicit
-  user confirmation naming Lakehouse, workspace and capacity. Never created
-  silently, never updated or deleted by the extension. Enforced by the
-  confirmation-gated allowlist entry and its test.
+- **D3 — Lakehouses are infrastructure, never created by the extension.**
+  (Revised 2026-09-26: an earlier version allowed a confirmed, on-demand
+  create; that was removed.) The user picks an existing Lakehouse; a
+  workspace without one is a loud error pointing at the portal. The
+  extension never creates, updates or deletes a Lakehouse — enforced by the
+  write allowlist, which has no item-create rule, and its test.
 - **D4 — Pure-Python notebooks: run on the Spark session first.** A truly
   local Python kernel is a later option, only if asked.
 
