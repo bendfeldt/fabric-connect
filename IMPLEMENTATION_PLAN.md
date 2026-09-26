@@ -40,11 +40,18 @@ Source of truth for scope: `docs/plan-local-first.md` (local-first, no deploymen
   kusto); Kusto origin validated before any token; allowlist gained the
   three query endpoints only.
 
+- M4 — read-only explorer (Explorer side bar "Fabric" view): capacities →
+  workspaces → items by type, Lakehouse OneLake Files/Tables, connections;
+  copy ID/name/OneLake path/SQL connection string; table preview on the
+  compute; file preview; Pull into Repo (getDefinition + LRO, part paths
+  confined to the item folder, never overwrites); GUID hover from listings
+  and local logicalIds. Allowlist gained getDefinition (read) only.
+
 ## Next
 
 The user asked for all milestones in one run (overriding the
 one-feature-per-session default); they ship as stacked PRs, one per
-milestone. Next: M4 — read-only explorer.
+milestone. Next: M5 — API notebook.
 
 Remaining milestones M1–M5: see `docs/plan-local-first.md`.
 

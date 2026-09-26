@@ -57,6 +57,10 @@ export interface FabricResponse<T> {
   readonly status: number;
   readonly body: T;
   readonly correlationId?: string;
+  /** Long-running operations (202): the operation to poll, if any. */
+  readonly operationId?: string;
+  /** Seconds the service asked the client to wait before polling. */
+  readonly retryAfterSeconds?: number;
 }
 
 /**

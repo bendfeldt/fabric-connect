@@ -129,7 +129,18 @@ export class FabricApiClient implements IFabricApiClient {
 
       if (response.ok) {
         const body = await this.parseBody<T>(response, logPath, correlationId);
-        return { status: response.status, body, correlationId };
+        const operationId =
+          response.headers.get("x-ms-operation-id") ?? undefined;
+        const retryAfter = Number(response.headers.get("retry-after"));
+        return {
+          status: response.status,
+          body,
+          correlationId,
+          ...(operationId === undefined ? {} : { operationId }),
+          ...(Number.isFinite(retryAfter) && retryAfter > 0
+            ? { retryAfterSeconds: retryAfter }
+            : {}),
+        };
       }
 
       lastError = await this.toApiError(response, logPath, correlationId);
