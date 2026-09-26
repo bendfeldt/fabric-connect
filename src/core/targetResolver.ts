@@ -52,6 +52,30 @@ export class TargetResolver implements ITargetResolver {
   }
 
   async resolveTarget(folderPath: string): Promise<ResolvedTarget> {
+    return this.resolve(folderPath, false);
+  }
+
+  /**
+   * Like `resolveTarget`, but returns `undefined` when the folder simply is
+   * not configured (no targets file, or no mapping covers the folder) — for
+   * code that can also run on the connected compute. A configuration that
+   * exists but is broken still throws: that is never silently skipped.
+   */
+  async resolveTargetIfMapped(
+    folderPath: string,
+  ): Promise<ResolvedTarget | undefined> {
+    return this.resolve(folderPath, true);
+  }
+
+  private resolve(folderPath: string, optional: false): Promise<ResolvedTarget>;
+  private resolve(
+    folderPath: string,
+    optional: boolean,
+  ): Promise<ResolvedTarget | undefined>;
+  private async resolve(
+    folderPath: string,
+    optional: boolean,
+  ): Promise<ResolvedTarget | undefined> {
     const root = path.resolve(this.workspaceRoot);
     const folder = path.resolve(folderPath);
     if (folder !== root && !folder.startsWith(root + path.sep)) {
@@ -69,6 +93,9 @@ export class TargetResolver implements ITargetResolver {
     const targetsPath = path.join(root, TARGETS_FILE);
     const targetsText = await this.fs.readFile(targetsPath);
     if (targetsText === undefined) {
+      if (optional) {
+        return undefined;
+      }
       throw new TargetConfigError(
         `No Fabric target configuration found for folder '${folderPath}': '${TARGETS_FILE}' does not exist in the workspace.`,
         {
@@ -82,6 +109,9 @@ export class TargetResolver implements ITargetResolver {
     const targets = this.parseTargetsFile(targetsText, targetsPath);
     const targetName = this.matchFolder(targets.folders, root, folder);
     if (targetName === undefined) {
+      if (optional) {
+        return undefined;
+      }
       throw new TargetConfigError(
         `Folder '${folderPath}' is not mapped to any target in '${TARGETS_FILE}'.`,
         {

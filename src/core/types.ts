@@ -15,6 +15,10 @@ export interface IAuthProvider {
 /** Target Config Module boundary. */
 export interface ITargetResolver {
   resolveTarget(folderPath: string): Promise<ResolvedTarget>;
+  /** `undefined` when the folder is simply not configured; throws if broken. */
+  resolveTargetIfMapped(
+    folderPath: string,
+  ): Promise<ResolvedTarget | undefined>;
 }
 
 export interface ResolvedTarget {

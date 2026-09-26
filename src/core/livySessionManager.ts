@@ -20,6 +20,8 @@ export interface LivyTarget {
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly lakehouseId: string;
+  /** Fabric Environment (libraries, Spark settings); starter pool if absent. */
+  readonly environmentId?: string;
 }
 
 export interface LivyStatementResult {
@@ -301,7 +303,7 @@ export class LivySessionManager implements ILivySessionManager {
         method: "POST",
         path: `${base}/sessions`,
         tenantId: target.tenantId,
-        body: {},
+        body: sessionRequestBody(target),
       });
       session = response.body;
     } catch (cause) {
@@ -444,7 +446,23 @@ export class LivySessionManager implements ILivySessionManager {
 }
 
 function sessionKey(target: LivyTarget): string {
-  return `livy-session/${target.tenantId}/${target.workspaceId}/${target.lakehouseId}`;
+  const environment =
+    target.environmentId === undefined ? "" : `/${target.environmentId}`;
+  return `livy-session/${target.tenantId}/${target.workspaceId}/${target.lakehouseId}${environment}`;
+}
+
+/** Attaches the Environment the way Fabric documents it for Livy sessions. */
+function sessionRequestBody(target: LivyTarget): Record<string, unknown> {
+  if (target.environmentId === undefined) {
+    return {};
+  }
+  return {
+    conf: {
+      "spark.fabric.environmentDetails": JSON.stringify({
+        id: target.environmentId,
+      }),
+    },
+  };
 }
 
 function livyBase(target: LivyTarget): string {

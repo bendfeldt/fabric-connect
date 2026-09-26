@@ -45,6 +45,9 @@ export class NotebookFidelityError extends FabricConnectError {}
 
 export class LakehouseError extends FabricConnectError {}
 
+/** Connecting to compute: capacity, workspace, host Lakehouse, environment. */
+export class ComputeError extends FabricConnectError {}
+
 /**
  * A request would write to Fabric outside the local-first allowlist
  * (src/core/writePolicy.ts). Thrown before any network call.
