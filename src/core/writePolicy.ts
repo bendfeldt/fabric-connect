@@ -3,12 +3,11 @@
  * Fabric API request must match an explicit allowlist entry, checked in the
  * API client before any token is acquired or any network call is made.
  * Anything else — item create/update/delete, definition updates, job runs,
- * git or deployment-pipeline APIs — throws `LocalFirstViolationError`.
+ * git or deployment-pipeline APIs, and creating any item (Lakehouses
+ * included, decision D3) — throws `LocalFirstViolationError`.
  *
- * The single exception is creating a Lakehouse (infrastructure, decision D3
- * in docs/plan-local-first.md), and only with a `UserConfirmation` minted by
- * the VS Code layer after an explicit modal confirm. Changing this list is a
- * plan change: update docs/plan-local-first.md in the same commit.
+ * Changing this list is a plan change: update docs/plan-local-first.md in
+ * the same commit.
  */
 
 import { LocalFirstViolationError } from "./errors";
@@ -27,7 +26,6 @@ interface WriteRule {
   readonly pattern: RegExp;
   /** What this rule permits, for errors and review. */
   readonly purpose: string;
-  readonly requiresConfirmation?: UserConfirmation["action"];
 }
 
 export const WRITE_ALLOWLIST: readonly WriteRule[] = [
@@ -61,50 +59,12 @@ export const WRITE_ALLOWLIST: readonly WriteRule[] = [
     pattern: new RegExp(`^${LIVY}/batches/${ID}$`),
     purpose: "cancel a Livy batch",
   },
-  {
-    method: "POST",
-    pattern: new RegExp(`^/workspaces/(${ID})/lakehouses$`),
-    purpose: "create a Lakehouse (infrastructure, confirmed by the user)",
-    requiresConfirmation: "create-lakehouse",
-  },
 ];
-
-const brand: unique symbol = Symbol("UserConfirmation");
-
-/**
- * Proof that the user explicitly confirmed one infrastructure action. Only
- * `mintUserConfirmation` can produce one, and only `src/vscode/` may call
- * it, right after a modal confirm (enforced by test). Single-use, and bound
- * to the exact workspace and Lakehouse name the user saw.
- */
-export interface UserConfirmation {
-  readonly [brand]: true;
-  readonly action: "create-lakehouse";
-  readonly workspaceId: string;
-  readonly displayName: string;
-}
-
-const consumed = new WeakSet<UserConfirmation>();
-
-/** Call only from src/vscode/, immediately after the user confirmed a modal. */
-export function mintUserConfirmation(
-  action: UserConfirmation["action"],
-  workspaceId: string,
-  displayName: string,
-): UserConfirmation {
-  return Object.freeze({
-    [brand]: true as const,
-    action,
-    workspaceId,
-    displayName,
-  });
-}
 
 /**
  * Throws `LocalFirstViolationError` unless the request is a GET or matches
- * an allowlist rule (with a valid, unused confirmation where required).
- * Consumes the confirmation on success. `describe` is the caller's already
- * redacted "METHOD path" label, so no IDs reach the error message.
+ * an allowlist rule. `describe` is the caller's already redacted
+ * "METHOD path" label, so no IDs reach the error message.
  */
 export function assertWriteAllowed(
   options: FabricRequestOptions,
@@ -113,10 +73,10 @@ export function assertWriteAllowed(
   if (options.method === "GET") {
     return;
   }
-  const rule = WRITE_ALLOWLIST.find(
+  const allowed = WRITE_ALLOWLIST.some(
     (r) => r.method === options.method && r.pattern.test(options.path),
   );
-  if (rule === undefined) {
+  if (!allowed) {
     throw new LocalFirstViolationError(
       `Blocked '${options.method}' request: Fabric Connect is local-first and never creates, updates, deletes or runs items in a workspace.`,
       {
@@ -127,32 +87,6 @@ export function assertWriteAllowed(
       },
     );
   }
-  if (rule.requiresConfirmation === undefined) {
-    return;
-  }
-  const confirmation = options.confirmation;
-  const workspaceId = rule.pattern.exec(options.path)?.[1];
-  const displayName = (options.body as { displayName?: unknown } | undefined)
-    ?.displayName;
-  const valid =
-    confirmation !== undefined &&
-    confirmation[brand] === true &&
-    !consumed.has(confirmation) &&
-    confirmation.action === rule.requiresConfirmation &&
-    confirmation.workspaceId === workspaceId &&
-    confirmation.displayName === displayName;
-  if (!valid) {
-    throw new LocalFirstViolationError(
-      `Blocked request to ${rule.purpose}: it needs your explicit confirmation for this exact workspace and name, and none (or a mismatched or already-used one) was given.`,
-      {
-        operation: "enforce local-first write policy",
-        entity: describe,
-        remediation:
-          "Start the action again from the Fabric Connect command and confirm the dialog; infrastructure is never created without it.",
-      },
-    );
-  }
-  consumed.add(confirmation);
 }
 
 /** The only OneLake folder the extension writes to, inside a Lakehouse. */
