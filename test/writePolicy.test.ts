@@ -1,17 +1,10 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import path from "node:path";
 import { test } from "node:test";
 import { LocalFirstViolationError } from "../src/core/errors";
 import { FabricApiClient } from "../src/core/fabricApiClient";
 import { LivySessionManager } from "../src/core/livySessionManager";
 import type { FabricRequestOptions, IAuthProvider } from "../src/core/types";
-import {
-  assertWriteAllowed,
-  mintUserConfirmation,
-  WRITE_ALLOWLIST,
-  type UserConfirmation,
-} from "../src/core/writePolicy";
+import { assertWriteAllowed, WRITE_ALLOWLIST } from "../src/core/writePolicy";
 
 const TENANT = "87654321-4321-4321-4321-cba987654321";
 const WS = "11111111-1111-1111-1111-111111111111";
@@ -102,64 +95,19 @@ test("the violation error names the operation and next step, not the IDs", () =>
   }
 });
 
-const createLakehouse = (confirmation?: UserConfirmation, name = "scratch") =>
-  req("POST", `/workspaces/${WS}/lakehouses`, {
-    body: { displayName: name },
-    confirmation,
-  });
-
-test("Lakehouse create is blocked without a confirmation", () => {
-  assert.throws(() => check(createLakehouse()), LocalFirstViolationError);
-});
-
-test("Lakehouse create is allowed once with a matching confirmation", () => {
-  const confirmation = mintUserConfirmation("create-lakehouse", WS, "scratch");
-  check(createLakehouse(confirmation));
-  assert.throws(
-    () => check(createLakehouse(confirmation)),
-    LocalFirstViolationError,
-    "a confirmation must be single-use",
-  );
-});
-
-test("Lakehouse create is blocked when the confirmation does not match", () => {
-  const otherWorkspace = mintUserConfirmation(
-    "create-lakehouse",
-    "44444444-4444-4444-4444-444444444444",
-    "scratch",
-  );
-  assert.throws(
-    () => check(createLakehouse(otherWorkspace)),
-    LocalFirstViolationError,
-  );
-  const otherName = mintUserConfirmation("create-lakehouse", WS, "scratch");
-  assert.throws(
-    () => check(createLakehouse(otherName, "something-else")),
-    LocalFirstViolationError,
-  );
-});
-
-test("a forged confirmation object is rejected", () => {
-  const forged = {
-    action: "create-lakehouse",
-    workspaceId: WS,
-    displayName: "scratch",
-  } as unknown as UserConfirmation;
-  assert.throws(() => check(createLakehouse(forged)), LocalFirstViolationError);
-});
-
-test("a confirmation does not unlock any other write", () => {
-  const confirmation = mintUserConfirmation("create-lakehouse", WS, "scratch");
-  assert.throws(
-    () =>
-      check(
-        req("POST", `/workspaces/${WS}/items`, {
-          body: { displayName: "scratch" },
-          confirmation,
-        }),
-      ),
-    LocalFirstViolationError,
-  );
+test("creating a Lakehouse (or any item) is always blocked (D3)", () => {
+  for (const [method, p] of [
+    ["POST", `/workspaces/${WS}/lakehouses`],
+    ["POST", `/workspaces/${WS}/items`],
+    ["POST", `/workspaces/${WS}/warehouses`],
+    ["POST", `/workspaces/${WS}/environments`],
+  ] as const) {
+    assert.throws(
+      () => check(req(method, p, { body: { displayName: "scratch" } })),
+      LocalFirstViolationError,
+      `${method} ${p}`,
+    );
+  }
 });
 
 test("blocked writes never reach auth or the network", async () => {
@@ -245,40 +193,6 @@ test("the allowlist is exactly the reviewed set (changing it is a plan change)",
       "DELETE stop a Livy session",
       "POST run a Livy statement",
       "POST cancel a Livy statement",
-      "POST create a Lakehouse (infrastructure, confirmed by the user)",
     ],
   );
-  assert.deepEqual(
-    WRITE_ALLOWLIST.filter((r) => r.requiresConfirmation !== undefined).map(
-      (r) => r.purpose,
-    ),
-    ["create a Lakehouse (infrastructure, confirmed by the user)"],
-  );
-});
-
-test("only src/vscode/ mints confirmations (core never self-confirms)", () => {
-  const srcRoot = path.join(__dirname, "..", "..", "src");
-  const offenders: string[] = [];
-  const walk = (dir: string): void => {
-    for (const entry of readdirSync(dir)) {
-      const full = path.join(dir, entry);
-      if (statSync(full).isDirectory()) {
-        walk(full);
-        continue;
-      }
-      const rel = path.relative(srcRoot, full).split(path.sep).join("/");
-      if (
-        rel === "core/writePolicy.ts" ||
-        rel.startsWith("vscode/") ||
-        !rel.endsWith(".ts")
-      ) {
-        continue;
-      }
-      if (readFileSync(full, "utf8").includes("mintUserConfirmation")) {
-        offenders.push(rel);
-      }
-    }
-  };
-  walk(srcRoot);
-  assert.deepEqual(offenders, []);
 });
