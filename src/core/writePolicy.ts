@@ -53,6 +53,16 @@ export const WRITE_ALLOWLIST: readonly WriteRule[] = [
   },
   {
     method: "POST",
+    pattern: new RegExp(`^${LIVY}/batches$`),
+    purpose: "submit a Livy batch (a Spark job from local files)",
+  },
+  {
+    method: "DELETE",
+    pattern: new RegExp(`^${LIVY}/batches/${ID}$`),
+    purpose: "cancel a Livy batch",
+  },
+  {
+    method: "POST",
     pattern: new RegExp(`^/workspaces/(${ID})/lakehouses$`),
     purpose: "create a Lakehouse (infrastructure, confirmed by the user)",
     requiresConfirmation: "create-lakehouse",
@@ -143,4 +153,36 @@ export function assertWriteAllowed(
     );
   }
   consumed.add(confirmation);
+}
+
+/** The only OneLake folder the extension writes to, inside a Lakehouse. */
+export const ONELAKE_SCRATCH_PREFIX = "Files/.fabric-connect/";
+
+const SCRATCH_SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
+
+/**
+ * OneLake writes (upload, delete) are staging, not deployment: they are
+ * allowed only below `Files/.fabric-connect/` of a Lakehouse, with plain
+ * path segments (no traversal, no encoded separators).
+ */
+export function assertOneLakeWriteAllowed(
+  method: string,
+  relPath: string,
+): void {
+  const segments = relPath.slice(ONELAKE_SCRATCH_PREFIX.length).split("/");
+  const allowed =
+    relPath.startsWith(ONELAKE_SCRATCH_PREFIX) &&
+    segments.length > 0 &&
+    segments.every((segment) => SCRATCH_SEGMENT.test(segment));
+  if (!allowed) {
+    throw new LocalFirstViolationError(
+      `Blocked OneLake '${method}': Fabric Connect only writes to its own scratch folder '${ONELAKE_SCRATCH_PREFIX}' when staging code for a run.`,
+      {
+        operation: "enforce local-first write policy",
+        entity: `OneLake path ${relPath}`,
+        remediation:
+          "Keep data writes inside your Spark code. If this write is genuinely needed, change src/core/writePolicy.ts together with docs/plan-local-first.md.",
+      },
+    );
+  }
 }

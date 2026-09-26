@@ -18,11 +18,14 @@ import {
   listLivySessions,
 } from "./core/livySessionManager";
 import { LocalItemIndex } from "./core/localItemIndex";
+import { OneLakeClient } from "./core/oneLakeClient";
 import { TargetResolver } from "./core/targetResolver";
 import { EntraAuthProvider } from "./vscode/authProvider";
+import { CodeRunner } from "./vscode/codeRunner";
 import { ComputeConnection } from "./vscode/computeConnection";
 import { makeLakehouseCreator } from "./vscode/lakehouseCreation";
 import { LakehousePanel } from "./vscode/lakehousePanel";
+import { ModuleStager } from "./vscode/moduleStager";
 import {
   FabricNotebookController,
   resolveNotebookHost,
@@ -108,12 +111,29 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   const compute = () => computeConnection.current();
 
+  const oneLake = new OneLakeClient(auth);
+  const stager = new ModuleStager(oneLake, workspaceRoot);
+  const runContext = {
+    index: localIndex,
+    fs: { readFile },
+    prepare: (target: Parameters<ModuleStager["prepare"]>[0]) =>
+      stager.prepare(target),
+  };
+
   const serializer = new FabricNotebookSerializer();
   const controller = new FabricNotebookController(
     livyManager,
     targetResolver,
     compute,
-    { index: localIndex, fs: { readFile } },
+    runContext,
+  );
+  const codeRunner = new CodeRunner(
+    apiClient,
+    livyManager,
+    targetResolver,
+    compute,
+    runContext,
+    stager,
   );
   const lakehousePanel = new LakehousePanel(apiClient, targetResolver, compute);
 
@@ -126,6 +146,7 @@ export function activate(context: vscode.ExtensionContext): void {
       void controller.refreshHostStatus();
     }),
     controller,
+    codeRunner,
     vscode.workspace.registerNotebookSerializer(NOTEBOOK_TYPE, serializer, {
       transientOutputs: true,
     }),
@@ -192,6 +213,7 @@ export function activate(context: vscode.ExtensionContext): void {
           compute,
         );
         await livyManager.stopSession(host.target);
+        await stager.cleanup(host.target);
         void vscode.window.showInformationMessage(
           `Livy session on ${host.label} stopped.`,
         );
@@ -213,6 +235,7 @@ export function activate(context: vscode.ExtensionContext): void {
           compute,
         );
         await livyManager.stopSession(host.target);
+        await stager.cleanup(host.target);
         await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
@@ -284,6 +307,21 @@ export function activate(context: vscode.ExtensionContext): void {
           `Stopped ${chosen.length} Livy session${chosen.length === 1 ? "" : "s"}.`,
         );
       }),
+    ),
+
+    vscode.commands.registerCommand(
+      "fabric-connect.runFile",
+      (uri?: vscode.Uri) => runReportingErrors(() => codeRunner.runFile(uri)),
+    ),
+
+    vscode.commands.registerCommand("fabric-connect.runSelection", () =>
+      runReportingErrors(() => codeRunner.runSelection()),
+    ),
+
+    vscode.commands.registerCommand(
+      "fabric-connect.runSparkJob",
+      (uri?: vscode.Uri) =>
+        runReportingErrors(() => codeRunner.runSparkJob(uri)),
     ),
 
     vscode.commands.registerCommand("fabric-connect.connectCompute", () =>

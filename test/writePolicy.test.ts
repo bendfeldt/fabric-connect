@@ -7,6 +7,7 @@ import { FabricApiClient } from "../src/core/fabricApiClient";
 import { LivySessionManager } from "../src/core/livySessionManager";
 import type { FabricRequestOptions, IAuthProvider } from "../src/core/types";
 import {
+  assertOneLakeWriteAllowed,
   assertWriteAllowed,
   mintUserConfirmation,
   WRITE_ALLOWLIST,
@@ -43,6 +44,11 @@ test("Livy session lifecycle writes are allowed", () => {
   check(req("DELETE", `${LIVY}/sessions/42`));
 });
 
+test("Livy batches (Spark jobs from local files) can be submitted and cancelled", () => {
+  check(req("POST", `${LIVY}/batches`, { body: { file: "abfss://x" } }));
+  check(req("DELETE", `${LIVY}/batches/7`));
+});
+
 test("deployment, item mutation and job-run writes are blocked", () => {
   const blocked: Array<[FabricRequestOptions["method"], string]> = [
     ["POST", `/workspaces/${WS}/items`],
@@ -61,7 +67,8 @@ test("deployment, item mutation and job-run writes are blocked", () => {
     ["POST", `/deploymentPipelines/${ITEM}/deploy`],
     ["POST", `/workspaces`],
     ["POST", `/workspaces/${WS}/assignToCapacity`],
-    ["POST", `${LIVY}/batches`],
+    ["POST", `${LIVY}/batches/7/log`],
+    ["PATCH", `${LIVY}/batches/7`],
   ];
   for (const [method, p] of blocked) {
     assert.throws(
@@ -245,6 +252,8 @@ test("the allowlist is exactly the reviewed set (changing it is a plan change)",
       "DELETE stop a Livy session",
       "POST run a Livy statement",
       "POST cancel a Livy statement",
+      "POST submit a Livy batch (a Spark job from local files)",
+      "DELETE cancel a Livy batch",
       "POST create a Lakehouse (infrastructure, confirmed by the user)",
     ],
   );
@@ -281,4 +290,29 @@ test("only src/vscode/ mints confirmations (core never self-confirms)", () => {
   };
   walk(srcRoot);
   assert.deepEqual(offenders, []);
+});
+
+test("OneLake writes are limited to the scratch folder", () => {
+  assertOneLakeWriteAllowed("PUT", "Files/.fabric-connect/run-1/modules.zip");
+  assertOneLakeWriteAllowed("DELETE", "Files/.fabric-connect/run-1");
+  const blocked = [
+    "Files/data.csv",
+    "Tables/sales",
+    "Files/.fabric-connect",
+    "Files/.fabric-connect/",
+    "Files/.fabric-connect/../data.csv",
+    "Files/.fabric-connect/run/../../Tables/x",
+    "Files/.fabric-connect/./x",
+    "Files/.fabric-connect/run//x",
+    "Files/.fabric-connect/%2e%2e/x",
+    "files/.fabric-connect/run/x",
+    "/Files/.fabric-connect/run/x",
+  ];
+  for (const p of blocked) {
+    assert.throws(
+      () => assertOneLakeWriteAllowed("PUT", p),
+      LocalFirstViolationError,
+      p,
+    );
+  }
 });

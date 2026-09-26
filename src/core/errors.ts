@@ -48,6 +48,15 @@ export class LakehouseError extends FabricConnectError {}
 /** Connecting to compute: capacity, workspace, host Lakehouse, environment. */
 export class ComputeError extends FabricConnectError {}
 
+/** OneLake file operations (browse, preview, scratch staging). */
+export class OneLakeError extends FabricConnectError {}
+
+/** Staging local modules or job files for a run. */
+export class StagingError extends FabricConnectError {}
+
+/** Reading or running a local Spark Job Definition. */
+export class SparkJobError extends FabricConnectError {}
+
 /**
  * A request would write to Fabric outside the local-first allowlist
  * (src/core/writePolicy.ts). Thrown before any network call.

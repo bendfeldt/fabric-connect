@@ -24,6 +24,7 @@ import { type LivyHost, resolveLivyHost } from "../core/livyHost";
 import type {
   ILivySessionManager,
   LivyStatementResult,
+  LivyTarget,
 } from "../core/livySessionManager";
 import type { LocalItemIndex } from "../core/localItemIndex";
 import {
@@ -53,10 +54,15 @@ const RENDERABLE_MIME_TYPES = new Set([
   "application/json",
 ]);
 
-/** Where local `%run` finds other notebooks. */
+/** Where local `%run` finds other notebooks, and how local modules are staged. */
 export interface RunContext {
   readonly index: () => Promise<LocalItemIndex>;
   readonly fs: RunExpansionFileSystem;
+  /**
+   * Python to run before Python code so `import` sees the working tree's
+   * modules (undefined when nothing is configured to stage).
+   */
+  readonly prepare?: (target: LivyTarget) => Promise<string | undefined>;
 }
 
 /**
@@ -300,6 +306,29 @@ export class FabricNotebookController implements vscode.Disposable {
       );
       if (kind === "pyspark" && hasRunMagic(code)) {
         code = await expandRunMagics(code, await this.run.index(), this.run.fs);
+      }
+      if (kind === "pyspark") {
+        const prelude = await this.run.prepare?.(target);
+        if (prelude !== undefined) {
+          const staged = await this.livy.execute(
+            target,
+            prelude,
+            "pyspark",
+            execution.token,
+          );
+          if (staged.status !== "ok") {
+            // Staging the working tree's modules failed: show why, don't
+            // run the cell against stale or missing code.
+            if (staged.status === "cancelled") {
+              await execution.clearOutput();
+              execution.end(undefined, Date.now());
+            } else {
+              await execution.replaceOutput(toCellOutputs(staged));
+              execution.end(false, Date.now());
+            }
+            return;
+          }
+        }
       }
       const result = await this.livy.execute(
         target,
