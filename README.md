@@ -2,10 +2,13 @@
 
 [![Build](https://github.com/bendfeldt/fabric-connect/actions/workflows/build.yml/badge.svg)](https://github.com/bendfeldt/fabric-connect/actions/workflows/build.yml) [![Test](https://github.com/bendfeldt/fabric-connect/actions/workflows/test.yml/badge.svg)](https://github.com/bendfeldt/fabric-connect/actions/workflows/test.yml)
 
-A VS Code extension that brings Microsoft Fabric development into the
-editor: work with the items in your Fabric workspaces — notebooks today,
-pipelines next — using files that stay 100% compatible with the Fabric
-portal, across multiple tenants, without leaving VS Code.
+A VS Code extension for **local-first** Microsoft Fabric development — a
+"Databricks Connect for Fabric": your code lives in your git repo, you
+connect the repo once to Fabric compute (a capacity, a workspace on it and
+a host Lakehouse), and notebooks, files, Spark jobs and query files run
+there from the editor. Nothing is ever deployed: the extension refuses, in
+code, every write that would change a workspace's items. See
+[docs/plan-local-first.md](docs/plan-local-first.md).
 
 The goal is that a Fabric developer can clone a repo, map its folders to
 workspaces, sign in to the right tenant, and edit and run Fabric items
@@ -27,11 +30,11 @@ notebook code.
 
 ## Status
 
-| Part               | Scope                                                                   | State                                                      |
-| ------------------ | ----------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Part 1 — Notebooks | Portal-compatible editing, Lakehouse attach/detach, Livy cell execution | **Implemented** ([design](docs/design-part1-notebooks.md)) |
-| Part 2 — Pipelines | Trigger, monitor, and eventually a visual canvas                        | Planned                                                    |
-| Later              | Other item types, Marketplace publishing                                | Not started                                                |
+| Part               | Scope                                                                                        | State                                                      |
+| ------------------ | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Part 1 — Notebooks | Portal-compatible editing, Lakehouse attach/detach, Livy cell execution                      | **Implemented** ([design](docs/design-part1-notebooks.md)) |
+| Local-first M0–M5  | Compute connection, notebooks complete, run files/jobs, query files, explorer, API notebooks | **Implemented** ([plan](docs/plan-local-first.md))         |
+| Out for now        | Pipelines/dataflows (D1), T-SQL (D2, use `mssql`), deployment of any kind                    | By decision                                                |
 
 ## Features (notebooks)
 
@@ -44,6 +47,24 @@ notebook code.
 - **Livy execution** — run cells against your workspace with session reuse,
   per-session queueing, cancellation, and reattachment to an existing
   session after a VS Code reload.
+
+## Features (local-first)
+
+- **Connect to compute** — pick capacity (SKU) → workspace → host Lakehouse
+  (→ Environment) once per repo; shown in the status bar. Lakehouses are
+  created only on demand, after an explicit confirmation.
+- **Notebooks, complete** — both `.ipynb` and Fabric's git source format
+  (`notebook-content.py`/`.scala`/`.sql`/`.r`), local `%run`, cell magics,
+  `display()` tables, restart/list/stop sessions.
+- **Run files and jobs** — run a file or selection on Fabric; your
+  working tree's Python modules are staged so `import` uses local code;
+  Spark Job Definitions run as Livy batches from local files.
+- **Query files** — `.kql`, `.dax` and `.graphql` run against bound items,
+  results as tables.
+- **Explorer** — read-only capacities/workspaces/items/OneLake/connections
+  view, table and file previews, pull an item into the repo, GUID hover.
+- **API notebooks** — `.fabnb` notebooks with `%api` / `%cmd` cells against
+  the Fabric REST API (reads; writes blocked by the local-first policy).
 
 ## Documentation
 

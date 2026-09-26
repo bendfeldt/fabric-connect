@@ -44,7 +44,7 @@ export type ServiceTarget =
   | { readonly kind: "kusto"; readonly origin: string };
 
 export interface FabricRequestOptions {
-  readonly method: "GET" | "POST" | "PATCH" | "DELETE";
+  readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /** Path relative to the API base, e.g. `/workspaces/{id}/lakehouses`. */
   readonly path: string;
   readonly tenantId: string;

@@ -279,6 +279,39 @@ the explorer has listed, or from your repo's `.platform` logicalIds.
 
 The explorer never changes a workspace: every call is a read.
 
+## 10. API notebooks (`.fabnb`)
+
+For exploring the Fabric REST API, create a notebook with **`Fabric: New
+API Notebook`** (or any `*.fabnb` file). Cells:
+
+```
+%api
+GET /workspaces
+```
+
+```
+%cmd
+SET API_PATH = /workspaces/$(_cells[-1].value[0].id)
+```
+
+```
+GET ./items
+```
+
+- A cell is a request line `METHOD path` (the `%api` line is optional),
+  optionally followed by a JSON body. Paths are relative to the API root
+  (`/…`), to the `API_PATH` variable (`./…`), or full
+  `https://api.fabric.microsoft.com/v1/…` URLs — no other host.
+- `%cmd` cells set (`SET NAME = value`) and show (`SET NAME`) variables.
+- `$(NAME)` inserts a variable; `$(_cells[-1].value[0].id)` reads a value
+  from a previous cell's output (`[-1]` = the cell above, `[2]` = the third
+  cell).
+- List responses show as a table, with the JSON alongside.
+
+Requests go through the same client as everything else, so the local-first
+policy applies: GETs work, and writes that would change a workspace are
+refused before anything is sent.
+
 ## Command reference
 
 | Command                                         | What it does                                                       |
@@ -294,6 +327,7 @@ The explorer never changes a workspace: every call is a read.
 | `Fabric: Run Spark Job Definition`              | Run a local `*.SparkJobDefinition` folder as a Livy batch          |
 | `Fabric: Run Query File`                        | Run a `.kql` / `.dax` / `.graphql` file against its bound item     |
 | `Fabric: Change Query Target`                   | Re-pick the item a query file runs against                         |
+| `Fabric: New API Notebook`                      | Open a new `.fabnb` REST API notebook                              |
 | `Fabric: Connect to Compute`                    | Pick capacity → workspace → host Lakehouse (→ Environment)         |
 | `Fabric: Disconnect from Compute`               | Remove the saved compute connection                                |
 

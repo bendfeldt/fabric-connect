@@ -22,6 +22,11 @@ import { NameCache, guidAt } from "./core/nameCache";
 import { OneLakeClient } from "./core/oneLakeClient";
 import { TargetResolver } from "./core/targetResolver";
 import { EntraAuthProvider } from "./vscode/authProvider";
+import {
+  API_NOTEBOOK_TYPE,
+  ApiNotebookController,
+  ApiNotebookSerializer,
+} from "./vscode/apiNotebookController";
 import { CodeRunner } from "./vscode/codeRunner";
 import { FabricExplorer } from "./vscode/explorer";
 import { ComputeConnection } from "./vscode/computeConnection";
@@ -171,6 +176,17 @@ export function activate(context: vscode.ExtensionContext): void {
     controller,
     codeRunner,
     resultsPanel,
+    vscode.workspace.registerNotebookSerializer(
+      API_NOTEBOOK_TYPE,
+      new ApiNotebookSerializer(),
+      { transientOutputs: true },
+    ),
+    new ApiNotebookController(
+      apiClient,
+      async () =>
+        (await compute())?.tenantId ??
+        context.globalState.get<string>(LAST_TENANT_KEY),
+    ),
     explorer,
     vscode.window.registerTreeDataProvider("fabricConnect.explorer", explorer),
     computeConnection.onDidChange(() => explorer.refresh()),
@@ -384,6 +400,22 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
 
     ...explorerCommands(explorer),
+
+    vscode.commands.registerCommand("fabric-connect.newApiNotebook", () =>
+      runReportingErrors(async () => {
+        const document = await vscode.workspace.openNotebookDocument(
+          API_NOTEBOOK_TYPE,
+          new vscode.NotebookData([
+            new vscode.NotebookCellData(
+              vscode.NotebookCellKind.Code,
+              "%api\nGET /workspaces",
+              "fabric-api",
+            ),
+          ]),
+        );
+        await vscode.window.showNotebookDocument(document);
+      }),
+    ),
 
     vscode.commands.registerCommand("fabric-connect.connectCompute", () =>
       runReportingErrors(() => computeConnection.connect()),

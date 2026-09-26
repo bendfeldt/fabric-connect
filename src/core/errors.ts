@@ -66,6 +66,9 @@ export class PullError extends FabricConnectError {}
 /** Browsing Fabric in the explorer (listings, previews, copy actions). */
 export class ExplorerError extends FabricConnectError {}
 
+/** Running a cell of a `.fabnb` API notebook. */
+export class ApiNotebookError extends FabricConnectError {}
+
 /**
  * A request would write to Fabric outside the local-first allowlist
  * (src/core/writePolicy.ts). Thrown before any network call.
