@@ -46,6 +46,12 @@ export class NotebookFidelityError extends FabricConnectError {}
 export class LakehouseError extends FabricConnectError {}
 
 /**
+ * A request would write to Fabric outside the local-first allowlist
+ * (src/core/writePolicy.ts). Thrown before any network call.
+ */
+export class LocalFirstViolationError extends FabricConnectError {}
+
+/**
  * Infra-level Livy failures (session start, session expiry). A cell's own
  * runtime error is NOT one of these — it is returned as a normal statement
  * result and rendered as the notebook's traceback.

@@ -1,7 +1,8 @@
 /**
  * Fabric API Client (shared): the single typed HTTP client used by the
- * Fidelity, Lakehouse Panel, and Livy modules. Owns retries, backoff, and
- * normalization of every failure into `FabricApiError`. Requests and
+ * Fidelity, Lakehouse Panel, and Livy modules. Owns retries, backoff,
+ * normalization of every failure into `FabricApiError`, and enforcement of
+ * the local-first write allowlist (`writePolicy.ts`). Requests and
  * responses are logged (redacted) when debug logging is on — retries are
  * visible, never silently swallowed.
  */
@@ -14,6 +15,7 @@ import type {
   IAuthProvider,
   IFabricApiClient,
 } from "./types";
+import { assertWriteAllowed } from "./writePolicy";
 
 export interface ApiClientLogger {
   debug(message: string): void;
@@ -61,6 +63,8 @@ export class FabricApiClient implements IFabricApiClient {
     const scopes = options.scopes ?? FABRIC_SCOPES;
     const url = this.baseUrl + options.path;
     const logPath = `${options.method} ${redactPath(options.path)}`;
+    // Local-first: refuse non-allowlisted writes before touching auth or network.
+    assertWriteAllowed(options, logPath);
 
     let lastError: FabricApiError | undefined;
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
