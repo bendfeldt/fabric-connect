@@ -65,8 +65,8 @@ Like round-trip fidelity, local-first must be enforced, not intended:
   OneLake scratch paths). Anything else — `POST /items`, `updateDefinition`,
   `PATCH /items/{id}`, job-scheduler runs, git/deployment-pipeline APIs —
   throws a typed `LocalFirstViolationError` before any network call.
-- **The one infrastructure exception: Lakehouse create (D3).** `POST
-  /workspaces/{id}/lakehouses` is allowed only when the request carries a
+- **The one infrastructure exception: Lakehouse create (D3).**
+  `POST /workspaces/{id}/lakehouses` is allowed only when the request carries a
   `UserConfirmation` value that only the VS Code layer can mint (after a modal
   naming the Lakehouse, workspace and capacity). Without it, the same
   `LocalFirstViolationError`. Lakehouse update/delete stay forbidden.
