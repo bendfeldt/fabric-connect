@@ -65,6 +65,13 @@ export const WRITE_ALLOWLIST: readonly WriteRule[] = [
   },
   {
     method: "POST",
+    pattern: new RegExp(
+      `^/workspaces/${ID}/items/${ID}/getDefinition(\\?format=[A-Za-z0-9]+)?$`,
+    ),
+    purpose: "read an item definition (pull it into the repo)",
+  },
+  {
+    method: "POST",
     pattern: new RegExp(`^/workspaces/${ID}/graphqlapis/${ID}/graphql$`),
     purpose: "run a GraphQL request against an API item (data, not the item)",
   },

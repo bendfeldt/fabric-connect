@@ -60,6 +60,12 @@ export class SparkJobError extends FabricConnectError {}
 /** Running a local query file (KQL, DAX, GraphQL). */
 export class QueryError extends FabricConnectError {}
 
+/** Pulling an item's definition into the repo. */
+export class PullError extends FabricConnectError {}
+
+/** Browsing Fabric in the explorer (listings, previews, copy actions). */
+export class ExplorerError extends FabricConnectError {}
+
 /**
  * A request would write to Fabric outside the local-first allowlist
  * (src/core/writePolicy.ts). Thrown before any network call.

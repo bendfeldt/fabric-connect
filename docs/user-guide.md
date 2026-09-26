@@ -250,6 +250,35 @@ extension. Kusto control commands (`.drop`, `.set`, …) are blocked; only
 the query endpoint is allowed, and a Kusto token is only ever sent to a
 `*.kusto.fabric.microsoft.com` host.
 
+## 9. Fabric explorer (read-only)
+
+The **Fabric** view in VS Code's Explorer side bar browses the tenant you
+are signed in to (or connected to): **Capacities** (SKU, region, state) →
+workspaces on each → items grouped by type; **Workspaces without a
+capacity**; and the tenant's **Connections**. Lakehouses expand into their
+OneLake `Files` and `Tables`.
+
+Right-click actions:
+
+- **Copy ID / Name / OneLake Path** (`abfss://…`).
+- **Copy SQL Connection String** (Lakehouse, Warehouse, SQL endpoint) —
+  paste it into the Microsoft `mssql` extension for T-SQL.
+- **Preview Table** — the first 100 rows, read on the connected compute's
+  Spark session and shown in the Fabric Results panel.
+- **Preview File** — the first 64 KB of a text file, opened as an untitled
+  document.
+- **Pull into Repo…** — writes the item's definition into
+  `<name>.<Type>/` in a folder you pick (the layout Fabric's git
+  integration uses, with a `.platform` file). This is a one-time clone:
+  nothing syncs back, and an existing folder is never overwritten.
+- **Open in Fabric** — the workspace in the Fabric portal.
+
+**GUID hover.** Hover a GUID in any file (notebook metadata, `.platform`,
+`local.json`) to see which workspace, item or capacity it is — from what
+the explorer has listed, or from your repo's `.platform` logicalIds.
+
+The explorer never changes a workspace: every call is a read.
+
 ## Command reference
 
 | Command                                         | What it does                                                       |

@@ -18,10 +18,12 @@ import {
   listLivySessions,
 } from "./core/livySessionManager";
 import { LocalItemIndex } from "./core/localItemIndex";
+import { NameCache, guidAt } from "./core/nameCache";
 import { OneLakeClient } from "./core/oneLakeClient";
 import { TargetResolver } from "./core/targetResolver";
 import { EntraAuthProvider } from "./vscode/authProvider";
 import { CodeRunner } from "./vscode/codeRunner";
+import { FabricExplorer } from "./vscode/explorer";
 import { ComputeConnection } from "./vscode/computeConnection";
 import { makeLakehouseCreator } from "./vscode/lakehouseCreation";
 import { LakehousePanel } from "./vscode/lakehousePanel";
@@ -137,6 +139,17 @@ export function activate(context: vscode.ExtensionContext): void {
     () => promptTenantId(context),
     resultsPanel,
   );
+  const names = new NameCache();
+  const explorer = new FabricExplorer(
+    apiClient,
+    oneLake,
+    livyManager,
+    compute,
+    () => context.globalState.get<string>(LAST_TENANT_KEY),
+    names,
+    resultsPanel,
+    workspaceRoot,
+  );
   const codeRunner = new CodeRunner(
     apiClient,
     livyManager,
@@ -158,6 +171,32 @@ export function activate(context: vscode.ExtensionContext): void {
     controller,
     codeRunner,
     resultsPanel,
+    explorer,
+    vscode.window.registerTreeDataProvider("fabricConnect.explorer", explorer),
+    computeConnection.onDidChange(() => explorer.refresh()),
+    // Hovering a GUID anywhere names the Fabric item, workspace or capacity
+    // behind it (from the explorer's listings and local .platform files).
+    vscode.languages.registerHoverProvider(
+      { scheme: "file" },
+      {
+        provideHover: async (document, position) => {
+          const id = guidAt(
+            document.lineAt(position.line).text,
+            position.character,
+          );
+          if (id === undefined) {
+            return undefined;
+          }
+          const entity = names.lookup(id, await localIndex());
+          if (entity === undefined) {
+            return undefined;
+          }
+          const text = new vscode.MarkdownString();
+          text.appendText(NameCache.describe(entity));
+          return new vscode.Hover(text);
+        },
+      },
+    ),
     vscode.workspace.registerNotebookSerializer(NOTEBOOK_TYPE, serializer, {
       transientOutputs: true,
     }),
@@ -174,6 +213,7 @@ export function activate(context: vscode.ExtensionContext): void {
           return;
         }
         await auth.getToken(tenantId, FABRIC_SCOPES);
+        explorer.refresh();
         void vscode.window.showInformationMessage(
           `Signed in to tenant ${tenantId}.`,
         );
@@ -343,6 +383,8 @@ export function activate(context: vscode.ExtensionContext): void {
       runReportingErrors(() => queryRunner.changeTarget()),
     ),
 
+    ...explorerCommands(explorer),
+
     vscode.commands.registerCommand("fabric-connect.connectCompute", () =>
       runReportingErrors(() => computeConnection.connect()),
     ),
@@ -387,4 +429,30 @@ async function promptTenantId(
     await context.globalState.update(LAST_TENANT_KEY, tenantId);
   }
   return tenantId;
+}
+
+/** Explorer context-menu commands; each receives the clicked tree node. */
+function explorerCommands(explorer: FabricExplorer): vscode.Disposable[] {
+  type Node = Parameters<FabricExplorer["copyId"]>[0];
+  const actions: Record<string, (node: Node) => Promise<void>> = {
+    "explorer.copyId": (n) => explorer.copyId(n),
+    "explorer.copyName": (n) => explorer.copyName(n),
+    "explorer.copyOneLakePath": (n) => explorer.copyOneLakePath(n),
+    "explorer.copySqlConnectionString": (n) =>
+      explorer.copySqlConnectionString(n),
+    "explorer.previewTable": (n) => explorer.previewTable(n),
+    "explorer.previewFile": (n) => explorer.previewFile(n),
+    "explorer.pullItem": (n) => explorer.pullItem(n),
+    "explorer.openInFabric": (n) => explorer.openInFabric(n),
+  };
+  return [
+    vscode.commands.registerCommand("fabric-connect.explorer.refresh", () =>
+      explorer.refresh(),
+    ),
+    ...Object.entries(actions).map(([id, action]) =>
+      vscode.commands.registerCommand(`fabric-connect.${id}`, (node: Node) =>
+        runReportingErrors(() => action(node)),
+      ),
+    ),
+  ];
 }

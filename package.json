@@ -106,6 +106,56 @@
       {
         "command": "fabric-connect.changeQueryTarget",
         "title": "Fabric: Change Query Target"
+      },
+      {
+        "command": "fabric-connect.explorer.refresh",
+        "title": "Refresh",
+        "category": "Fabric",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "fabric-connect.explorer.copyId",
+        "title": "Copy ID",
+        "category": "Fabric"
+      },
+      {
+        "command": "fabric-connect.explorer.copyName",
+        "title": "Copy Name",
+        "category": "Fabric"
+      },
+      {
+        "command": "fabric-connect.explorer.copyOneLakePath",
+        "title": "Copy OneLake Path",
+        "category": "Fabric"
+      },
+      {
+        "command": "fabric-connect.explorer.copySqlConnectionString",
+        "title": "Copy SQL Connection String",
+        "category": "Fabric"
+      },
+      {
+        "command": "fabric-connect.explorer.previewTable",
+        "title": "Preview Table",
+        "category": "Fabric",
+        "icon": "$(table)"
+      },
+      {
+        "command": "fabric-connect.explorer.previewFile",
+        "title": "Preview File",
+        "category": "Fabric",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "fabric-connect.explorer.pullItem",
+        "title": "Pull into Repo…",
+        "category": "Fabric",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "fabric-connect.explorer.openInFabric",
+        "title": "Open in Fabric",
+        "category": "Fabric",
+        "icon": "$(link-external)"
       }
     ],
     "configuration": {
@@ -158,7 +208,94 @@
           "group": "fabric"
         }
       ],
-      "commandPalette": []
+      "commandPalette": [
+        {
+          "command": "fabric-connect.explorer.copyId",
+          "when": "false"
+        },
+        {
+          "command": "fabric-connect.explorer.copyName",
+          "when": "false"
+        },
+        {
+          "command": "fabric-connect.explorer.copyOneLakePath",
+          "when": "false"
+        },
+        {
+          "command": "fabric-connect.explorer.copySqlConnectionString",
+          "when": "false"
+        },
+        {
+          "command": "fabric-connect.explorer.previewTable",
+          "when": "false"
+        },
+        {
+          "command": "fabric-connect.explorer.previewFile",
+          "when": "false"
+        },
+        {
+          "command": "fabric-connect.explorer.pullItem",
+          "when": "false"
+        },
+        {
+          "command": "fabric-connect.explorer.openInFabric",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "fabric-connect.explorer.refresh",
+          "when": "view == fabricConnect.explorer",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "fabric-connect.explorer.pullItem",
+          "when": "view == fabricConnect.explorer && viewItem =~ /fabricItem/",
+          "group": "1_pull"
+        },
+        {
+          "command": "fabric-connect.explorer.copySqlConnectionString",
+          "when": "view == fabricConnect.explorer && viewItem =~ /\\bsql\\b/",
+          "group": "2_copy"
+        },
+        {
+          "command": "fabric-connect.explorer.copyId",
+          "when": "view == fabricConnect.explorer && viewItem =~ /fabric(Item|Workspace|Capacity|Connection)/",
+          "group": "2_copy"
+        },
+        {
+          "command": "fabric-connect.explorer.copyName",
+          "when": "view == fabricConnect.explorer && viewItem =~ /fabric/",
+          "group": "2_copy"
+        },
+        {
+          "command": "fabric-connect.explorer.copyOneLakePath",
+          "when": "view == fabricConnect.explorer && viewItem =~ /fabric(Table|Folder|File|Item)/",
+          "group": "2_copy"
+        },
+        {
+          "command": "fabric-connect.explorer.previewTable",
+          "when": "view == fabricConnect.explorer && viewItem == fabricTable",
+          "group": "inline"
+        },
+        {
+          "command": "fabric-connect.explorer.previewTable",
+          "when": "view == fabricConnect.explorer && viewItem == fabricTable",
+          "group": "0_preview"
+        },
+        {
+          "command": "fabric-connect.explorer.previewFile",
+          "when": "view == fabricConnect.explorer && viewItem == fabricFile",
+          "group": "0_preview"
+        },
+        {
+          "command": "fabric-connect.explorer.openInFabric",
+          "when": "view == fabricConnect.explorer && viewItem =~ /fabric(Item|Workspace)/",
+          "group": "3_open"
+        }
+      ]
     },
     "languages": [
       {
@@ -191,7 +328,15 @@
           ".gql"
         ]
       }
-    ]
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "fabricConnect.explorer",
+          "name": "Fabric"
+        }
+      ]
+    }
   },
   "scripts": {
     "compile": "tsc -p ./",
