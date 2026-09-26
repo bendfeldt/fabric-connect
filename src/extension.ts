@@ -26,6 +26,8 @@ import { ComputeConnection } from "./vscode/computeConnection";
 import { makeLakehouseCreator } from "./vscode/lakehouseCreation";
 import { LakehousePanel } from "./vscode/lakehousePanel";
 import { ModuleStager } from "./vscode/moduleStager";
+import { QueryRunner } from "./vscode/queryRunner";
+import { ResultsPanel } from "./vscode/resultsPanel";
 import {
   FabricNotebookController,
   resolveNotebookHost,
@@ -127,6 +129,14 @@ export function activate(context: vscode.ExtensionContext): void {
     compute,
     runContext,
   );
+  const resultsPanel = new ResultsPanel();
+  const queryRunner = new QueryRunner(
+    apiClient,
+    workspaceRoot,
+    compute,
+    () => promptTenantId(context),
+    resultsPanel,
+  );
   const codeRunner = new CodeRunner(
     apiClient,
     livyManager,
@@ -147,6 +157,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     controller,
     codeRunner,
+    resultsPanel,
     vscode.workspace.registerNotebookSerializer(NOTEBOOK_TYPE, serializer, {
       transientOutputs: true,
     }),
@@ -322,6 +333,14 @@ export function activate(context: vscode.ExtensionContext): void {
       "fabric-connect.runSparkJob",
       (uri?: vscode.Uri) =>
         runReportingErrors(() => codeRunner.runSparkJob(uri)),
+    ),
+
+    vscode.commands.registerCommand("fabric-connect.runQuery", () =>
+      runReportingErrors(() => queryRunner.runActiveFile()),
+    ),
+
+    vscode.commands.registerCommand("fabric-connect.changeQueryTarget", () =>
+      runReportingErrors(() => queryRunner.changeTarget()),
     ),
 
     vscode.commands.registerCommand("fabric-connect.connectCompute", () =>

@@ -33,17 +33,27 @@ Source of truth for scope: `docs/plan-local-first.md` (local-first, no deploymen
   Definitions as Livy batches from local `Main/` + `Libs/`, state/log
   streaming, cancel; allowlist gained Livy batch submit/cancel.
 
+- M3 — query files: `.kql` (Kusto `/v1/rest/query`), `.dax` (Power BI
+  `executeQueries`), `.graphql` (GraphQL API endpoint), each an executor in
+  a registry; per-file bindings in `local.json`; Results webview (no
+  scripts, escaped). API client routes by `service` (fabric / powerbi /
+  kusto); Kusto origin validated before any token; allowlist gained the
+  three query endpoints only.
+
 ## Next
 
 The user asked for all milestones in one run (overriding the
 one-feature-per-session default); they ship as stacked PRs, one per
-milestone. Next: M3 — KQL, DAX, GraphQL query files.
+milestone. Next: M4 — read-only explorer.
 
 Remaining milestones M1–M5: see `docs/plan-local-first.md`.
 
 ## Open issues
 
 - Decisions D1–D4 are recorded in `docs/plan-local-first.md`.
+- Power BI and Kusto scopes go through VS Code's Microsoft auth provider;
+  whether its client has consent for them in every tenant is unverified
+  (a consent prompt may appear on first use).
 - Fabric's Livy batch log endpoint is not documented; logs are fetched
   best effort and skipped after the first failure.
 - The layout of a Spark Job Definition's git folder (`Main/`, `Libs/`) is

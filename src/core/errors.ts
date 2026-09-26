@@ -57,6 +57,9 @@ export class StagingError extends FabricConnectError {}
 /** Reading or running a local Spark Job Definition. */
 export class SparkJobError extends FabricConnectError {}
 
+/** Running a local query file (KQL, DAX, GraphQL). */
+export class QueryError extends FabricConnectError {}
+
 /**
  * A request would write to Fabric outside the local-first allowlist
  * (src/core/writePolicy.ts). Thrown before any network call.

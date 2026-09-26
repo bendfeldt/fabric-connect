@@ -16,6 +16,18 @@ export const FABRIC_SCOPES: readonly string[] = [
   "https://api.fabric.microsoft.com/.default",
 ];
 
+/** Power BI REST API (DAX queries against semantic models). */
+export const POWERBI_API_BASE_URL = "https://api.powerbi.com";
+
+export const POWERBI_SCOPES: readonly string[] = [
+  "https://analysis.windows.net/powerbi/api/.default",
+];
+
+/** Kusto (Eventhouse / KQL database) queries; the generic Kusto audience. */
+export const KUSTO_SCOPES: readonly string[] = [
+  "https://kusto.kusto.windows.net/.default",
+];
+
 /** OneLake DFS endpoint (ADLS Gen2-compatible). */
 export const ONELAKE_BASE_URL = "https://onelake.dfs.fabric.microsoft.com";
 
