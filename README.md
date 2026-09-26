@@ -51,8 +51,8 @@ notebook code.
 ## Features (local-first)
 
 - **Connect to compute** — pick capacity (SKU) → workspace → host Lakehouse
-  (→ Environment) once per repo; shown in the status bar. Lakehouses are
-  created only on demand, after an explicit confirmation.
+  (→ Environment) once per repo; shown in the status bar. The extension
+  never creates Lakehouses (or any item): you pick an existing one.
 - **Notebooks, complete** — both `.ipynb` and Fabric's git source format
   (`notebook-content.py`/`.scala`/`.sql`/`.r`), local `%run`, cell magics,
   `display()` tables, restart/list/stop sessions.
