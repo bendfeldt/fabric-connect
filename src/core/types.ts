@@ -31,6 +31,16 @@ export interface IFabricApiClient {
   request<T>(options: FabricRequestOptions): Promise<FabricResponse<T>>;
 }
 
+/**
+ * Which API a request goes to: the Fabric REST API when omitted, the Power
+ * BI REST API, or a Fabric Kusto endpoint (its origin validated by the
+ * write policy before any token is attached).
+ */
+export type ServiceTarget =
+  | { readonly kind: "fabric" }
+  | { readonly kind: "powerbi" }
+  | { readonly kind: "kusto"; readonly origin: string };
+
 export interface FabricRequestOptions {
   readonly method: "GET" | "POST" | "PATCH" | "DELETE";
   /** Path relative to the API base, e.g. `/workspaces/{id}/lakehouses`. */
@@ -38,6 +48,9 @@ export interface FabricRequestOptions {
   readonly tenantId: string;
   readonly body?: unknown;
   readonly scopes?: readonly string[];
+  /** The API the path belongs to; the Fabric REST API when omitted. */
+  readonly service?: ServiceTarget;
+  /** Required only by allowlist rules for confirmed infrastructure writes. */
 }
 
 export interface FabricResponse<T> {

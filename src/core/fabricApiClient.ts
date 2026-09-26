@@ -7,7 +7,13 @@
  * visible, never silently swallowed.
  */
 
-import { FABRIC_API_BASE_URL, FABRIC_SCOPES } from "./constants";
+import {
+  FABRIC_API_BASE_URL,
+  FABRIC_SCOPES,
+  KUSTO_SCOPES,
+  POWERBI_API_BASE_URL,
+  POWERBI_SCOPES,
+} from "./constants";
 import { FabricApiError } from "./errors";
 import type {
   FabricRequestOptions,
@@ -15,7 +21,7 @@ import type {
   IAuthProvider,
   IFabricApiClient,
 } from "./types";
-import { assertWriteAllowed } from "./writePolicy";
+import { assertWriteAllowed, serviceOrigin } from "./writePolicy";
 
 export interface ApiClientLogger {
   debug(message: string): void;
@@ -60,11 +66,25 @@ export class FabricApiClient implements IFabricApiClient {
   }
 
   async request<T>(options: FabricRequestOptions): Promise<FabricResponse<T>> {
-    const scopes = options.scopes ?? FABRIC_SCOPES;
-    const url = this.baseUrl + options.path;
     const logPath = `${options.method} ${redactPath(options.path)}`;
-    // Local-first: refuse non-allowlisted writes before touching auth or network.
+    // Local-first: refuse non-allowlisted writes (and unknown hosts) before
+    // touching auth or network.
     assertWriteAllowed(options, logPath);
+    const service = options.service ?? { kind: "fabric" };
+    const scopes =
+      options.scopes ??
+      (service.kind === "powerbi"
+        ? POWERBI_SCOPES
+        : service.kind === "kusto"
+          ? KUSTO_SCOPES
+          : FABRIC_SCOPES);
+    const base =
+      service.kind === "fabric"
+        ? this.baseUrl
+        : service.kind === "powerbi"
+          ? POWERBI_API_BASE_URL
+          : serviceOrigin(service);
+    const url = base + options.path;
 
     let lastError: FabricApiError | undefined;
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {

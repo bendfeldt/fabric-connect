@@ -97,6 +97,15 @@
       {
         "command": "fabric-connect.runSparkJob",
         "title": "Fabric: Run Spark Job Definition"
+      },
+      {
+        "command": "fabric-connect.runQuery",
+        "title": "Fabric: Run Query File",
+        "icon": "$(play)"
+      },
+      {
+        "command": "fabric-connect.changeQueryTarget",
+        "title": "Fabric: Change Query Target"
       }
     ],
     "configuration": {
@@ -123,6 +132,11 @@
           "command": "fabric-connect.runFile",
           "when": "resourceLangId == python || resourceLangId == sql || resourceLangId == scala || resourceLangId == r",
           "group": "fabric"
+        },
+        {
+          "command": "fabric-connect.runQuery",
+          "when": "resourceExtname == .kql || resourceExtname == .csl || resourceExtname == .dax || resourceExtname == .graphql || resourceExtname == .gql",
+          "group": "fabric"
         }
       ],
       "editor/context": [
@@ -143,8 +157,41 @@
           "when": "explorerResourceIsFolder && resourceFilename =~ /\\.SparkJobDefinition$/",
           "group": "fabric"
         }
-      ]
-    }
+      ],
+      "commandPalette": []
+    },
+    "languages": [
+      {
+        "id": "kql",
+        "aliases": [
+          "KQL",
+          "Kusto"
+        ],
+        "extensions": [
+          ".kql",
+          ".csl"
+        ]
+      },
+      {
+        "id": "dax",
+        "aliases": [
+          "DAX"
+        ],
+        "extensions": [
+          ".dax"
+        ]
+      },
+      {
+        "id": "graphql",
+        "aliases": [
+          "GraphQL"
+        ],
+        "extensions": [
+          ".graphql",
+          ".gql"
+        ]
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p ./",

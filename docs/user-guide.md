@@ -228,6 +228,29 @@ The Databricks Connect workflow: edit locally, run on Fabric.
 Staging writes only to `Files/.fabric-connect/` of the host Lakehouse; any
 other OneLake write is blocked in code.
 
+## 8. Query files: KQL, DAX, GraphQL
+
+Keep queries as files in your repo and run them against existing items:
+
+| File                | Runs against     | How                                 |
+| ------------------- | ---------------- | ----------------------------------- |
+| `.kql` / `.csl`     | a KQL database   | Kusto query endpoint (queries only) |
+| `.dax`              | a semantic model | Power BI `executeQueries`           |
+| `.graphql` / `.gql` | a GraphQL API    | the API's GraphQL endpoint          |
+
+Run **`Fabric: Run Query File`** (▷ in the editor title). The first run
+asks which workspace and item the file runs against and remembers it under
+`"queryBindings"` in `.fabric/local.json`; **`Fabric: Change Query
+Target`** re-picks. With a selection, only the selection runs. Results open
+in a **Fabric Results** panel as tables. A GraphQL file can pass variables
+on a comment line: `# variables: {"first": 10}`.
+
+T-SQL is intentionally not included: copy a Lakehouse's or Warehouse's SQL
+connection string from the Fabric explorer and use the Microsoft `mssql`
+extension. Kusto control commands (`.drop`, `.set`, …) are blocked; only
+the query endpoint is allowed, and a Kusto token is only ever sent to a
+`*.kusto.fabric.microsoft.com` host.
+
 ## Command reference
 
 | Command                                         | What it does                                                       |
@@ -241,6 +264,8 @@ other OneLake write is blocked in code.
 | `Fabric: Run File on Fabric`                    | Run the active (or selected) Python/SQL/Scala/R file               |
 | `Fabric: Run Selection on Fabric`               | Run the selection or current line                                  |
 | `Fabric: Run Spark Job Definition`              | Run a local `*.SparkJobDefinition` folder as a Livy batch          |
+| `Fabric: Run Query File`                        | Run a `.kql` / `.dax` / `.graphql` file against its bound item     |
+| `Fabric: Change Query Target`                   | Re-pick the item a query file runs against                         |
 | `Fabric: Connect to Compute`                    | Pick capacity → workspace → host Lakehouse (→ Environment)         |
 | `Fabric: Disconnect from Compute`               | Remove the saved compute connection                                |
 
