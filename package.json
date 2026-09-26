@@ -84,6 +84,19 @@
       {
         "command": "fabric-connect.showLivySessions",
         "title": "Fabric: Show Livy Sessions"
+      },
+      {
+        "command": "fabric-connect.runFile",
+        "title": "Fabric: Run File on Fabric",
+        "icon": "$(play)"
+      },
+      {
+        "command": "fabric-connect.runSelection",
+        "title": "Fabric: Run Selection on Fabric"
+      },
+      {
+        "command": "fabric-connect.runSparkJob",
+        "title": "Fabric: Run Spark Job Definition"
       }
     ],
     "configuration": {
@@ -93,8 +106,44 @@
           "type": "boolean",
           "default": false,
           "description": "Log redacted Fabric API requests/responses to the 'Fabric Connect' output channel."
+        },
+        "fabric-connect.sourceRoots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Workspace-relative folders whose Python modules are staged to the Spark session before Python code runs, so `import` uses your working tree (e.g. [\"src\"])."
         }
       }
+    },
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "fabric-connect.runFile",
+          "when": "resourceLangId == python || resourceLangId == sql || resourceLangId == scala || resourceLangId == r",
+          "group": "fabric"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "fabric-connect.runSelection",
+          "when": "editorHasSelection && (resourceLangId == python || resourceLangId == sql || resourceLangId == scala || resourceLangId == r)",
+          "group": "fabric"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "fabric-connect.runFile",
+          "when": "!explorerResourceIsFolder && (resourceLangId == python || resourceLangId == sql || resourceLangId == scala || resourceLangId == r)",
+          "group": "fabric"
+        },
+        {
+          "command": "fabric-connect.runSparkJob",
+          "when": "explorerResourceIsFolder && resourceFilename =~ /\\.SparkJobDefinition$/",
+          "group": "fabric"
+        }
+      ]
     }
   },
   "scripts": {

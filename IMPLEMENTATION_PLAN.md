@@ -26,19 +26,29 @@ Source of truth for scope: `docs/plan-local-first.md` (local-first, no deploymen
   via a per-session bootstrap + SQL results as tables; restart session;
   session list with stop; pure-Python notebook notice (D4).
 
+- M2 — run files and jobs: Run File / Run Selection (output channel);
+  OneLake client (scratch-only writes enforced by `assertOneLakeWriteAllowed`);
+  deterministic zip + module staging via `fabric-connect.sourceRoots`
+  (idempotent `addPyFile` prelude, stale-module purge); Spark Job
+  Definitions as Livy batches from local `Main/` + `Libs/`, state/log
+  streaming, cancel; allowlist gained Livy batch submit/cancel.
+
 ## Next
 
 The user asked for all milestones in one run (overriding the
 one-feature-per-session default); they ship as stacked PRs, one per
-milestone. Next: M2 — run files, module staging, Spark job batches.
+milestone. Next: M3 — KQL, DAX, GraphQL query files.
 
 Remaining milestones M1–M5: see `docs/plan-local-first.md`.
 
 ## Open issues
 
 - Decisions D1–D4 are recorded in `docs/plan-local-first.md`.
-- Livy batches and OneLake scratch writes are not yet on the allowlist; add
-  them (with tests) in the milestones that need them (M2).
+- Fabric's Livy batch log endpoint is not documented; logs are fetched
+  best effort and skipped after the first failure.
+- The layout of a Spark Job Definition's git folder (`Main/`, `Libs/`) is
+  assumed from Fabric's item definition docs; not checked against a live
+  export in this environment.
 - The VS Code layer (quick picks, status bar) is compiled but was
   not exercised in a running VS Code in this environment; core logic is
   unit-tested against faked HTTP.

@@ -15,3 +15,14 @@ export const LIVY_API_VERSION = "2023-12-01";
 export const FABRIC_SCOPES: readonly string[] = [
   "https://api.fabric.microsoft.com/.default",
 ];
+
+/** OneLake DFS endpoint (ADLS Gen2-compatible). */
+export const ONELAKE_BASE_URL = "https://onelake.dfs.fabric.microsoft.com";
+
+/** ADLS Gen2 REST API version sent as `x-ms-version`. */
+export const ONELAKE_API_VERSION = "2023-11-03";
+
+/** Delegated scope for OneLake (Azure Storage audience). */
+export const STORAGE_SCOPES: readonly string[] = [
+  "https://storage.azure.com/.default",
+];

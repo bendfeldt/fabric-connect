@@ -194,6 +194,40 @@ render as a table too.
 one-time notice says so, because the runtime can differ slightly from
 Fabric's Python-only runtime.
 
+## 7. Run files, selections and Spark jobs
+
+The Databricks Connect workflow: edit locally, run on Fabric.
+
+- **`Fabric: Run File on Fabric`** (▷ in the editor title, or Explorer
+  context menu) runs a whole `.py`, `.sql`, `.scala` or `.r` file;
+  **`Fabric: Run Selection on Fabric`** runs the selection (or the current
+  line). Files run on the connected compute (section 5; a folder
+  target in another tenant is refused), in the same session as your
+  notebooks on that host. `%run` and cell magics work as in notebooks.
+  Output (text, `display()` tables as text) appears in the **Fabric
+  Connect: Run** output channel.
+- **Your local modules.** Set **`fabric-connect.sourceRoots`** (e.g.
+  `["src"]`) and every Python run — notebook cells included — first stages
+  the `.py` files under those folders to the session: they are zipped,
+  uploaded to the host Lakehouse's scratch folder `Files/.fabric-connect/`,
+  added with `addPyFile`, and stale copies are dropped from `sys.modules`.
+  `import mypkg` then loads your working tree's code. Unchanged sources are
+  not re-uploaded. The scratch folder is deleted when you stop or restart
+  the session.
+- **Spark Job Definitions.** Right-click a `*.SparkJobDefinition` folder →
+  **`Fabric: Run Spark Job Definition`**. Settings (arguments, main class,
+  libraries, default Lakehouse, Environment) come from
+  `SparkJobDefinitionV1.json`; the main file from the folder's `Main/`
+  (or next to the settings file) and libraries from `Libs/` — local files
+  only. They are staged to the scratch folder and submitted as a Livy
+  batch; state changes (and driver logs, where the service provides them)
+  stream to the output channel, and cancelling the progress notification
+  cancels the batch. Nothing is published to the Spark Job Definition
+  item.
+
+Staging writes only to `Files/.fabric-connect/` of the host Lakehouse; any
+other OneLake write is blocked in code.
+
 ## Command reference
 
 | Command                                         | What it does                                                       |
@@ -204,6 +238,9 @@ Fabric's Python-only runtime.
 | `Fabric: Stop Livy Session`                     | Stop the active notebook's Livy session                            |
 | `Fabric: Restart Livy Session`                  | Stop and immediately start a fresh session                         |
 | `Fabric: Show Livy Sessions`                    | List active sessions on the host Lakehouse; stop selected ones     |
+| `Fabric: Run File on Fabric`                    | Run the active (or selected) Python/SQL/Scala/R file               |
+| `Fabric: Run Selection on Fabric`               | Run the selection or current line                                  |
+| `Fabric: Run Spark Job Definition`              | Run a local `*.SparkJobDefinition` folder as a Livy batch          |
 | `Fabric: Connect to Compute`                    | Pick capacity → workspace → host Lakehouse (→ Environment)         |
 | `Fabric: Disconnect from Compute`               | Remove the saved compute connection                                |
 
@@ -212,6 +249,7 @@ Fabric's Python-only runtime.
 | Setting                       | Default | Effect                                                                                                 |
 | ----------------------------- | ------- | ------------------------------------------------------------------------------------------------------ |
 | `fabric-connect.debugLogging` | `false` | Log redacted Fabric API requests/responses (retries included) to the **Fabric Connect** output channel |
+| `fabric-connect.sourceRoots`  | `[]`    | Workspace-relative folders whose Python modules are staged to the session before Python code runs      |
 
 Logs are always redacted: tokens, tenant IDs, workspace IDs, and cell
 contents never appear in them.
