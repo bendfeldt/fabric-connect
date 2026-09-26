@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { FabricApiError, LivyError } from "../src/core/errors";
 import {
   LivySessionManager,
+  listLivySessions,
   type LivyTarget,
   type SessionStore,
 } from "../src/core/livySessionManager";
@@ -359,4 +360,119 @@ test("an Environment is attached at session start and keys its own session", asy
       `livy-session/${TARGET.tenantId}/${TARGET.workspaceId}/${TARGET.lakehouseId}/${ENV}`,
     ],
   );
+});
+
+test("the bootstrap runs once per session, before the first statement", async () => {
+  const submitted: string[] = [];
+  const api = scriptedApi([
+    [/POST .*\/sessions$/, () => ({ id: 5, state: "idle" })],
+    [/GET .*\/sessions\/5$/, () => ({ id: 5, state: "idle" })],
+    [
+      /POST .*\/sessions\/5\/statements$/,
+      (options) => {
+        const code = (options.body as { code: string }).code;
+        submitted.push(code);
+        return { id: submitted.length, state: "waiting" };
+      },
+    ],
+    [
+      /GET .*\/sessions\/5\/statements\/\d+$/,
+      () => ({ id: 1, state: "available", output: { status: "ok", data: {} } }),
+    ],
+  ]);
+  const livy = new LivySessionManager(api, memoryStore(), {
+    pollIntervalMs: 0,
+    sleep: async () => undefined,
+    bootstrap: { code: "def display(x): pass", kind: "pyspark" },
+  });
+  await livy.execute(TARGET, "a = 1", "pyspark", NEVER_CANCELLED);
+  await livy.execute(TARGET, "b = 2", "pyspark", NEVER_CANCELLED);
+  assert.deepEqual(submitted, ["def display(x): pass", "a = 1", "b = 2"]);
+});
+
+test("a failing bootstrap does not fail the user's statement", async () => {
+  let first = true;
+  const api = scriptedApi([
+    [/POST .*\/sessions$/, () => ({ id: 5, state: "idle" })],
+    [/GET .*\/sessions\/5$/, () => ({ id: 5, state: "idle" })],
+    [
+      /POST .*\/sessions\/5\/statements$/,
+      () => {
+        if (first) {
+          first = false;
+          return new Error("bootstrap rejected");
+        }
+        return { id: 2, state: "waiting" };
+      },
+    ],
+    [
+      /GET .*\/sessions\/5\/statements\/2$/,
+      () => ({
+        id: 2,
+        state: "available",
+        output: { status: "ok", data: { "text/plain": "ok" } },
+      }),
+    ],
+  ]);
+  const livy = new LivySessionManager(api, memoryStore(), {
+    pollIntervalMs: 0,
+    sleep: async () => undefined,
+    bootstrap: { code: "boom", kind: "pyspark" },
+  });
+  const result = await livy.execute(TARGET, "x", "pyspark", NEVER_CANCELLED);
+  assert.deepEqual(result.data, { "text/plain": "ok" });
+});
+
+test("startSession starts eagerly; stopSessionById stops orphans and our own", async () => {
+  const deleted: string[] = [];
+  const api = scriptedApi([
+    [/POST .*\/sessions$/, () => ({ id: 8, state: "idle" })],
+    [/GET .*\/sessions\/8$/, () => ({ id: 8, state: "idle" })],
+    [
+      /DELETE .*\/sessions\/[\w-]+$/,
+      (options) => {
+        deleted.push(options.path.split("/").pop() ?? "");
+        return {};
+      },
+    ],
+  ]);
+  const store = memoryStore();
+  const livy = manager(api, store);
+  await livy.startSession(TARGET, NEVER_CANCELLED);
+  assert.equal([...store.data.values()][0], "8");
+  await livy.stopSessionById(TARGET, "orphan-1");
+  assert.equal([...store.data.values()][0], "8", "orphan stop keeps ours");
+  await livy.stopSessionById(TARGET, "8");
+  assert.deepEqual(deleted, ["orphan-1", "8"]);
+  assert.equal(store.data.size, 0);
+});
+
+test("listLivySessions maps the monitoring API and skips entries without IDs", async () => {
+  const api = scriptedApi([
+    [
+      /GET \/workspaces\/.*\/lakehouses\/.*\/livySessions$/,
+      () => ({
+        value: [
+          {
+            livyId: "abc",
+            state: "InProgress",
+            jobType: "SparkSession",
+            livyName: "my session",
+            submittedDateTime: "2026-09-26T10:00:00Z",
+          },
+          { state: "Succeeded" },
+        ],
+      }),
+    ],
+  ]);
+  assert.deepEqual(await listLivySessions(api, TARGET), [
+    {
+      livyId: "abc",
+      state: "InProgress",
+      jobType: "SparkSession",
+      name: "my session",
+      itemName: undefined,
+      submittedDateTime: "2026-09-26T10:00:00Z",
+    },
+  ]);
 });

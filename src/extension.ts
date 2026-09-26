@@ -12,7 +12,12 @@ import * as fs from "node:fs/promises";
 import * as vscode from "vscode";
 import { FABRIC_SCOPES } from "./core/constants";
 import { FabricApiClient } from "./core/fabricApiClient";
-import { LivySessionManager } from "./core/livySessionManager";
+import { DISPLAY_BOOTSTRAP_CODE } from "./core/displayProtocol";
+import {
+  LivySessionManager,
+  listLivySessions,
+} from "./core/livySessionManager";
+import { LocalItemIndex } from "./core/localItemIndex";
 import { TargetResolver } from "./core/targetResolver";
 import { EntraAuthProvider } from "./vscode/authProvider";
 import { ComputeConnection } from "./vscode/computeConnection";
@@ -23,7 +28,10 @@ import {
 } from "./vscode/notebookController";
 import {
   FabricNotebookSerializer,
+  FabricSourceNotebookSerializer,
+  NOTEBOOK_SOURCE_TYPE,
   NOTEBOOK_TYPE,
+  isFabricNotebook,
 } from "./vscode/notebookSerializer";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -61,12 +69,35 @@ export function activate(context: vscode.ExtensionContext): void {
   // touching the Target Config Module.
   targetResolver.registerItemType("notebook", { itemType: "notebook" });
 
-  const livyManager = new LivySessionManager(apiClient, {
-    get: (key) => context.workspaceState.get<string>(key),
-    set: (key, value) => {
-      void context.workspaceState.update(key, value);
+  const livyManager = new LivySessionManager(
+    apiClient,
+    {
+      get: (key) => context.workspaceState.get<string>(key),
+      set: (key, value) => {
+        void context.workspaceState.update(key, value);
+      },
     },
-  });
+    // Defines display() in every session so DataFrames render as tables.
+    { bootstrap: { code: DISPLAY_BOOTSTRAP_CODE, kind: "pyspark" } },
+  );
+
+  const readFile = async (filePath: string): Promise<string | undefined> => {
+    try {
+      return await fs.readFile(filePath, "utf8");
+    } catch {
+      return undefined;
+    }
+  };
+  // Items in this working tree, from their .platform files (rebuilt on use,
+  // so newly pulled or renamed notebooks are always seen).
+  const localIndex = () =>
+    LocalItemIndex.build({
+      findPlatformFiles: async () =>
+        (
+          await vscode.workspace.findFiles("**/.platform", "**/node_modules/**")
+        ).map((uri) => uri.fsPath),
+      readFile,
+    });
 
   const computeConnection = new ComputeConnection(
     apiClient,
@@ -80,8 +111,9 @@ export function activate(context: vscode.ExtensionContext): void {
     livyManager,
     targetResolver,
     compute,
+    { index: localIndex, fs: { readFile } },
   );
-  const lakehousePanel = new LakehousePanel(apiClient, targetResolver);
+  const lakehousePanel = new LakehousePanel(apiClient, targetResolver, compute);
 
   void computeConnection.refreshStatus();
 
@@ -95,6 +127,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.registerNotebookSerializer(NOTEBOOK_TYPE, serializer, {
       transientOutputs: true,
     }),
+    vscode.workspace.registerNotebookSerializer(
+      NOTEBOOK_SOURCE_TYPE,
+      new FabricSourceNotebookSerializer(),
+      { transientOutputs: true },
+    ),
 
     vscode.commands.registerCommand("fabric-connect.signIn", () =>
       runReportingErrors(async () => {
@@ -128,7 +165,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("fabric-connect.manageLakehouses", () =>
       runReportingErrors(async () => {
         const notebook = vscode.window.activeNotebookEditor?.notebook;
-        if (notebook === undefined || notebook.notebookType !== NOTEBOOK_TYPE) {
+        if (notebook === undefined || !isFabricNotebook(notebook)) {
           void vscode.window.showWarningMessage(
             "Open a Fabric notebook first, then run this command to manage its lakehouses.",
           );
@@ -141,7 +178,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("fabric-connect.stopLivySession", () =>
       runReportingErrors(async () => {
         const notebook = vscode.window.activeNotebookEditor?.notebook;
-        if (notebook === undefined || notebook.notebookType !== NOTEBOOK_TYPE) {
+        if (notebook === undefined || !isFabricNotebook(notebook)) {
           void vscode.window.showWarningMessage(
             "Open a Fabric notebook first, then run this command to stop its Livy session.",
           );
@@ -155,6 +192,94 @@ export function activate(context: vscode.ExtensionContext): void {
         await livyManager.stopSession(host.target);
         void vscode.window.showInformationMessage(
           `Livy session on ${host.label} stopped.`,
+        );
+      }),
+    ),
+
+    vscode.commands.registerCommand("fabric-connect.restartLivySession", () =>
+      runReportingErrors(async () => {
+        const notebook = vscode.window.activeNotebookEditor?.notebook;
+        if (notebook === undefined || !isFabricNotebook(notebook)) {
+          void vscode.window.showWarningMessage(
+            "Open a Fabric notebook first, then run this command to restart its Livy session.",
+          );
+          return;
+        }
+        const host = await resolveNotebookHost(
+          notebook,
+          targetResolver,
+          compute,
+        );
+        await livyManager.stopSession(host.target);
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `Starting a new Livy session on ${host.label}…`,
+            cancellable: true,
+          },
+          (_progress, token) => livyManager.startSession(host.target, token),
+        );
+        void vscode.window.showInformationMessage(
+          `Livy session on ${host.label} restarted.`,
+        );
+      }),
+    ),
+
+    vscode.commands.registerCommand("fabric-connect.showLivySessions", () =>
+      runReportingErrors(async () => {
+        const notebook = vscode.window.activeNotebookEditor?.notebook;
+        const current = await compute();
+        const host =
+          notebook !== undefined && isFabricNotebook(notebook)
+            ? (await resolveNotebookHost(notebook, targetResolver, compute))
+                .target
+            : current === undefined
+              ? undefined
+              : {
+                  tenantId: current.tenantId,
+                  workspaceId: current.workspaceId,
+                  lakehouseId: current.lakehouseId,
+                };
+        if (host === undefined) {
+          void vscode.window.showWarningMessage(
+            "Open a Fabric notebook or run 'Fabric: Connect to Compute' first, so there is a Lakehouse to list sessions for.",
+          );
+          return;
+        }
+        const sessions = (await listLivySessions(apiClient, host)).filter(
+          (s) => s.jobType !== "SparkBatch",
+        );
+        const active = sessions.filter(
+          (s) => s.state === "InProgress" || s.state === "NotStarted",
+        );
+        if (active.length === 0) {
+          void vscode.window.showInformationMessage(
+            `No active Livy sessions on this Lakehouse (${sessions.length} finished).`,
+          );
+          return;
+        }
+        const chosen = await vscode.window.showQuickPick(
+          active.map((s) => ({
+            label: s.name ?? s.itemName ?? "Livy session",
+            description: s.state,
+            detail: s.submittedDateTime
+              ? `Submitted ${s.submittedDateTime}`
+              : undefined,
+            session: s,
+          })),
+          {
+            placeHolder: "Active Livy sessions — pick one to stop it",
+            canPickMany: true,
+          },
+        );
+        if (chosen === undefined || chosen.length === 0) {
+          return;
+        }
+        for (const item of chosen) {
+          await livyManager.stopSessionById(host, item.session.livyId);
+        }
+        void vscode.window.showInformationMessage(
+          `Stopped ${chosen.length} Livy session${chosen.length === 1 ? "" : "s"}.`,
         );
       }),
     ),

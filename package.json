@@ -32,6 +32,24 @@
             "filenamePattern": "**/*.Notebook/notebook-content.ipynb"
           }
         ]
+      },
+      {
+        "type": "fabric-notebook-source",
+        "displayName": "Fabric Notebook (git source format)",
+        "selector": [
+          {
+            "filenamePattern": "**/*.Notebook/notebook-content.py"
+          },
+          {
+            "filenamePattern": "**/*.Notebook/notebook-content.scala"
+          },
+          {
+            "filenamePattern": "**/*.Notebook/notebook-content.sql"
+          },
+          {
+            "filenamePattern": "**/*.Notebook/notebook-content.r"
+          }
+        ]
       }
     ],
     "commands": [
@@ -58,6 +76,14 @@
       {
         "command": "fabric-connect.disconnectCompute",
         "title": "Fabric: Disconnect from Compute"
+      },
+      {
+        "command": "fabric-connect.restartLivySession",
+        "title": "Fabric: Restart Livy Session"
+      },
+      {
+        "command": "fabric-connect.showLivySessions",
+        "title": "Fabric: Show Livy Sessions"
       }
     ],
     "configuration": {

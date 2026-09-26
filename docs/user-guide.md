@@ -77,8 +77,10 @@ tenant declared by its target.
 
 Files matching `*.Notebook/notebook-content.ipynb` — the layout Fabric's
 git integration produces — open in the Fabric notebook editor
-automatically. For any other `.ipynb`, run **`Fabric: Open File as Fabric
-Notebook`** and pick the file.
+automatically. So do the files Fabric's git integration writes by
+default — `*.Notebook/notebook-content.py` (and `.scala`, `.sql`, `.r`) —
+which open in the same editor. For any other `.ipynb`, run **`Fabric: Open
+File as Fabric Notebook`** and pick the file.
 
 Portal compatibility is a tested guarantee, not an aspiration:
 
@@ -86,6 +88,8 @@ Portal compatibility is a tested guarantee, not an aspiration:
   opened.
 - Metadata fields the extension doesn't understand survive open → edit →
   save unchanged, so files always reopen cleanly in the Fabric portal.
+- In the git source format (`notebook-content.py`), editing one cell
+  rewrites only that cell's block, so git diffs stay as small as the edit.
 - Cell outputs are transient: they show in the editor but are never
   written into the `.ipynb`, matching what Fabric's git integration
   expects.
@@ -163,7 +167,32 @@ Session behavior mirrors the Fabric portal:
   orphaned sessions burn workspace capacity.
 
 To end a session explicitly, run **`Fabric: Stop Livy Session`** with the
-notebook active.
+notebook active; **`Fabric: Restart Livy Session`** stops it and starts a
+fresh one. **`Fabric: Show Livy Sessions`** lists the active sessions on the
+host Lakehouse (including ones left running by other windows) and stops the
+ones you pick.
+
+**Cell magics.** A cell starting with `%%sql`, `%%pyspark`, `%%spark` or
+`%%sparkr` runs as that language, as in the portal. `%%configure` is not
+supported over Livy — use an Environment (section 5) instead.
+
+**`%run` is local.** `%run OtherNotebook` (optionally followed by a JSON
+object of parameters, e.g. `%run Loader {"run_date": "2026-01-01"}`) is
+resolved against the notebooks **in your working tree** (matched by the
+`displayName` in their `.platform` file) and inlined before the cell is
+sent — never against a copy deployed in a workspace. Parameters are
+assigned right after the referenced notebook's parameters cell. Only
+Python cells can be inlined; other languages are refused with the cell
+named.
+
+**`display()`.** Livy sessions have no `display()`, so the extension
+defines one in every session: Spark and pandas DataFrames render as a
+table (first 1,000 rows); anything else is printed. `%%sql` results
+render as a table too.
+
+**Python (non-Spark) notebooks** run on a Spark session over Livy; a
+one-time notice says so, because the runtime can differ slightly from
+Fabric's Python-only runtime.
 
 ## Command reference
 
@@ -173,6 +202,8 @@ notebook active.
 | `Fabric: Open File as Fabric Notebook`          | Open any `.ipynb` with the Fabric notebook editor                  |
 | `Fabric: Manage Lakehouses for Active Notebook` | Browse, attach/detach Lakehouses; set the default                  |
 | `Fabric: Stop Livy Session`                     | Stop the active notebook's Livy session                            |
+| `Fabric: Restart Livy Session`                  | Stop and immediately start a fresh session                         |
+| `Fabric: Show Livy Sessions`                    | List active sessions on the host Lakehouse; stop selected ones     |
 | `Fabric: Connect to Compute`                    | Pick capacity → workspace → host Lakehouse (→ Environment)         |
 | `Fabric: Disconnect from Compute`               | Remove the saved compute connection                                |
 
