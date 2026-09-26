@@ -3,20 +3,45 @@
  * code to the Livy Session Manager and renders results (tables, plots,
  * text, errors). Agnostic of how results were produced — it only consumes
  * LivyStatementResult.
+ *
+ * Before a cell is sent, local `%run` lines are expanded from notebooks in
+ * the working tree and a leading cell magic (`%%sql`, …) picks the Livy
+ * statement kind. `display()` payloads and Livy SQL results come back as
+ * tables.
  */
 
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { toStatement, SUPPORTED_LANGUAGES } from "../core/cellCode";
 import type { ComputeProfile } from "../core/computeProfile";
+import {
+  extractDisplays,
+  livySqlResultToTable,
+  renderTableHtml,
+} from "../core/displayProtocol";
 import { FabricConnectError, LivyError } from "../core/errors";
 import { type LivyHost, resolveLivyHost } from "../core/livyHost";
-import type { ILivySessionManager } from "../core/livySessionManager";
+import type {
+  ILivySessionManager,
+  LivyStatementResult,
+} from "../core/livySessionManager";
+import type { LocalItemIndex } from "../core/localItemIndex";
 import {
   getEnvironmentAttachment,
   getLakehouseAttachments,
 } from "../core/notebookCodec";
+import {
+  type RunExpansionFileSystem,
+  expandRunMagics,
+  hasRunMagic,
+} from "../core/runExpansion";
 import type { ITargetResolver } from "../core/types";
-import { NOTEBOOK_TYPE, fabricRootOf } from "./notebookSerializer";
+import {
+  NOTEBOOK_SOURCE_TYPE,
+  NOTEBOOK_TYPE,
+  fabricRootOf,
+  isFabricNotebook,
+} from "./notebookSerializer";
 
 const RENDERABLE_MIME_TYPES = new Set([
   "text/plain",
@@ -28,12 +53,11 @@ const RENDERABLE_MIME_TYPES = new Set([
   "application/json",
 ]);
 
-const LANGUAGE_TO_LIVY_KIND: Record<string, string> = {
-  python: "pyspark",
-  scala: "spark",
-  sql: "sql",
-  r: "sparkr",
-};
+/** Where local `%run` finds other notebooks. */
+export interface RunContext {
+  readonly index: () => Promise<LocalItemIndex>;
+  readonly fs: RunExpansionFileSystem;
+}
 
 /**
  * Which Lakehouse hosts a notebook's Livy session: its own default
@@ -46,7 +70,7 @@ export async function resolveNotebookHost(
 ): Promise<LivyHost> {
   const root = fabricRootOf(notebook);
   return resolveLivyHost({
-    entity: `notebook ${path.basename(notebook.uri.fsPath)}`,
+    entity: `notebook ${path.basename(path.dirname(notebook.uri.fsPath))}`,
     notebookDefault:
       root === undefined
         ? undefined
@@ -60,25 +84,132 @@ export async function resolveNotebookHost(
   });
 }
 
+/**
+ * Cell outputs for a Livy result: text, then one table per `display()`,
+ * with SQL results rendered as a table too.
+ */
+export function toCellOutputs(
+  result: LivyStatementResult,
+): vscode.NotebookCellOutput[] {
+  if (result.status === "error") {
+    // The cell's own exception: shown as the notebook's traceback,
+    // exactly as the portal would show it — not an extension error.
+    const error = new Error(
+      `${result.errorName ?? "Error"}: ${result.errorValue ?? ""}`,
+    );
+    error.stack = (result.traceback ?? []).join("\n");
+    return [
+      new vscode.NotebookCellOutput([
+        vscode.NotebookCellOutputItem.error(error),
+      ]),
+    ];
+  }
+  const data = { ...(result.data ?? {}) };
+  const outputs: vscode.NotebookCellOutput[] = [];
+
+  const plain = data["text/plain"];
+  if (typeof plain === "string") {
+    const { text, tables } = extractDisplays(plain);
+    if (tables.length > 0) {
+      delete data["text/plain"];
+      if (text.trim().length > 0) {
+        outputs.push(
+          new vscode.NotebookCellOutput([
+            vscode.NotebookCellOutputItem.text(text, "text/plain"),
+          ]),
+        );
+      }
+      for (const table of tables) {
+        outputs.push(
+          new vscode.NotebookCellOutput([
+            vscode.NotebookCellOutputItem.text(
+              renderTableHtml(table),
+              "text/html",
+            ),
+          ]),
+        );
+      }
+    }
+  }
+  const sqlTable = livySqlResultToTable(data["application/json"]);
+  if (sqlTable !== undefined) {
+    outputs.push(
+      new vscode.NotebookCellOutput([
+        vscode.NotebookCellOutputItem.text(
+          renderTableHtml(sqlTable),
+          "text/html",
+        ),
+        vscode.NotebookCellOutputItem.json(data["application/json"]),
+      ]),
+    );
+    delete data["application/json"];
+  }
+
+  const items: vscode.NotebookCellOutputItem[] = [];
+  for (const [mime, value] of Object.entries(data)) {
+    if (!RENDERABLE_MIME_TYPES.has(mime)) {
+      // Unsupported MIME type: degrade gracefully with an inline warning
+      // on this one output — never fail the whole notebook's rendering.
+      items.push(
+        vscode.NotebookCellOutputItem.text(
+          `[fabric-connect] Output of type '${mime}' is not supported yet and was not rendered.`,
+          "text/plain",
+        ),
+      );
+      continue;
+    }
+    if (mime === "image/png" || mime === "image/jpeg") {
+      items.push(
+        new vscode.NotebookCellOutputItem(
+          Buffer.from(String(value), "base64"),
+          mime,
+        ),
+      );
+    } else if (mime === "application/json") {
+      items.push(vscode.NotebookCellOutputItem.json(value, mime));
+    } else {
+      items.push(vscode.NotebookCellOutputItem.text(String(value), mime));
+    }
+  }
+  if (items.length > 0) {
+    outputs.unshift(new vscode.NotebookCellOutput(items));
+  }
+  if (outputs.length === 0) {
+    outputs.push(
+      new vscode.NotebookCellOutput([
+        vscode.NotebookCellOutputItem.text("", "text/plain"),
+      ]),
+    );
+  }
+  return outputs;
+}
+
 export class FabricNotebookController implements vscode.Disposable {
-  private readonly controller: vscode.NotebookController;
+  private readonly controllers: vscode.NotebookController[];
   private readonly hostStatus: vscode.StatusBarItem;
   private readonly subscriptions: vscode.Disposable[] = [];
+  /** Pure-Python notebooks already told they run on a Spark session. */
+  private readonly pythonNoticeShown = new Set<string>();
+  private executionOrder = 0;
 
   constructor(
     private readonly livy: ILivySessionManager,
     private readonly targets: ITargetResolver,
     private readonly compute: () => Promise<ComputeProfile | undefined>,
+    private readonly run: RunContext,
   ) {
-    this.controller = vscode.notebooks.createNotebookController(
-      "fabric-connect-livy",
-      NOTEBOOK_TYPE,
-      "Fabric Livy",
-    );
-    this.controller.supportedLanguages = Object.keys(LANGUAGE_TO_LIVY_KIND);
-    this.controller.supportsExecutionOrder = true;
-    this.controller.executeHandler = (cells, notebook) =>
-      this.executeCells(cells, notebook);
+    this.controllers = [NOTEBOOK_TYPE, NOTEBOOK_SOURCE_TYPE].map((type) => {
+      const controller = vscode.notebooks.createNotebookController(
+        `fabric-connect-livy-${type}`,
+        type,
+        "Fabric Livy",
+      );
+      controller.supportedLanguages = [...SUPPORTED_LANGUAGES];
+      controller.supportsExecutionOrder = true;
+      controller.executeHandler = (cells, notebook) =>
+        this.executeCells(controller, cells, notebook);
+      return controller;
+    });
 
     this.hostStatus = vscode.window.createStatusBarItem(
       "fabric-connect.livyHost",
@@ -100,7 +231,9 @@ export class FabricNotebookController implements vscode.Disposable {
   }
 
   dispose(): void {
-    this.controller.dispose();
+    for (const controller of this.controllers) {
+      controller.dispose();
+    }
     this.hostStatus.dispose();
     for (const subscription of this.subscriptions) {
       subscription.dispose();
@@ -110,7 +243,7 @@ export class FabricNotebookController implements vscode.Disposable {
   /** Shows, for the active Fabric notebook, which Lakehouse its cells run on. */
   async refreshHostStatus(): Promise<void> {
     const notebook = vscode.window.activeNotebookEditor?.notebook;
-    if (notebook === undefined || notebook.notebookType !== NOTEBOOK_TYPE) {
+    if (notebook === undefined || !isFabricNotebook(notebook)) {
       this.hostStatus.hide();
       return;
     }
@@ -134,20 +267,23 @@ export class FabricNotebookController implements vscode.Disposable {
   }
 
   private async executeCells(
+    controller: vscode.NotebookController,
     cells: vscode.NotebookCell[],
     notebook: vscode.NotebookDocument,
   ): Promise<void> {
+    this.noticePurePython(notebook);
     // The Livy manager queues per session; iterating here keeps cell order.
     for (const cell of cells) {
-      await this.executeCell(cell, notebook);
+      await this.executeCell(controller, cell, notebook);
     }
   }
 
   private async executeCell(
+    controller: vscode.NotebookController,
     cell: vscode.NotebookCell,
     notebook: vscode.NotebookDocument,
   ): Promise<void> {
-    const execution = this.controller.createNotebookCellExecution(cell);
+    const execution = controller.createNotebookCellExecution(cell);
     execution.executionOrder = ++this.executionOrder;
     execution.start(Date.now());
     try {
@@ -156,10 +292,18 @@ export class FabricNotebookController implements vscode.Disposable {
         this.targets,
         this.compute,
       );
-      const kind = LANGUAGE_TO_LIVY_KIND[cell.document.languageId] ?? "pyspark";
+      const entity = `cell ${cell.index + 1} of ${path.basename(path.dirname(notebook.uri.fsPath))}`;
+      let { kind, code } = toStatement(
+        cell.document.getText(),
+        cell.document.languageId,
+        entity,
+      );
+      if (kind === "pyspark" && hasRunMagic(code)) {
+        code = await expandRunMagics(code, await this.run.index(), this.run.fs);
+      }
       const result = await this.livy.execute(
         target,
-        cell.document.getText(),
+        code,
         kind,
         execution.token,
       );
@@ -169,24 +313,8 @@ export class FabricNotebookController implements vscode.Disposable {
         execution.end(undefined, Date.now());
         return;
       }
-      if (result.status === "error") {
-        // The cell's own exception: shown as the notebook's traceback,
-        // exactly as the portal would show it — not an extension error.
-        const error = new Error(
-          `${result.errorName ?? "Error"}: ${result.errorValue ?? ""}`,
-        );
-        error.stack = (result.traceback ?? []).join("\n");
-        await execution.replaceOutput(
-          new vscode.NotebookCellOutput([
-            vscode.NotebookCellOutputItem.error(error),
-          ]),
-        );
-        execution.end(false, Date.now());
-        return;
-      }
-
-      await execution.replaceOutput(this.renderData(result.data ?? {}));
-      execution.end(true, Date.now());
+      await execution.replaceOutput(toCellOutputs(result));
+      execution.end(result.status === "ok", Date.now());
     } catch (error) {
       if (error instanceof LivyError && error.kind === "cancelled") {
         // Cancelled while still queued: same clean outcome as a running
@@ -204,40 +332,35 @@ export class FabricNotebookController implements vscode.Disposable {
     }
   }
 
-  private renderData(data: Record<string, unknown>): vscode.NotebookCellOutput {
-    const items: vscode.NotebookCellOutputItem[] = [];
-    for (const [mime, value] of Object.entries(data)) {
-      if (!RENDERABLE_MIME_TYPES.has(mime)) {
-        // Unsupported MIME type: degrade gracefully with an inline warning
-        // on this one output — never fail the whole notebook's rendering.
-        items.push(
-          vscode.NotebookCellOutputItem.text(
-            `[fabric-connect] Output of type '${mime}' is not supported yet and was not rendered.`,
-            "text/plain",
-          ),
-        );
-        continue;
-      }
-      if (mime === "image/png" || mime === "image/jpeg") {
-        items.push(
-          new vscode.NotebookCellOutputItem(
-            Buffer.from(String(value), "base64"),
-            mime,
-          ),
-        );
-      } else if (mime === "application/json") {
-        items.push(vscode.NotebookCellOutputItem.json(value, mime));
-      } else {
-        items.push(vscode.NotebookCellOutputItem.text(String(value), mime));
-      }
+  /**
+   * Fabric's pure-Python notebooks (no Spark) have no Livy equivalent; they
+   * run on a Spark session instead (decision D4). Say so once per notebook.
+   */
+  private noticePurePython(notebook: vscode.NotebookDocument): void {
+    const key = notebook.uri.toString();
+    if (this.pythonNoticeShown.has(key) || !isPurePythonNotebook(notebook)) {
+      return;
     }
-    if (items.length === 0) {
-      items.push(vscode.NotebookCellOutputItem.text("", "text/plain"));
-    }
-    return new vscode.NotebookCellOutput(items);
+    this.pythonNoticeShown.add(key);
+    void vscode.window.showInformationMessage(
+      "This is a Fabric Python (non-Spark) notebook. Fabric Connect runs it on a Spark session over Livy, so the runtime can differ slightly from Fabric's Python-only runtime (e.g. preinstalled libraries).",
+    );
   }
+}
 
-  private executionOrder = 0;
+function isPurePythonNotebook(notebook: vscode.NotebookDocument): boolean {
+  const root = fabricRootOf(notebook);
+  const metadata = root?.["metadata"];
+  if (typeof metadata !== "object" || metadata === null) {
+    return false;
+  }
+  const record = metadata as Record<string, unknown>;
+  const names = [record["kernel_info"], record["kernelspec"]].map((k) =>
+    typeof k === "object" && k !== null
+      ? (k as Record<string, unknown>)["name"]
+      : undefined,
+  );
+  return names.some((name) => name === "jupyter" || name === "jupyter_python");
 }
 
 function toDisplayError(error: unknown): Error {

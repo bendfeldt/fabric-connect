@@ -41,8 +41,64 @@ export interface ILivySessionManager {
     kind: string,
     token: CancelToken,
   ): Promise<LivyStatementResult>;
+  /** Starts (or reattaches to) the session now, e.g. right after a restart. */
+  startSession(target: LivyTarget, token: CancelToken): Promise<void>;
   stopSession(target: LivyTarget): Promise<void>;
+  /** Stops a session by its Livy ID (e.g. an orphan from the session list). */
+  stopSessionById(target: LivyTarget, livyId: string): Promise<void>;
   dispose(): Promise<void>;
+}
+
+/** A Livy session or batch as listed by the Fabric monitoring API. */
+export interface LivySessionSummary {
+  readonly livyId: string;
+  readonly state: string;
+  readonly jobType?: string;
+  readonly name?: string;
+  readonly itemName?: string;
+  readonly submittedDateTime?: string;
+}
+
+/** Lists Livy sessions and batches recorded for a Lakehouse (GET only). */
+export async function listLivySessions(
+  api: IFabricApiClient,
+  target: LivyTarget,
+): Promise<LivySessionSummary[]> {
+  let response;
+  try {
+    response = await api.request<{ value?: Array<Record<string, unknown>> }>({
+      method: "GET",
+      path: `/workspaces/${target.workspaceId}/lakehouses/${target.lakehouseId}/livySessions`,
+      tenantId: target.tenantId,
+    });
+  } catch (cause) {
+    throw new LivyError("Failed to list the Livy sessions of the Lakehouse.", {
+      operation: "list Livy sessions",
+      entity: "host Lakehouse",
+      kind: "protocol",
+      remediation:
+        "Check that you have at least Viewer access to the workspace, then retry.",
+      cause,
+    });
+  }
+  return (response.body?.value ?? []).flatMap((s) => {
+    const livyId = s["livyId"];
+    if (typeof livyId !== "string") {
+      return [];
+    }
+    const text = (key: string) =>
+      typeof s[key] === "string" ? (s[key] as string) : undefined;
+    return [
+      {
+        livyId,
+        state: text("state") ?? "Unknown",
+        jobType: text("jobType"),
+        name: text("livyName"),
+        itemName: text("itemName"),
+        submittedDateTime: text("submittedDateTime"),
+      },
+    ];
+  });
 }
 
 /** Persists session IDs across VS Code reloads (backed by workspaceState). */
@@ -82,6 +138,12 @@ export interface LivySessionManagerOptions {
   readonly pollIntervalMs?: number;
   readonly sessionStartTimeoutMs?: number;
   readonly sleep?: (ms: number) => Promise<void>;
+  /**
+   * Code run once on every session this manager starts or reattaches to,
+   * before any other statement (e.g. defining `display()`). A failing
+   * bootstrap does not fail the user's statement.
+   */
+  readonly bootstrap?: { readonly code: string; readonly kind: string };
 }
 
 export class LivySessionManager implements ILivySessionManager {
@@ -91,6 +153,7 @@ export class LivySessionManager implements ILivySessionManager {
   private readonly pollIntervalMs: number;
   private readonly sessionStartTimeoutMs: number;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly bootstrap?: { readonly code: string; readonly kind: string };
 
   constructor(
     private readonly api: IFabricApiClient,
@@ -102,6 +165,31 @@ export class LivySessionManager implements ILivySessionManager {
     this.sleep =
       options.sleep ??
       ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.bootstrap = options.bootstrap;
+  }
+
+  async startSession(target: LivyTarget, token: CancelToken): Promise<void> {
+    await this.getOrCreateSession(target, token);
+  }
+
+  async stopSessionById(target: LivyTarget, livyId: string): Promise<void> {
+    const key = sessionKey(target);
+    if (this.store.get(key) === livyId) {
+      await this.stopSession(target);
+      return;
+    }
+    try {
+      await this.api.request({
+        method: "DELETE",
+        path: `${livyBase(target)}/sessions/${livyId}`,
+        tenantId: target.tenantId,
+      });
+    } catch (cause) {
+      if (cause instanceof FabricApiError && cause.status === 404) {
+        return; // already gone — nothing to stop
+      }
+      throw cause;
+    }
   }
 
   async execute(
@@ -261,12 +349,41 @@ export class LivySessionManager implements ILivySessionManager {
     if (existing !== undefined) {
       return existing;
     }
-    const created = this.attachOrStartSession(target, token).catch((error) => {
-      this.sessions.delete(key); // allow retry after a failed start
-      throw error;
-    });
+    const created = this.attachOrStartSession(target, token)
+      .then(async (sessionId) => {
+        await this.runBootstrap(target, sessionId, token);
+        return sessionId;
+      })
+      .catch((error) => {
+        this.sessions.delete(key); // allow retry after a failed start
+        throw error;
+      });
     this.sessions.set(key, created);
     return created;
+  }
+
+  private async runBootstrap(
+    target: LivyTarget,
+    sessionId: number,
+    token: CancelToken,
+  ): Promise<void> {
+    if (this.bootstrap === undefined) {
+      return;
+    }
+    try {
+      const response = await this.api.request<LivyStatement>({
+        method: "POST",
+        path: `${livyBase(target)}/sessions/${sessionId}/statements`,
+        tenantId: target.tenantId,
+        body: { code: this.bootstrap.code, kind: this.bootstrap.kind },
+      });
+      if (typeof response.body?.id === "number") {
+        await this.pollStatement(target, sessionId, response.body.id, token);
+      }
+    } catch {
+      // Best effort: without the bootstrap, display() output stays plain
+      // text; the user's own statement still runs (and reports real errors).
+    }
   }
 
   private async attachOrStartSession(

@@ -20,11 +20,17 @@ Source of truth for scope: `docs/plan-local-first.md` (local-first, no deploymen
   Lakehouse wins, else compute; cross-tenant refused; Environment attached
   via `spark.fabric.environmentDetails`; host shown in the status bar.
 
+- M1 — notebooks complete: git source format (`notebook-content.py/.scala/.sql/.r`)
+  codec with byte-for-byte and minimal-diff fidelity tests; local item index
+  from `.platform`; local `%run` with parameters; cell magics; `display()`
+  via a per-session bootstrap + SQL results as tables; restart session;
+  session list with stop; pure-Python notebook notice (D4).
+
 ## Next
 
 The user asked for all milestones in one run (overriding the
 one-feature-per-session default); they ship as stacked PRs, one per
-milestone. Next: M1 — notebooks complete.
+milestone. Next: M2 — run files, module staging, Spark job batches.
 
 Remaining milestones M1–M5: see `docs/plan-local-first.md`.
 

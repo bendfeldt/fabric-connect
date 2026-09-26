@@ -24,10 +24,11 @@ import {
   detachLakehouse,
   getLakehouseAttachments,
 } from "../core/notebookCodec";
+import type { ComputeProfile } from "../core/computeProfile";
 import type { IFabricApiClient, ITargetResolver } from "../core/types";
 import {
-  NOTEBOOK_TYPE,
   fabricRootOf,
+  isFabricNotebook,
   withFabricRoot,
 } from "./notebookSerializer";
 
@@ -48,11 +49,17 @@ export class LakehousePanel {
   constructor(
     private readonly api: IFabricApiClient,
     private readonly targets: ITargetResolver,
+    private readonly compute: () => Promise<ComputeProfile | undefined>,
   ) {}
 
   async show(notebookUri: vscode.Uri): Promise<void> {
     const folder = path.dirname(notebookUri.fsPath);
-    const resolved = await this.targets.resolveTarget(folder);
+    // The folder's target workspace; for an unmapped folder, the connected
+    // compute's workspace. Neither → the target resolver's specific error.
+    const resolved =
+      (await this.targets.resolveTargetIfMapped(folder)) ??
+      (await this.compute()) ??
+      (await this.targets.resolveTarget(folder));
     this.findNotebook(notebookUri); // fail before opening a panel
     const context: PanelContext = {
       notebookUri,
@@ -87,9 +94,7 @@ export class LakehousePanel {
   /** The open Fabric notebook for this URI, or a loud, actionable error. */
   private findNotebook(uri: vscode.Uri): vscode.NotebookDocument {
     const notebook = vscode.workspace.notebookDocuments.find(
-      (doc) =>
-        doc.uri.toString() === uri.toString() &&
-        doc.notebookType === NOTEBOOK_TYPE,
+      (doc) => doc.uri.toString() === uri.toString() && isFabricNotebook(doc),
     );
     if (notebook === undefined || fabricRootOf(notebook) === undefined) {
       throw new LakehouseError(
