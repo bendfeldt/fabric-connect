@@ -152,3 +152,46 @@ test("missing targets file states how to create it", async () => {
     },
   );
 });
+
+test("resolveTargetIfMapped: unconfigured folders return undefined", async () => {
+  const noConfig = makeResolver({});
+  assert.equal(
+    await noConfig.resolveTargetIfMapped(path.join(ROOT, "scripts")),
+    undefined,
+  );
+  const onlyNotebooks = makeResolver({
+    [path.join(ROOT, TARGETS_FILE)]: JSON.stringify({
+      folders: { notebooks: "dev" },
+      targets: { dev: { itemType: "notebook", tenantId: TENANT_ID } },
+    }),
+  });
+  assert.equal(
+    await onlyNotebooks.resolveTargetIfMapped(path.join(ROOT, "scripts")),
+    undefined,
+  );
+});
+
+test("resolveTargetIfMapped: a broken configuration still throws", async () => {
+  const broken = makeResolver({ [path.join(ROOT, TARGETS_FILE)]: "{nope" });
+  await assert.rejects(
+    broken.resolveTargetIfMapped(path.join(ROOT, "scripts")),
+    TargetConfigError,
+  );
+  const missingWorkspace = makeResolver({
+    [path.join(ROOT, TARGETS_FILE)]: JSON.stringify({
+      folders: { ".": "dev" },
+      targets: { dev: { itemType: "notebook", tenantId: TENANT_ID } },
+    }),
+  });
+  await assert.rejects(
+    missingWorkspace.resolveTargetIfMapped(path.join(ROOT, "scripts")),
+    TargetConfigError,
+  );
+});
+
+test("resolveTargetIfMapped returns the target when mapped", async () => {
+  const resolved = await makeResolver(standardFiles()).resolveTargetIfMapped(
+    path.join(ROOT, "notebooks"),
+  );
+  assert.equal(resolved?.workspaceId, WORKSPACE_ID);
+});

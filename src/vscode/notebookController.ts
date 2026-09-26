@@ -7,12 +7,14 @@
 
 import * as path from "node:path";
 import * as vscode from "vscode";
+import type { ComputeProfile } from "../core/computeProfile";
 import { FabricConnectError, LivyError } from "../core/errors";
-import type {
-  ILivySessionManager,
-  LivyTarget,
-} from "../core/livySessionManager";
-import { getLakehouseAttachments } from "../core/notebookCodec";
+import { type LivyHost, resolveLivyHost } from "../core/livyHost";
+import type { ILivySessionManager } from "../core/livySessionManager";
+import {
+  getEnvironmentAttachment,
+  getLakehouseAttachments,
+} from "../core/notebookCodec";
 import type { ITargetResolver } from "../core/types";
 import { NOTEBOOK_TYPE, fabricRootOf } from "./notebookSerializer";
 
@@ -33,12 +35,40 @@ const LANGUAGE_TO_LIVY_KIND: Record<string, string> = {
   r: "sparkr",
 };
 
+/**
+ * Which Lakehouse hosts a notebook's Livy session: its own default
+ * Lakehouse, else the connected compute (see core/livyHost.ts).
+ */
+export async function resolveNotebookHost(
+  notebook: vscode.NotebookDocument,
+  targets: ITargetResolver,
+  compute: () => Promise<ComputeProfile | undefined>,
+): Promise<LivyHost> {
+  const root = fabricRootOf(notebook);
+  return resolveLivyHost({
+    entity: `notebook ${path.basename(notebook.uri.fsPath)}`,
+    notebookDefault:
+      root === undefined
+        ? undefined
+        : getLakehouseAttachments(root).defaultLakehouse,
+    notebookEnvironment:
+      root === undefined ? undefined : getEnvironmentAttachment(root),
+    target: await targets.resolveTargetIfMapped(
+      path.dirname(notebook.uri.fsPath),
+    ),
+    compute: await compute(),
+  });
+}
+
 export class FabricNotebookController implements vscode.Disposable {
   private readonly controller: vscode.NotebookController;
+  private readonly hostStatus: vscode.StatusBarItem;
+  private readonly subscriptions: vscode.Disposable[] = [];
 
   constructor(
     private readonly livy: ILivySessionManager,
     private readonly targets: ITargetResolver,
+    private readonly compute: () => Promise<ComputeProfile | undefined>,
   ) {
     this.controller = vscode.notebooks.createNotebookController(
       "fabric-connect-livy",
@@ -49,10 +79,58 @@ export class FabricNotebookController implements vscode.Disposable {
     this.controller.supportsExecutionOrder = true;
     this.controller.executeHandler = (cells, notebook) =>
       this.executeCells(cells, notebook);
+
+    this.hostStatus = vscode.window.createStatusBarItem(
+      "fabric-connect.livyHost",
+      vscode.StatusBarAlignment.Left,
+      49,
+    );
+    this.hostStatus.name = "Fabric Livy Host";
+    this.subscriptions.push(
+      vscode.window.onDidChangeActiveNotebookEditor(() => {
+        void this.refreshHostStatus();
+      }),
+      vscode.workspace.onDidChangeNotebookDocument((event) => {
+        if (event.metadata !== undefined) {
+          void this.refreshHostStatus();
+        }
+      }),
+    );
+    void this.refreshHostStatus();
   }
 
   dispose(): void {
     this.controller.dispose();
+    this.hostStatus.dispose();
+    for (const subscription of this.subscriptions) {
+      subscription.dispose();
+    }
+  }
+
+  /** Shows, for the active Fabric notebook, which Lakehouse its cells run on. */
+  async refreshHostStatus(): Promise<void> {
+    const notebook = vscode.window.activeNotebookEditor?.notebook;
+    if (notebook === undefined || notebook.notebookType !== NOTEBOOK_TYPE) {
+      this.hostStatus.hide();
+      return;
+    }
+    try {
+      const host = await resolveNotebookHost(
+        notebook,
+        this.targets,
+        this.compute,
+      );
+      this.hostStatus.text = `$(database) Livy: ${host.label}`;
+      this.hostStatus.tooltip =
+        host.source === "notebook"
+          ? "Cells run on the notebook's default Lakehouse; relative paths (Files/…) and unqualified tables resolve there."
+          : "The notebook has no default Lakehouse, so cells run on the connected compute's Lakehouse; relative paths resolve there.";
+    } catch (error) {
+      this.hostStatus.text = "$(warning) Livy: no host";
+      this.hostStatus.tooltip =
+        error instanceof Error ? error.message : String(error);
+    }
+    this.hostStatus.show();
   }
 
   private async executeCells(
@@ -73,7 +151,11 @@ export class FabricNotebookController implements vscode.Disposable {
     execution.executionOrder = ++this.executionOrder;
     execution.start(Date.now());
     try {
-      const target = await this.resolveLivyTarget(notebook);
+      const { target } = await resolveNotebookHost(
+        notebook,
+        this.targets,
+        this.compute,
+      );
       const kind = LANGUAGE_TO_LIVY_KIND[cell.document.languageId] ?? "pyspark";
       const result = await this.livy.execute(
         target,
@@ -153,34 +235,6 @@ export class FabricNotebookController implements vscode.Disposable {
       items.push(vscode.NotebookCellOutputItem.text("", "text/plain"));
     }
     return new vscode.NotebookCellOutput(items);
-  }
-
-  private async resolveLivyTarget(
-    notebook: vscode.NotebookDocument,
-  ): Promise<LivyTarget> {
-    const folder = path.dirname(notebook.uri.fsPath);
-    const resolved = await this.targets.resolveTarget(folder);
-    const root = fabricRootOf(notebook);
-    const lakehouse =
-      root === undefined
-        ? undefined
-        : getLakehouseAttachments(root).defaultLakehouse;
-    if (lakehouse === undefined) {
-      throw new FabricConnectError(
-        "Cannot run this cell: the notebook has no default Lakehouse attached, so there is no Spark endpoint to execute against.",
-        {
-          operation: "execute cell",
-          entity: `notebook ${path.basename(notebook.uri.fsPath)}`,
-          remediation:
-            "Run 'Fabric: Manage Lakehouses for Active Notebook' and attach a default Lakehouse.",
-        },
-      );
-    }
-    return {
-      tenantId: resolved.tenantId,
-      workspaceId: resolved.workspaceId,
-      lakehouseId: lakehouse.id,
-    };
   }
 
   private executionOrder = 0;

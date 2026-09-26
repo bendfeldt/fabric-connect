@@ -256,6 +256,29 @@ export function getLakehouseAttachments(root: Record<string, unknown>): {
   return { defaultLakehouse, known };
 }
 
+/** Environment declared in the notebook's metadata, as Fabric writes it. */
+export function getEnvironmentAttachment(
+  root: Record<string, unknown>,
+): { id: string; workspaceId?: string } | undefined {
+  const metadata = root["metadata"];
+  if (!isRecord(metadata)) {
+    return undefined;
+  }
+  const dependencies = metadata["dependencies"];
+  if (!isRecord(dependencies)) {
+    return undefined;
+  }
+  const environment = dependencies["environment"];
+  if (!isRecord(environment)) {
+    return undefined;
+  }
+  const id = asString(environment["environmentId"]);
+  if (id === undefined || id.length === 0) {
+    return undefined;
+  }
+  return { id, workspaceId: asString(environment["workspaceId"]) };
+}
+
 /**
  * Returns a new root with the lakehouse attached; the input root is never
  * mutated, so callers can pass a document's (frozen) metadata directly and

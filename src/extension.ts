@@ -9,20 +9,22 @@
  */
 
 import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import * as vscode from "vscode";
 import { FABRIC_SCOPES } from "./core/constants";
 import { FabricApiClient } from "./core/fabricApiClient";
 import { LivySessionManager } from "./core/livySessionManager";
-import { getLakehouseAttachments } from "./core/notebookCodec";
 import { TargetResolver } from "./core/targetResolver";
 import { EntraAuthProvider } from "./vscode/authProvider";
+import { ComputeConnection } from "./vscode/computeConnection";
+import { makeLakehouseCreator } from "./vscode/lakehouseCreation";
 import { LakehousePanel } from "./vscode/lakehousePanel";
-import { FabricNotebookController } from "./vscode/notebookController";
+import {
+  FabricNotebookController,
+  resolveNotebookHost,
+} from "./vscode/notebookController";
 import {
   FabricNotebookSerializer,
   NOTEBOOK_TYPE,
-  fabricRootOf,
 } from "./vscode/notebookSerializer";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -67,12 +69,30 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   });
 
+  const computeConnection = new ComputeConnection(
+    apiClient,
+    workspaceRoot,
+    () => promptTenantId(context),
+    makeLakehouseCreator(apiClient),
+  );
+  const compute = () => computeConnection.current();
+
   const serializer = new FabricNotebookSerializer();
-  const controller = new FabricNotebookController(livyManager, targetResolver);
+  const controller = new FabricNotebookController(
+    livyManager,
+    targetResolver,
+    compute,
+  );
   const lakehousePanel = new LakehousePanel(apiClient, targetResolver);
+
+  void computeConnection.refreshStatus();
 
   context.subscriptions.push(
     output,
+    computeConnection,
+    computeConnection.onDidChange(() => {
+      void controller.refreshHostStatus();
+    }),
     controller,
     vscode.workspace.registerNotebookSerializer(NOTEBOOK_TYPE, serializer, {
       transientOutputs: true,
@@ -129,26 +149,24 @@ export function activate(context: vscode.ExtensionContext): void {
           );
           return;
         }
-        const folder = path.dirname(notebook.uri.fsPath);
-        const resolved = await targetResolver.resolveTarget(folder);
-        const root = fabricRootOf(notebook);
-        const lakehouse =
-          root === undefined
-            ? undefined
-            : getLakehouseAttachments(root).defaultLakehouse;
-        if (lakehouse === undefined) {
-          void vscode.window.showInformationMessage(
-            "This notebook has no default Lakehouse, so it has no Livy session to stop.",
-          );
-          return;
-        }
-        await livyManager.stopSession({
-          tenantId: resolved.tenantId,
-          workspaceId: resolved.workspaceId,
-          lakehouseId: lakehouse.id,
-        });
-        void vscode.window.showInformationMessage("Livy session stopped.");
+        const host = await resolveNotebookHost(
+          notebook,
+          targetResolver,
+          compute,
+        );
+        await livyManager.stopSession(host.target);
+        void vscode.window.showInformationMessage(
+          `Livy session on ${host.label} stopped.`,
+        );
       }),
+    ),
+
+    vscode.commands.registerCommand("fabric-connect.connectCompute", () =>
+      runReportingErrors(() => computeConnection.connect()),
+    ),
+
+    vscode.commands.registerCommand("fabric-connect.disconnectCompute", () =>
+      runReportingErrors(() => computeConnection.disconnect()),
     ),
   );
 }

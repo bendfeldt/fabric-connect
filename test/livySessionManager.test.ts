@@ -324,3 +324,39 @@ test("a statement response without an ID is a protocol error, not a poll of /und
     "must not poll a statement path containing 'undefined'",
   );
 });
+
+test("an Environment is attached at session start and keys its own session", async () => {
+  const ENV = "33333333-3333-3333-3333-333333333333";
+  let startBody: unknown;
+  const api = scriptedApi([
+    [
+      /POST .*\/sessions$/,
+      (options) => {
+        startBody = options.body;
+        return { id: 9, state: "starting" };
+      },
+    ],
+    [/GET .*\/sessions\/9$/, () => ({ id: 9, state: "idle" })],
+    [/POST .*\/sessions\/9\/statements$/, () => ({ id: 0, state: "waiting" })],
+    [
+      /GET .*\/sessions\/9\/statements\/0$/,
+      () => ({ id: 0, state: "available", output: { status: "ok", data: {} } }),
+    ],
+  ]);
+  const store = memoryStore();
+  await manager(api, store).execute(
+    { ...TARGET, environmentId: ENV },
+    "1",
+    "pyspark",
+    NEVER_CANCELLED,
+  );
+  assert.deepEqual(startBody, {
+    conf: { "spark.fabric.environmentDetails": JSON.stringify({ id: ENV }) },
+  });
+  assert.deepEqual(
+    [...store.data.keys()],
+    [
+      `livy-session/${TARGET.tenantId}/${TARGET.workspaceId}/${TARGET.lakehouseId}/${ENV}`,
+    ],
+  );
+});

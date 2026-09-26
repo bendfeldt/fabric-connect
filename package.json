@@ -19,7 +19,9 @@
     "Data Science"
   ],
   "main": "./out/src/extension.js",
-  "activationEvents": [],
+  "activationEvents": [
+    "workspaceContains:.fabric/local.json"
+  ],
   "contributes": {
     "notebooks": [
       {
@@ -48,6 +50,14 @@
       {
         "command": "fabric-connect.stopLivySession",
         "title": "Fabric: Stop Livy Session"
+      },
+      {
+        "command": "fabric-connect.connectCompute",
+        "title": "Fabric: Connect to Compute"
+      },
+      {
+        "command": "fabric-connect.disconnectCompute",
+        "title": "Fabric: Disconnect from Compute"
       }
     ],
     "configuration": {

@@ -11,11 +11,20 @@ Source of truth for scope: `docs/plan-local-first.md` (local-first, no deploymen
   single-use, workspace+name-bound `UserConfirmation` for Lakehouse create
   (minting restricted to `src/vscode/` by test). Tests: `test/writePolicy.test.ts`.
 
-## Next (one per session, in order)
+- M0.2 — `Fabric: Connect to Compute` / `Disconnect`: capacity → workspace
+  → host Lakehouse → optional Environment, saved as `"compute"` in
+  `.fabric/local.json`; status bar; paused capacity refused; gitignore warning.
+- M0.3 — Create Lakehouse on demand behind a modal (`src/vscode/lakehouseCreation.ts`,
+  the only `mintUserConfirmation` caller); 201/202 handled; name validated.
+- M0.4 — Livy host precedence (`src/core/livyHost.ts`): notebook default
+  Lakehouse wins, else compute; cross-tenant refused; Environment attached
+  via `spark.fabric.environmentDetails`; host shown in the status bar.
 
-1. M0.2 — `Fabric: Connect to Compute` (capacity → workspace → host Lakehouse), status bar.
-2. M0.3 — Create Lakehouse on demand, behind a modal confirm (D3).
-3. M0.4 — Livy host precedence (notebook default Lakehouse vs compute profile).
+## Next
+
+The user asked for all milestones in one run (overriding the
+one-feature-per-session default); they ship as stacked PRs, one per
+milestone. Next: M1 — notebooks complete.
 
 Remaining milestones M1–M5: see `docs/plan-local-first.md`.
 
@@ -24,4 +33,8 @@ Remaining milestones M1–M5: see `docs/plan-local-first.md`.
 - Decisions D1–D4 are recorded in `docs/plan-local-first.md`.
 - Livy batches and OneLake scratch writes are not yet on the allowlist; add
   them (with tests) in the milestones that need them (M2).
-- Nothing mints a `UserConfirmation` yet; M0.3 adds the modal that does.
+- The VS Code layer (quick picks, status bar, modal) is compiled but was
+  not exercised in a running VS Code in this environment; core logic is
+  unit-tested against faked HTTP.
+- Creating a Lakehouse when a notebook's attached one is missing is not
+  offered yet; the connect flow is the only entry point.
