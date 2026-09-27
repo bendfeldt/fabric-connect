@@ -1,13 +1,21 @@
 # Fabric Connect — User Guide
 
-This guide covers day-to-day use of the extension: configuring targets,
-signing in, editing Fabric notebooks, attaching Lakehouses, and running
-cells over Livy. For getting the extension into VS Code in the first
-place, see the [installation guide](installation.md).
+The reference for every Fabric Connect feature. New here? Follow the
+step-by-step [getting-started guide](getting-started.md) first. To install,
+see the [installation guide](installation.md); for what the extension
+talks to and stores, see [Security and data](security.md).
 
 ## Concepts
 
-- **Target** — a named mapping from a folder in your repo to a Fabric
+- **Local-first** — your code (notebooks, modules, jobs, queries) lives in
+  your repo. Fabric Connect runs it on Fabric and never publishes, deploys,
+  creates or changes workspace items.
+- **Compute connection** — the capacity, workspace, host Lakehouse and
+  optional Environment this repo runs on (section 5), saved per machine in
+  `.fabric/local.json`.
+- **Host Lakehouse** — the Lakehouse a Spark session runs on. Relative
+  paths (`Files/…`) and unqualified table names resolve against it.
+- **Target** (optional) — a named mapping from a folder in your repo to a Fabric
   workspace. The target's _shape_ (name, item type, tenant) is committed
   to git; the actual workspace ID stays in a local, gitignored file. This
   split exists so nothing ever silently runs against the wrong client's
@@ -20,7 +28,13 @@ place, see the [installation guide](installation.md).
 - **Livy session** — the Spark session that runs your cells. Sessions are
   reused across runs and survive VS Code reloads.
 
-## 1. Configure targets
+## 1. Configure targets (optional)
+
+You don't need targets to get started: the compute connection (section 5)
+is enough to run notebooks, files, jobs and queries. Add targets when a
+notebook's default Lakehouse should resolve in a specific workspace per
+machine or environment (dev/test/prod), or to make sure a folder is only
+ever run in one tenant.
 
 Create a `.fabric/` directory at your VS Code workspace root with two
 files.
@@ -313,6 +327,20 @@ Requests go through the same client as everything else, so the local-first
 policy applies: GETs work, and writes that would change a workspace are
 refused before anything is sent.
 
+## Files Fabric Connect reads and writes
+
+| File                                                   | Written by                                                          | Commit it?                   |
+| ------------------------------------------------------ | ------------------------------------------------------------------- | ---------------------------- |
+| `.fabric/targets.json`                                 | you                                                                 | Yes                          |
+| `.fabric/local.json`                                   | you and the extension (`"compute"`, `"targets"`, `"queryBindings"`) | **No** — add to `.gitignore` |
+| `*.Notebook/notebook-content.*`                        | you (saved in Fabric's format)                                      | Yes                          |
+| `<name>.<Type>/` from Pull into Repo                   | the extension, once, when you ask                                   | Yes                          |
+| `.vscode/settings.json` (`fabric-connect.sourceRoots`) | you                                                                 | Optional                     |
+
+In OneLake, the extension writes only to `Files/.fabric-connect/` in the
+host Lakehouse (staged modules and job files), and deletes it when the
+session stops.
+
 ## Command reference
 
 | Command                                         | What it does                                                       |
@@ -363,6 +391,23 @@ cases:
 - **"Blocked '…' request: Fabric Connect is local-first…"** — the
   extension refused a write that would change a workspace. This is by
   design; see `docs/plan-local-first.md`.
+- **"Capacity '…' is Inactive, so it cannot run Spark."** — resume the
+  capacity in the Azure portal (or pick another), then connect again.
+- **"Workspace '…' has no Lakehouse to host Spark sessions."** — create a
+  Lakehouse in the Fabric portal; Fabric Connect never creates items.
+- **"Refusing to run '…': its folder's target … belongs to a different
+  tenant"** — connect to compute in the target's tenant, or move the file.
+- **"Cannot expand '%run …'"** — the named notebook must exist in the repo
+  with that `displayName` in its `.platform` file, exactly once, and the
+  inlined cells must be Python.
+- **`display(df)` prints text instead of a table** — the session's
+  `display()` setup did not run (e.g. the session was started elsewhere);
+  run **Fabric: Restart Livy Session**.
+- **`import mypkg` imports an old version or fails** — check
+  `fabric-connect.sourceRoots` points at the folder that _contains_ the
+  package (e.g. `src`, not `src/mypkg`), then run the cell again.
+- **A consent prompt appears on the first KQL or DAX query** — expected:
+  Kusto and Power BI use permissions separate from the Fabric API.
 - **API calls failing or behaving oddly** — enable
   `fabric-connect.debugLogging` and check the **Fabric Connect** output
   channel for the redacted request/response trail.

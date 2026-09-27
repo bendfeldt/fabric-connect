@@ -151,9 +151,9 @@ jobs:
 
       - name: Package extension
         if: steps.guard.outputs.skip != 'true'
-        run: |
-          npm run compile
-          npx --yes @vscode/vsce@3.9.2 package
+        # vscode:prepublish cleans out/ and recompiles, so no stale build
+        # output can ship; .vscodeignore allowlists what goes in.
+        run: npm run package
 
       - name: Create GitHub Release
         if: steps.guard.outputs.skip != 'true'

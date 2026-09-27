@@ -39,8 +39,8 @@ Use this if you want to install a commit that has no release yet.
 git clone https://github.com/bendfeldt/fabric-connect.git
 cd fabric-connect
 npm ci
-npm test                              # type-check + build + unit tests
-npx --yes @vscode/vsce package        # produces fabric-connect-<version>.vsix
+npm test                              # clean build + unit tests
+npm run package                       # produces fabric-connect-<version>.vsix
 ```
 
 Then install the generated `.vsix` as in option 1. This is exactly what
@@ -62,14 +62,16 @@ Development Host window with the extension loaded.
 
 ## Verify the installation
 
-Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and type
-`Fabric:` — you should see the extension's commands (`Fabric: Sign In`,
-`Fabric: Open File as Fabric Notebook`, …).
+- Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and type
+  `Fabric:` — you should see the extension's commands (`Fabric: Sign In`,
+  `Fabric: Connect to Compute`, …).
+- The **Fabric** view appears in the Explorer side bar.
+- **Help → Welcome → Walkthroughs → Get started with Fabric Connect**
+  opens the in-product walkthrough.
 
-Activation is lazy by design: the extension only activates when you open a
-Fabric notebook (`*.Notebook/notebook-content.ipynb`) or run one of its
-commands, never unconditionally on startup. Not seeing it in the "running
-extensions" list before that is expected.
+Activation is lazy: the extension starts when you run one of its commands,
+open the Fabric view or a Fabric notebook, or open a folder that already
+has a `.fabric/local.json` — never unconditionally on startup.
 
 ## Updating
 
@@ -87,5 +89,5 @@ stores no tokens on disk.
 
 ## Next step
 
-Configure your workspace targets and sign in — see the
-[user guide](user-guide.md).
+Follow the [getting-started guide](getting-started.md): sign in, connect
+to compute and run your first notebook.

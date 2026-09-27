@@ -2,162 +2,138 @@
 
 [![Build](https://github.com/bendfeldt/fabric-connect/actions/workflows/build.yml/badge.svg)](https://github.com/bendfeldt/fabric-connect/actions/workflows/build.yml) [![Test](https://github.com/bendfeldt/fabric-connect/actions/workflows/test.yml/badge.svg)](https://github.com/bendfeldt/fabric-connect/actions/workflows/test.yml)
 
-A VS Code extension for **local-first** Microsoft Fabric development — a
-"Databricks Connect for Fabric": your code lives in your git repo, you
-connect the repo once to Fabric compute (a capacity, a workspace on it and
-a host Lakehouse), and notebooks, files, Spark jobs and query files run
-there from the editor. Nothing is ever deployed: the extension refuses, in
-code, every write that would change a workspace's items. See
-[docs/plan-local-first.md](docs/plan-local-first.md).
+**Local-first Microsoft Fabric development in VS Code** — a "Databricks
+Connect for Fabric". Your notebooks, Python modules, Spark jobs and queries
+live in your git repo. Connect the repo once to Fabric compute (a capacity,
+a workspace on it and a host Lakehouse) and run everything from the editor.
 
-The goal is that a Fabric developer can clone a repo, map its folders to
-workspaces, sign in to the right tenant, and edit and run Fabric items
-locally, with everything they save opening cleanly in the portal (and vice
-versa). A shared foundation makes that work the same way for every item
-type:
+**Nothing is ever deployed.** Fabric Connect never creates, updates or
+deletes workspace items — Lakehouses included — and refuses, in code,
+every write outside a short, tested allowlist. Getting code into a
+workspace stays your team's existing process (Fabric git integration,
+deployment pipelines, CI).
 
-- **Auth** — multi-tenant, user-delegated Entra ID sign-in; tokens cached
-  per tenant in SecretStorage and never overlapping between organizations.
-- **Target config** — folder-to-workspace mapping with the shareable target
-  shape committed to git and the actual workspace IDs in a gitignored local
-  file, so nothing ever silently runs against the wrong client's workspace.
-- **Fabric API client** — one typed HTTP client owning retries, backoff,
-  and error normalization for every module.
+## Features
 
-New item types plug into this foundation through a registry instead of
-modifying it — which is how pipelines will arrive without touching the
-notebook code.
+- **Connect to compute** — pick capacity (SKU) → workspace → existing host
+  Lakehouse (→ Environment) once per repo; the status bar shows the
+  connection and which Lakehouse the active notebook runs on.
+- **Notebooks** — Fabric's git format (`notebook-content.py`, `.scala`,
+  `.sql`, `.r`) and `.ipynb`, saved byte-for-byte compatible with the
+  portal; Lakehouse attach/detach; local `%run`; `%%sql` and other cell
+  magics; `display()` tables; restart, list and stop Livy sessions.
+- **Your own modules** — set `fabric-connect.sourceRoots` and
+  `import mypkg` on Fabric uses the code in your working tree. No wheels,
+  no uploads to manage.
+- **Run files and jobs** — run a `.py`/`.sql`/`.scala`/`.r` file or a
+  selection on Fabric; run a Spark Job Definition as a Livy batch from its
+  local files.
+- **Query files** — `.kql`, `.dax` and `.graphql` against a KQL database,
+  semantic model or GraphQL API; results as tables. (T-SQL: use the
+  `mssql` extension with the connection string from the explorer.)
+- **Fabric explorer** — read-only view of capacities, workspaces, items,
+  OneLake files and tables and connections; table and file previews; pull
+  an item into the repo; hover a GUID to see what it is.
+- **API notebooks** — `.fabnb` notebooks with `%api` / `%cmd` cells for
+  exploring the Fabric REST API.
 
-## Status
+## Quick start
 
-| Part               | Scope                                                                                        | State                                                      |
-| ------------------ | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Part 1 — Notebooks | Portal-compatible editing, Lakehouse attach/detach, Livy cell execution                      | **Implemented** ([design](docs/design-part1-notebooks.md)) |
-| Local-first M0–M5  | Compute connection, notebooks complete, run files/jobs, query files, explorer, API notebooks | **Implemented** ([plan](docs/plan-local-first.md))         |
-| Out for now        | Pipelines/dataflows (D1), T-SQL (D2, use `mssql`), deployment of any kind                    | By decision                                                |
+1. Install the `.vsix` from the
+   [latest release](https://github.com/bendfeldt/fabric-connect/releases/latest)
+   (`code --install-extension fabric-connect-<version>.vsix`).
+2. Open your repo and add `.fabric/local.json` to its `.gitignore`.
+3. **Fabric: Sign In** with your tenant ID.
+4. **Fabric: Connect to Compute** → capacity → workspace → Lakehouse.
+5. Open a `*.Notebook/notebook-content.py` (or `.ipynb`), pick the
+   **Fabric Livy** kernel and run a cell.
 
-## Features (notebooks)
-
-- **Portal-compatible notebook editing** — Fabric `.ipynb` files round-trip
-  byte-for-byte when unmodified, and unknown metadata fields always survive
-  a save. Compatibility is enforced by tests, not aspiration.
-- **Lakehouse management** — browse the target workspace's lakehouses,
-  attach/detach them (multiple at once), and set the default, written into
-  the same notebook metadata the Fabric portal uses.
-- **Livy execution** — run cells against your workspace with session reuse,
-  per-session queueing, cancellation, and reattachment to an existing
-  session after a VS Code reload.
-
-## Features (local-first)
-
-- **Connect to compute** — pick capacity (SKU) → workspace → host Lakehouse
-  (→ Environment) once per repo; shown in the status bar. The extension
-  never creates Lakehouses (or any item): you pick an existing one.
-- **Notebooks, complete** — both `.ipynb` and Fabric's git source format
-  (`notebook-content.py`/`.scala`/`.sql`/`.r`), local `%run`, cell magics,
-  `display()` tables, restart/list/stop sessions.
-- **Run files and jobs** — run a file or selection on Fabric; your
-  working tree's Python modules are staged so `import` uses local code;
-  Spark Job Definitions run as Livy batches from local files.
-- **Query files** — `.kql`, `.dax` and `.graphql` run against bound items,
-  results as tables.
-- **Explorer** — read-only capacities/workspaces/items/OneLake/connections
-  view, table and file previews, pull an item into the repo, GUID hover.
-- **API notebooks** — `.fabnb` notebooks with `%api` / `%cmd` cells against
-  the Fabric REST API (reads; writes blocked by the local-first policy).
+The full walkthrough — modules, files, jobs, queries, explorer, API
+notebooks — is in **[Getting started](docs/getting-started.md)**, and in
+VS Code under **Help → Welcome → Walkthroughs → Get started with Fabric
+Connect**.
 
 ## Documentation
 
-- **[Installation guide](docs/installation.md)** — install from a released
-  `.vsix`, build one from source, or run the extension from source.
-- **[User guide](docs/user-guide.md)** — targets, sign-in, notebook
-  editing, Lakehouse attachment, running cells, and troubleshooting.
-- **[Design doc](docs/design-part1-notebooks.md)** — architecture and
-  principles behind Part 1.
-
-## Setup
-
-The short version — the [user guide](docs/user-guide.md) covers each step
-in detail:
-
-1. **Declare targets** (committed) in `.fabric/targets.json` at your
-   workspace root:
-
-   ```json
-   {
-     "folders": { "notebooks": "dev" },
-     "targets": {
-       "dev": {
-         "itemType": "notebook",
-         "tenantId": "00000000-0000-0000-0000-000000000000"
-       }
-     }
-   }
-   ```
-
-2. **Map targets to workspaces** (local, **gitignored — never commit this
-   file**) in `.fabric/local.json`:
-
-   ```json
-   {
-     "targets": {
-       "dev": { "workspaceId": "00000000-0000-0000-0000-000000000000" }
-     }
-   }
-   ```
-
-   The split is deliberate: target _shape_ is shared in git; the actual
-   workspace IDs — which identify client/workspace relationships — stay on
-   each developer's machine. Add `.fabric/local.json` to your repo's
-   `.gitignore`.
-
-3. Run **`Fabric: Sign In`** and enter your tenant ID.
-
-4. Open a notebook (`*.Notebook/notebook-content.ipynb` opens automatically;
-   use **`Fabric: Open File as Fabric Notebook`** for other `.ipynb` files),
-   attach a Lakehouse via **`Fabric: Manage Lakehouses for Active
-Notebook`**, and run cells.
+- **[Getting started](docs/getting-started.md)** — the end-to-end how-to.
+- **[User guide](docs/user-guide.md)** — reference for every feature,
+  command, setting and error.
+- **[Installation guide](docs/installation.md)** — install a released
+  `.vsix`, build one from source, or run from source.
+- **[Security and data](docs/security.md)** — what the extension talks to,
+  what it may change, and what it stores.
+- **[Plan](docs/plan-local-first.md)** and
+  **[Part 1 design](docs/design-part1-notebooks.md)** — architecture and
+  decisions.
+- **[Changelog](CHANGELOG.md)**.
 
 ## Commands
 
-| Command                                         | Purpose                                              |
-| ----------------------------------------------- | ---------------------------------------------------- |
-| `Fabric: Sign In`                               | Authenticate a tenant (interactive Entra ID sign-in) |
-| `Fabric: Open File as Fabric Notebook`          | Open any `.ipynb` with the Fabric editor             |
-| `Fabric: Manage Lakehouses for Active Notebook` | Attach/detach lakehouses, set the default            |
-| `Fabric: Stop Livy Session`                     | Stop the active notebook's Livy session              |
+| Command                                         | What it does                                                   |
+| ----------------------------------------------- | -------------------------------------------------------------- |
+| `Fabric: Sign In`                               | Entra ID sign-in to a tenant                                   |
+| `Fabric: Connect to Compute`                    | Pick capacity → workspace → host Lakehouse (→ Environment)     |
+| `Fabric: Disconnect from Compute`               | Remove the saved compute connection                            |
+| `Fabric: Open File as Fabric Notebook`          | Open any `.ipynb` with the Fabric notebook editor              |
+| `Fabric: Manage Lakehouses for Active Notebook` | Attach/detach Lakehouses, set the default                      |
+| `Fabric: Restart Livy Session`                  | Stop and start a fresh Spark session                           |
+| `Fabric: Stop Livy Session`                     | Stop the active notebook's Spark session                       |
+| `Fabric: Show Livy Sessions`                    | List active sessions on the host Lakehouse; stop selected ones |
+| `Fabric: Run File on Fabric`                    | Run a Python/SQL/Scala/R file                                  |
+| `Fabric: Run Selection on Fabric`               | Run the selection or current line                              |
+| `Fabric: Run Spark Job Definition`              | Run a local `*.SparkJobDefinition` folder as a Livy batch      |
+| `Fabric: Run Query File`                        | Run a `.kql` / `.dax` / `.graphql` file                        |
+| `Fabric: Change Query Target`                   | Re-pick the item a query file runs against                     |
+| `Fabric: New API Notebook`                      | Open a `.fabnb` REST API notebook                              |
 
-Set `fabric-connect.debugLogging: true` to see redacted API request/response
-logs (retries included) in the **Fabric Connect** output channel. Tokens,
-tenant IDs, workspace IDs, and cell contents never appear in logs.
+Settings: `fabric-connect.sourceRoots` (folders whose Python modules are
+staged to the session) and `fabric-connect.debugLogging` (redacted API
+trace in the **Fabric Connect** output channel; tokens, IDs and cell
+contents never appear in logs).
+
+## Requirements
+
+- VS Code 1.85 or later.
+- A Microsoft Entra ID account with access to Microsoft Fabric, a capacity
+  you can run Spark on, and a workspace on it with at least one Lakehouse
+  (Contributor or higher).
 
 ## Development
 
 ```sh
-npm install
-npm run compile   # type-check + build to out/
-npm test          # build + unit tests (node --test, no live workspace needed)
+npm ci
+npm test          # clean build + unit tests (node --test, no live workspace needed)
+npm run package   # build fabric-connect-<version>.vsix
 ```
+
+Press `F5` in VS Code to launch an Extension Development Host.
 
 The core modules (`src/core/`) have no dependency on the `vscode` module —
 they run and test in plain Node. The VS Code adapters (`src/vscode/`) and
 the composition root (`src/extension.ts`) wire them to the editor with
-plain constructor calls; there is no DI container or framework to learn.
+plain constructor calls. A manifest test activates the compiled extension
+against a stub of the VS Code API and checks that every command, notebook
+type, view, menu entry and walkthrough step in `package.json` is really
+wired up.
 
-Design principles for the whole project: minimal dependencies (zero at
-runtime), no magic, explicit over generic, observable API traffic, and
-compatibility first — the Fabric REST API version is an explicit constant,
-and only VS Code's stable extension API is used. See
-[`docs/design-part1-notebooks.md`](docs/design-part1-notebooks.md).
+Design principles: zero runtime dependencies, no magic, explicit over
+generic, observable API traffic, and compatibility first — the Fabric REST
+API version is an explicit constant, and only VS Code's stable extension
+API is used.
+
+Releases are automated: merging to `main` opens a version-bump PR, and
+merging that publishes a GitHub Release with the `.vsix`. CI packages the
+extension on every PR and checks that the `.vsix` contains only the
+compiled extension, manifest, README, changelog, license and media.
 
 ### Documentation wiki
 
 The `openwiki/` directory holds a repository wiki generated by
 [OpenWiki](https://github.com/langchain-ai/openwiki) and refreshed by
-[`.github/workflows/openwiki-update.yml`](.github/workflows/openwiki-update.yml),
-which opens a docs PR when the wiki drifts from the code. Generated pages are
-not hand-edited — steer the generator through
-[`openwiki/INSTRUCTIONS.md`](openwiki/INSTRUCTIONS.md) instead. To regenerate
-locally: `npm install -g openwiki && openwiki --update` — the interactive
-equivalent of the CI job's non-interactive `openwiki code --update --print`
-(needs an LLM provider API key; the CLI is not a project dependency).
+[`.github/workflows/openwiki-update.yml`](.github/workflows/openwiki-update.yml).
+Generated pages are not hand-edited — steer the generator through
+[`openwiki/INSTRUCTIONS.md`](openwiki/INSTRUCTIONS.md) instead.
+
+## License
+
+[MIT](LICENSE)

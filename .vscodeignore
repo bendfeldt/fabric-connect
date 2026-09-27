@@ -1,9 +1,11 @@
-.vscode/**
-.gitignore
-tsconfig.json
-src/**
-test/**
-out/test/**
-node_modules/**
-**/*.map
-.fabric/**
+# Allowlist: ship only the compiled extension, its manifest, docs the
+# Marketplace/Extensions view renders, and the walkthrough media.
+# Everything else (sources, tests, agent tooling, CI, planning notes) stays
+# out of the .vsix.
+**
+!package.json
+!README.md
+!CHANGELOG.md
+!LICENSE
+!out/src/**/*.js
+!media/**
