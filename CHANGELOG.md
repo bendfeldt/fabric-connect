@@ -1,7 +1,8 @@
 # Changelog
 
-All notable changes to Fabric Connect. Versions are cut automatically by
-the release workflow; each GitHub Release carries the matching `.vsix`.
+All notable changes to Fabric Connect. Changes merged since the last
+release are listed under "Unreleased" until a maintainer runs the release
+workflow; each GitHub Release carries the matching `.vsix`.
 
 ## 1.1.7
 
