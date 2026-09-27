@@ -24,7 +24,10 @@ extension before it is allowed near client tenants.
 
 Sign-in goes through VS Code's Microsoft authentication provider, one
 session per tenant (the tenant is part of the request, so a token for one
-tenant is never used against another). Scopes requested, per service, and
+tenant is never used against another). Each repo signs in with one
+Microsoft account, remembered in its `.fabric/local.json`, and every token
+is requested for that account, so a repo never uses another account's
+session. Scopes requested, per service, and
 only when a feature needs them:
 
 | Service                      | Scope                                               | Used for                                    |
@@ -33,9 +36,17 @@ only when a feature needs them:
 | OneLake (ADLS Gen2 API)      | `https://storage.azure.com/.default`                | browsing files, previews, scratch staging   |
 | Power BI REST API            | `https://analysis.windows.net/powerbi/api/.default` | `.dax` queries                              |
 | Kusto (Eventhouse / KQL DB)  | `https://kusto.kusto.windows.net/.default`          | `.kql` queries                              |
+| Azure Resource Manager       | `https://management.azure.com/.default`             | listing your tenants (see below)            |
 
 The first DAX or KQL query may show a consent prompt, because those
 services use permissions separate from the Fabric API.
+
+The Azure Resource Manager scope is requested only when you choose **Find
+tenants on my account…** when switching tenant, for your home tenant, and
+the policy below lets it make exactly one kind of request: `GET /tenants`
+(the list of tenants your account belongs to). Every other Resource
+Manager request — any subscription, resource or write — is refused before
+a token is requested.
 
 ## Network endpoints
 
@@ -45,7 +56,9 @@ services use permissions separate from the Fabric API.
 | `onelake.dfs.fabric.microsoft.com`        | explorer file listings and previews; uploading/deleting the scratch folder                                            |
 | `api.powerbi.com`                         | `.dax` queries                                                                                                        |
 | `*.kusto.fabric.microsoft.com`            | `.kql` queries — the origin is validated before a token is attached; any other host is refused, even for reads        |
+| `management.azure.com`                    | `GET /tenants` only, when you ask to find your tenants while switching tenant                                         |
 | `login.microsoftonline.com` (via VS Code) | sign-in                                                                                                               |
+| `login.microsoftonline.com` (direct)      | looking up a typed domain's tenant ID from its public OpenID configuration; no token is sent                          |
 
 All traffic is HTTPS; certificate validation is never disabled. API
 notebooks accept only `https://api.fabric.microsoft.com/v1/…` URLs or
@@ -82,13 +95,13 @@ workspace **items** — the extension itself never changes them.
 
 ## What is stored on your machine
 
-| Where                                | What                                                                                                                                                 | Shared?                                                                      |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `.fabric/local.json` (in the repo)   | `"compute"`: capacity, workspace, Lakehouse, Environment IDs and names; `"targets"`: workspace ID per target; `"queryBindings"`: item per query file | **Never commit** — add it to `.gitignore` (the extension warns if you don't) |
-| `.fabric/targets.json` (in the repo) | folder → target mapping and tenant IDs                                                                                                               | Committed by design                                                          |
-| VS Code workspace state              | Livy session IDs per host (to reattach after a reload)                                                                                               | Local to VS Code                                                             |
-| VS Code global state                 | the last tenant ID you signed in to (prefills the prompt)                                                                                            | Local to VS Code                                                             |
-| VS Code secret storage               | sign-in sessions (managed by VS Code, not by the extension)                                                                                          | Local to VS Code                                                             |
+| Where                                | What                                                                                                                                                                                                                                    | Shared?                                                                      |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `.fabric/local.json` (in the repo)   | `"signIn"`: the account name, VS Code's account ID, tenant ID and name (no token); `"compute"`: capacity, workspace, Lakehouse, Environment IDs and names; `"targets"`: workspace ID per target; `"queryBindings"`: item per query file | **Never commit** — add it to `.gitignore` (the extension warns if you don't) |
+| `.fabric/targets.json` (in the repo) | folder → target mapping and tenant IDs                                                                                                                                                                                                  | Committed by design                                                          |
+| VS Code workspace state              | Livy session IDs per host (to reattach after a reload)                                                                                                                                                                                  | Local to VS Code                                                             |
+| VS Code global state                 | up to 10 recently used tenants (ID, name, domain), offered when switching tenant                                                                                                                                                        | Local to VS Code                                                             |
+| VS Code secret storage               | sign-in sessions (managed by VS Code, not by the extension)                                                                                                                                                                             | Local to VS Code                                                             |
 
 Pulled items are written only into the folder you choose, only inside
 their `<name>.<Type>/` folder (definition part paths that would escape it

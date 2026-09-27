@@ -1,9 +1,15 @@
 # Sign in
 
-Run **Fabric: Sign In** and enter your Entra **tenant ID** (a GUID — Entra
-admin center → Overview). VS Code's Microsoft account provider opens the
-browser sign-in and keeps the session in its secure storage.
+Run **Fabric: Sign In** and pick your Microsoft account (or sign in with
+another one in the browser). The repo is signed in to your account's
+tenant — no tenant ID needed.
 
-- You can be signed in to several tenants; every request uses the tenant
-  that owns what it touches, never another one.
-- Fabric Connect never writes tokens to disk and never logs them.
+- **Remembered per repo**, like a Tabular Editor `.tmuo` file: the account
+  and tenant are saved in your gitignored `.fabric/local.json`, and
+  reopening the repo signs you in again without a prompt.
+- The status bar shows who the repo is signed in as. Click it to **switch
+  account**, **switch tenant** (guest access to another organization) or
+  **sign out**.
+- Different repos can use different accounts and tenants side by side.
+- Fabric Connect never writes tokens to disk and never logs them; they stay
+  in VS Code's secure storage.

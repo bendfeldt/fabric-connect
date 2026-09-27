@@ -17,9 +17,9 @@ of every feature, see the [user guide](user-guide.md).
 
 You need:
 
-- **VS Code 1.85 or later.**
-- **A Microsoft Entra ID account** that can use Microsoft Fabric, and your
-  **tenant ID** (a GUID: Entra admin center → Overview, or ask your admin).
+- **VS Code 1.93 or later.**
+- **A Microsoft Entra ID account** that can use Microsoft Fabric. You sign
+  in with the account; no tenant ID is needed.
 - **A Fabric capacity** you can run Spark on, with **a workspace assigned
   to it** that contains **at least one Lakehouse**. Fabric Connect never
   creates Lakehouses; if the workspace has none, create one in the Fabric
@@ -89,14 +89,26 @@ be committed. Fabric Connect warns you if the line is missing.
 
 ## 3. Sign in
 
-Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → **Fabric: Sign In** →
-enter your tenant ID. VS Code opens the Microsoft sign-in in your browser
-and keeps the session in its secure storage. Fabric Connect never writes
-tokens to disk or logs.
+Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → **Fabric: Sign In**
+(or click **Fabric: sign in** in the status bar):
 
-> Working for several organizations? Sign in to each tenant. Every request
-> uses the tenant that owns what it touches; tokens are never shared across
-> tenants.
+1. Pick your Microsoft account, or **Sign in with another account…** —
+   VS Code opens the Microsoft sign-in in your browser.
+2. The repo is signed in to your account's tenant. The status bar shows
+   `Fabric: you@contoso.com`.
+
+That's it, for this repo, for good: like a Tabular Editor `.tmuo` file,
+the account and tenant are saved in your gitignored `.fabric/local.json`,
+and reopening the repo signs you in again without a prompt. Tokens stay
+in VS Code's secure storage; Fabric Connect never writes them to disk or
+logs.
+
+> Working for several organizations? Each repo keeps its own sign-in, so
+> client A's repo and client B's repo can use different accounts side by
+> side. For **guest** access with the same account, click the status bar
+> item → **Switch Tenant…** → **Find tenants on my account…** (lists your
+> tenants by name; VS Code asks once to allow Azure Resource Manager
+> access, used only for that list) or enter a tenant ID or domain.
 
 ## 4. Connect the repo to Fabric compute
 
@@ -105,7 +117,8 @@ runs.
 
 1. Run **Fabric: Connect to Compute** (or click **Fabric: connect compute**
    in the status bar).
-2. Enter the tenant ID if asked.
+2. Sign in if the repo isn't signed in yet; compute is connected in the
+   repo's tenant.
 3. Pick the **capacity**. Each entry shows its SKU (e.g. `F8`), region and
    state; a paused capacity is refused — resume it in Azure first.
 4. Pick a **workspace** assigned to that capacity.

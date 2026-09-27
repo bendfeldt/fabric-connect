@@ -43,7 +43,8 @@ deployment pipelines, CI).
    [latest release](https://github.com/bendfeldt/fabric-connect/releases/latest)
    (`code --install-extension fabric-connect-<version>.vsix`).
 2. Open your repo and add `.fabric/local.json` to its `.gitignore`.
-3. **Fabric: Sign In** with your tenant ID.
+3. **Fabric: Sign In** with your Microsoft account — remembered for this
+   repo, like a Tabular Editor `.tmuo` file.
 4. **Fabric: Connect to Compute** → capacity → workspace → Lakehouse.
 5. Open a `*.Notebook/notebook-content.py` (or `.ipynb`), pick the
    **Fabric Livy** kernel and run a cell.
@@ -73,7 +74,8 @@ Connect**.
 
 | Command                                         | What it does                                                   |
 | ----------------------------------------------- | -------------------------------------------------------------- |
-| `Fabric: Sign In`                               | Entra ID sign-in to a tenant                                   |
+| `Fabric: Sign In`                               | Sign this repo in with a Microsoft account (remembered)        |
+| `Fabric: Switch Tenant` / `Fabric: Sign Out`    | Use another tenant with the same account / forget the sign-in  |
 | `Fabric: Connect to Compute`                    | Pick capacity → workspace → host Lakehouse (→ Environment)     |
 | `Fabric: Disconnect from Compute`               | Remove the saved compute connection                            |
 | `Fabric: Open File as Fabric Notebook`          | Open any `.ipynb` with the Fabric notebook editor              |
@@ -95,7 +97,7 @@ contents never appear in logs).
 
 ## Requirements
 
-- VS Code 1.85 or later.
+- VS Code 1.93 or later.
 - A Microsoft Entra ID account with access to Microsoft Fabric, a capacity
   you can run Spark on, and a workspace on it with at least one Lakehouse
   (Contributor or higher).
@@ -123,8 +125,10 @@ generic, observable API traffic, and compatibility first — the Fabric REST
 API version is an explicit constant, and only VS Code's stable extension
 API is used.
 
-Releases are automated: merging to `main` opens a version-bump PR, and
-merging that publishes a GitHub Release with the `.vsix`. CI packages the
+Releases are manual: merging to `main` never releases. A maintainer runs
+**Actions → Release → Run workflow** (bump `auto`, `patch`, `minor` or
+`major`), which opens a version-bump PR; merging that publishes a GitHub
+Release with the `.vsix`. CI packages the
 extension on every PR and checks that the `.vsix` contains only the
 compiled extension, manifest, README, changelog, license and media.
 

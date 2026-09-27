@@ -123,7 +123,11 @@ function vscodeStub(workspaceRoot: string, recorded: Recorded): unknown {
       },
     },
     languages: { registerHoverProvider: () => disposable },
-    authentication: { getSession: async () => undefined },
+    authentication: {
+      getSession: async () => undefined,
+      getAccounts: async () => [],
+      onDidChangeSessions: event,
+    },
   };
   return new Proxy(stub, {
     get: (target, prop: string) => (prop in target ? target[prop] : anything()),

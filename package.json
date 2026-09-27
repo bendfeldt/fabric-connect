@@ -15,7 +15,7 @@
     "url": "https://github.com/bendfeldt/fabric-connect/issues"
   },
   "engines": {
-    "vscode": "^1.85.0",
+    "vscode": "^1.93.0",
     "node": ">=18"
   },
   "categories": [
@@ -88,6 +88,18 @@
       {
         "command": "fabric-connect.signIn",
         "title": "Fabric: Sign In"
+      },
+      {
+        "command": "fabric-connect.switchTenant",
+        "title": "Fabric: Switch Tenant"
+      },
+      {
+        "command": "fabric-connect.signOut",
+        "title": "Fabric: Sign Out"
+      },
+      {
+        "command": "fabric-connect.accountMenu",
+        "title": "Fabric: Account…"
       },
       {
         "command": "fabric-connect.openAsFabricNotebook",
@@ -387,8 +399,8 @@
         "steps": [
           {
             "id": "signIn",
-            "title": "Sign in to your Fabric tenant",
-            "description": "Fabric Connect uses VS Code's built-in Microsoft sign-in, per tenant.\n[Sign In](command:fabric-connect.signIn)",
+            "title": "Sign in with your Microsoft account",
+            "description": "Sign in once per repo; the account and tenant are remembered in your gitignored .fabric/local.json and reused silently next time.\n[Sign In](command:fabric-connect.signIn)",
             "media": {
               "markdown": "media/walkthrough/sign-in.md"
             },
@@ -466,7 +478,7 @@
   },
   "devDependencies": {
     "@types/node": "^18.19.0",
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "^1.93.0",
     "typescript": "^5.4.0"
   }
 }
