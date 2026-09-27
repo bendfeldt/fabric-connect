@@ -77,12 +77,27 @@ misconfiguration can never silently execute against the wrong workspace.
 
 ## 2. Sign in
 
-Run **`Fabric: Sign In`** from the Command Palette and enter the tenant
-GUID (the prompt remembers the last one you used). Sign-in goes through
-VS Code's built-in Microsoft authentication provider: it handles the
-interactive login, caching, and refresh, and persists credentials in VS
-Code's SecretStorage. The extension never writes tokens to disk or logs
+Run **`Fabric: Sign In`** from the Command Palette and select a tenant:
+
+- **Recent tenants** are listed by name (with their domain and ID); the
+  current one is marked.
+- **Find tenants on my account…** lists every tenant your Microsoft account
+  belongs to, home and guest, by name. The first time, VS Code asks you to
+  allow Azure Resource Manager access — it is used only to read that list.
+- **Enter a tenant ID or domain…** takes a tenant GUID (Entra admin center
+  → Overview) or a verified domain such as `contoso.onmicrosoft.com`,
+  which is looked up to its tenant ID.
+
+Sign-in goes through VS Code's built-in Microsoft authentication provider:
+it handles the interactive login, caching, and refresh, and persists
+credentials in VS Code's SecretStorage. The extension never writes tokens to disk or logs
 them.
+
+**Switching tenants:** run `Fabric: Sign In` again and pick another
+tenant. The selected tenant is the one the Fabric explorer and API
+notebooks use. The compute connection keeps its own tenant (chosen with
+the same picker in `Fabric: Connect to Compute`), and notebooks mapped by
+`.fabric/targets.json` use their target's tenant.
 
 You can be signed in to multiple tenants at once; each notebook uses the
 tenant declared by its target.
@@ -268,7 +283,8 @@ the query endpoint is allowed, and a Kusto token is only ever sent to a
 ## 9. Fabric explorer (read-only)
 
 The **Fabric** view in VS Code's Explorer side bar browses the tenant you
-are signed in to (or connected to): **Capacities** (SKU, region, state) →
+selected with `Fabric: Sign In` (or, before you select one, the compute
+connection's tenant): **Capacities** (SKU, region, state) →
 workspaces on each → items grouped by type; **Workspaces without a
 capacity**; and the tenant's **Connections**. Lakehouses expand into their
 OneLake `Files` and `Tables`.
@@ -343,22 +359,22 @@ session stops.
 
 ## Command reference
 
-| Command                                         | What it does                                                       |
-| ----------------------------------------------- | ------------------------------------------------------------------ |
-| `Fabric: Sign In`                               | Interactive Entra ID sign-in to a tenant (remembers the last GUID) |
-| `Fabric: Open File as Fabric Notebook`          | Open any `.ipynb` with the Fabric notebook editor                  |
-| `Fabric: Manage Lakehouses for Active Notebook` | Browse, attach/detach Lakehouses; set the default                  |
-| `Fabric: Stop Livy Session`                     | Stop the active notebook's Livy session                            |
-| `Fabric: Restart Livy Session`                  | Stop and immediately start a fresh session                         |
-| `Fabric: Show Livy Sessions`                    | List active sessions on the host Lakehouse; stop selected ones     |
-| `Fabric: Run File on Fabric`                    | Run the active (or selected) Python/SQL/Scala/R file               |
-| `Fabric: Run Selection on Fabric`               | Run the selection or current line                                  |
-| `Fabric: Run Spark Job Definition`              | Run a local `*.SparkJobDefinition` folder as a Livy batch          |
-| `Fabric: Run Query File`                        | Run a `.kql` / `.dax` / `.graphql` file against its bound item     |
-| `Fabric: Change Query Target`                   | Re-pick the item a query file runs against                         |
-| `Fabric: New API Notebook`                      | Open a new `.fabnb` REST API notebook                              |
-| `Fabric: Connect to Compute`                    | Pick capacity → workspace → host Lakehouse (→ Environment)         |
-| `Fabric: Disconnect from Compute`               | Remove the saved compute connection                                |
+| Command                                         | What it does                                                   |
+| ----------------------------------------------- | -------------------------------------------------------------- |
+| `Fabric: Sign In`                               | Select a tenant by name, ID or domain and sign in              |
+| `Fabric: Open File as Fabric Notebook`          | Open any `.ipynb` with the Fabric notebook editor              |
+| `Fabric: Manage Lakehouses for Active Notebook` | Browse, attach/detach Lakehouses; set the default              |
+| `Fabric: Stop Livy Session`                     | Stop the active notebook's Livy session                        |
+| `Fabric: Restart Livy Session`                  | Stop and immediately start a fresh session                     |
+| `Fabric: Show Livy Sessions`                    | List active sessions on the host Lakehouse; stop selected ones |
+| `Fabric: Run File on Fabric`                    | Run the active (or selected) Python/SQL/Scala/R file           |
+| `Fabric: Run Selection on Fabric`               | Run the selection or current line                              |
+| `Fabric: Run Spark Job Definition`              | Run a local `*.SparkJobDefinition` folder as a Livy batch      |
+| `Fabric: Run Query File`                        | Run a `.kql` / `.dax` / `.graphql` file against its bound item |
+| `Fabric: Change Query Target`                   | Re-pick the item a query file runs against                     |
+| `Fabric: New API Notebook`                      | Open a new `.fabnb` REST API notebook                          |
+| `Fabric: Connect to Compute`                    | Pick capacity → workspace → host Lakehouse (→ Environment)     |
+| `Fabric: Disconnect from Compute`               | Remove the saved compute connection                            |
 
 ## Settings
 

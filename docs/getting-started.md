@@ -18,8 +18,8 @@ of every feature, see the [user guide](user-guide.md).
 You need:
 
 - **VS Code 1.85 or later.**
-- **A Microsoft Entra ID account** that can use Microsoft Fabric, and your
-  **tenant ID** (a GUID: Entra admin center → Overview, or ask your admin).
+- **A Microsoft Entra ID account** that can use Microsoft Fabric. You pick
+  the tenant by name when you sign in; its ID or domain also works.
 - **A Fabric capacity** you can run Spark on, with **a workspace assigned
   to it** that contains **at least one Lakehouse**. Fabric Connect never
   creates Lakehouses; if the workspace has none, create one in the Fabric
@@ -90,13 +90,22 @@ be committed. Fabric Connect warns you if the line is missing.
 ## 3. Sign in
 
 Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → **Fabric: Sign In** →
-enter your tenant ID. VS Code opens the Microsoft sign-in in your browser
-and keeps the session in its secure storage. Fabric Connect never writes
-tokens to disk or logs.
+select your tenant:
 
-> Working for several organizations? Sign in to each tenant. Every request
-> uses the tenant that owns what it touches; tokens are never shared across
-> tenants.
+- the first time, choose **Find tenants on my account…** to list every
+  tenant your account belongs to by name (VS Code asks once to allow Azure
+  Resource Manager access; it is used only to read that list), or
+- **Enter a tenant ID or domain…** — a GUID or e.g.
+  `contoso.onmicrosoft.com`.
+
+Tenants you have used appear at the top of the list next time. VS Code
+opens the Microsoft sign-in in your browser and keeps the session in its
+secure storage. Fabric Connect never writes tokens to disk or logs.
+
+> Working for several organizations? Run **Fabric: Sign In** again to
+> switch; the Fabric explorer follows the tenant you select. Every request
+> uses the tenant that owns what it touches; tokens are never shared
+> across tenants.
 
 ## 4. Connect the repo to Fabric compute
 
@@ -105,7 +114,7 @@ runs.
 
 1. Run **Fabric: Connect to Compute** (or click **Fabric: connect compute**
    in the status bar).
-2. Enter the tenant ID if asked.
+2. Select the tenant (same picker as Sign In).
 3. Pick the **capacity**. Each entry shows its SKU (e.g. `F8`), region and
    state; a paused capacity is refused — resume it in Azure first.
 4. Pick a **workspace** assigned to that capacity.

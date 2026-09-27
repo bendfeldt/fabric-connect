@@ -43,7 +43,7 @@ deployment pipelines, CI).
    [latest release](https://github.com/bendfeldt/fabric-connect/releases/latest)
    (`code --install-extension fabric-connect-<version>.vsix`).
 2. Open your repo and add `.fabric/local.json` to its `.gitignore`.
-3. **Fabric: Sign In** with your tenant ID.
+3. **Fabric: Sign In** and select your tenant (by name, ID or domain).
 4. **Fabric: Connect to Compute** → capacity → workspace → Lakehouse.
 5. Open a `*.Notebook/notebook-content.py` (or `.ipynb`), pick the
    **Fabric Livy** kernel and run a cell.
@@ -71,7 +71,7 @@ Connect**.
 
 | Command                                         | What it does                                                   |
 | ----------------------------------------------- | -------------------------------------------------------------- |
-| `Fabric: Sign In`                               | Entra ID sign-in to a tenant                                   |
+| `Fabric: Sign In`                               | Select a tenant (by name, ID or domain) and sign in            |
 | `Fabric: Connect to Compute`                    | Pick capacity → workspace → host Lakehouse (→ Environment)     |
 | `Fabric: Disconnect from Compute`               | Remove the saved compute connection                            |
 | `Fabric: Open File as Fabric Notebook`          | Open any `.ipynb` with the Fabric notebook editor              |

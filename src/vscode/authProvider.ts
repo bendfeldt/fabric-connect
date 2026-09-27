@@ -11,14 +11,21 @@
  */
 
 import * as vscode from "vscode";
+import { HOME_TENANT } from "../core/constants";
 import { AuthError } from "../core/errors";
 import type { IAuthProvider } from "../core/types";
 
 const MICROSOFT_AUTH_PROVIDER = "microsoft";
 
 export class EntraAuthProvider implements IAuthProvider {
+  /**
+   * `tenantId` is a tenant GUID, or `HOME_TENANT` for the account's home
+   * tenant (used only to list the tenants the account belongs to).
+   */
   async getToken(tenantId: string, scopes: readonly string[]): Promise<string> {
+    const home = tenantId === HOME_TENANT;
     if (
+      !home &&
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
         tenantId,
       )
@@ -33,7 +40,11 @@ export class EntraAuthProvider implements IAuthProvider {
         },
       );
     }
-    const fullScopes = [...scopes, `VSCODE_TENANT:${tenantId}`];
+    // Without a VSCODE_TENANT scope the provider signs in to the home tenant.
+    const fullScopes = home
+      ? [...scopes]
+      : [...scopes, `VSCODE_TENANT:${tenantId}`];
+    const who = home ? "your home tenant" : `tenant ${tenantId}`;
     let session: vscode.AuthenticationSession | undefined;
     try {
       session = await vscode.authentication.getSession(
@@ -46,11 +57,11 @@ export class EntraAuthProvider implements IAuthProvider {
       const declined = /cancel|consent|denied/i.test(message);
       throw new AuthError(
         declined
-          ? `Sign-in to tenant ${tenantId} was cancelled or consent was declined.`
-          : `Failed to acquire a token for tenant ${tenantId}.`,
+          ? `Sign-in to ${who} was cancelled or consent was declined.`
+          : `Failed to acquire a token for ${who}.`,
         {
           operation: "acquire token",
-          entity: `tenant ${tenantId}`,
+          entity: who,
           remediation: declined
             ? "Run 'Fabric: Sign In' again and complete the sign-in prompt."
             : "Check your network connection, then run 'Fabric: Sign In' to re-authenticate.",
@@ -59,14 +70,11 @@ export class EntraAuthProvider implements IAuthProvider {
       );
     }
     if (session === undefined) {
-      throw new AuthError(
-        `No authentication session exists for tenant ${tenantId}.`,
-        {
-          operation: "acquire token",
-          entity: `tenant ${tenantId}`,
-          remediation: "Run 'Fabric: Sign In' to authenticate this tenant.",
-        },
-      );
+      throw new AuthError(`No authentication session exists for ${who}.`, {
+        operation: "acquire token",
+        entity: who,
+        remediation: "Run 'Fabric: Sign In' to authenticate this tenant.",
+      });
     }
     return session.accessToken;
   }

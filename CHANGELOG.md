@@ -3,6 +3,15 @@
 All notable changes to Fabric Connect. Versions are cut automatically by
 the release workflow; each GitHub Release carries the matching `.vsix`.
 
+## Unreleased
+
+- **Tenant picker** — `Fabric: Sign In` and `Fabric: Connect to Compute`
+  let you select the tenant instead of pasting a GUID: recent tenants by
+  name, **Find tenants on my account…** (lists every tenant your account
+  belongs to), or a tenant ID or domain such as `contoso.onmicrosoft.com`.
+  Running Sign In again switches tenant, and the Fabric explorer and API
+  notebooks now follow the tenant you selected.
+
 ## 1.1.7
 
 - Changelog: the packaging, walkthrough and docs entries are filed under

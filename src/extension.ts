@@ -21,6 +21,7 @@ import { LocalItemIndex } from "./core/localItemIndex";
 import { NameCache, guidAt } from "./core/nameCache";
 import { OneLakeClient } from "./core/oneLakeClient";
 import { TargetResolver } from "./core/targetResolver";
+import type { TenantInfo } from "./core/tenantDirectory";
 import { EntraAuthProvider } from "./vscode/authProvider";
 import {
   API_NOTEBOOK_TYPE,
@@ -34,6 +35,7 @@ import { LakehousePanel } from "./vscode/lakehousePanel";
 import { ModuleStager } from "./vscode/moduleStager";
 import { QueryRunner } from "./vscode/queryRunner";
 import { ResultsPanel } from "./vscode/resultsPanel";
+import { TenantPicker } from "./vscode/tenantPicker";
 import {
   FabricNotebookController,
   resolveNotebookHost,
@@ -111,10 +113,23 @@ export function activate(context: vscode.ExtensionContext): void {
       readFile,
     });
 
+  // The tenant the user selected (Sign In) drives browsing; the compute
+  // connection's tenant is offered in the picker too.
+  const tenants: TenantPicker = new TenantPicker(
+    apiClient,
+    context.globalState,
+    async (): Promise<TenantInfo[]> => {
+      const profile = await computeConnection.current();
+      return profile === undefined ? [] : [{ id: profile.tenantId }];
+    },
+  );
+  const promptTenantId = async (): Promise<string | undefined> =>
+    (await tenants.pick())?.id;
+
   const computeConnection = new ComputeConnection(
     apiClient,
     workspaceRoot,
-    () => promptTenantId(context),
+    promptTenantId,
   );
   const compute = () => computeConnection.current();
 
@@ -139,7 +154,7 @@ export function activate(context: vscode.ExtensionContext): void {
     apiClient,
     workspaceRoot,
     compute,
-    () => promptTenantId(context),
+    promptTenantId,
     resultsPanel,
   );
   const names = new NameCache();
@@ -148,7 +163,7 @@ export function activate(context: vscode.ExtensionContext): void {
     oneLake,
     livyManager,
     compute,
-    () => context.globalState.get<string>(LAST_TENANT_KEY),
+    () => tenants.selected(),
     names,
     resultsPanel,
     workspaceRoot,
@@ -181,9 +196,7 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     new ApiNotebookController(
       apiClient,
-      async () =>
-        (await compute())?.tenantId ??
-        context.globalState.get<string>(LAST_TENANT_KEY),
+      async () => tenants.selected() ?? (await compute())?.tenantId,
     ),
     explorer,
     vscode.window.registerTreeDataProvider("fabricConnect.explorer", explorer),
@@ -222,14 +235,17 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("fabric-connect.signIn", () =>
       runReportingErrors(async () => {
-        const tenantId = await promptTenantId(context);
-        if (tenantId === undefined) {
+        const tenant = await tenants.pick();
+        if (tenant === undefined) {
           return;
         }
-        await auth.getToken(tenantId, FABRIC_SCOPES);
+        await auth.getToken(tenant.id, FABRIC_SCOPES);
         explorer.refresh();
+        const name = tenant.displayName ?? tenant.defaultDomain;
         void vscode.window.showInformationMessage(
-          `Signed in to tenant ${tenantId}.`,
+          name === undefined
+            ? `Signed in to tenant ${tenant.id}. The Fabric explorer now shows this tenant.`
+            : `Signed in to ${name} (${tenant.id}). The Fabric explorer now shows this tenant.`,
         );
       }),
     ),
@@ -438,27 +454,6 @@ async function runReportingErrors(action: () => Promise<void>): Promise<void> {
       error instanceof Error ? error.message : String(error),
     );
   }
-}
-
-const LAST_TENANT_KEY = "fabric-connect.lastTenantId";
-
-async function promptTenantId(
-  context: vscode.ExtensionContext,
-): Promise<string | undefined> {
-  const tenantId = await vscode.window.showInputBox({
-    prompt: "Entra tenant ID (GUID) to sign in to",
-    value: context.globalState.get<string>(LAST_TENANT_KEY),
-    validateInput: (value) =>
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        value,
-      )
-        ? undefined
-        : "Enter a tenant GUID, e.g. 00000000-0000-0000-0000-000000000000",
-  });
-  if (tenantId !== undefined) {
-    await context.globalState.update(LAST_TENANT_KEY, tenantId);
-  }
-  return tenantId;
 }
 
 /** Explorer context-menu commands; each receives the clicked tree node. */

@@ -33,13 +33,15 @@ export interface IFabricApiClient {
 
 /**
  * Which API a request goes to: the Fabric REST API when omitted, the Power
- * BI REST API, or a Fabric Kusto endpoint (its origin validated by the
- * write policy before any token is attached).
+ * BI REST API, a Fabric Kusto endpoint (its origin validated by the write
+ * policy before any token is attached), or Azure Resource Manager (only
+ * `GET /tenants`, enforced by the write policy).
  */
 export type ServiceTarget =
   | { readonly kind: "fabric" }
   | { readonly kind: "powerbi" }
-  | { readonly kind: "kusto"; readonly origin: string };
+  | { readonly kind: "kusto"; readonly origin: string }
+  | { readonly kind: "arm" };
 
 export interface FabricRequestOptions {
   readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
