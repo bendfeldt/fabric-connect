@@ -19,7 +19,7 @@ extension itself never creates, changes or deletes workspace items.
 
 You need:
 
-- VS Code 1.85 or later, with the `.vsix` installed
+- VS Code 1.93 or later, with the `.vsix` installed
   (`code --install-extension fabric-connect-<version>.vsix`).
 - An Entra account with access to Fabric in the test tenant. For the
   tenant tests, ideally access to a **second tenant** too (a guest account
@@ -157,43 +157,60 @@ can check with `git diff` that saving changes nothing unexpected.
 - [ ] **Help → Welcome → Walkthroughs → Get started with Fabric Connect**
       opens, and each step's link runs its command.
 - [ ] The **Fabric** view is in the Explorer side bar. Before you sign in
-      it shows _Sign in or connect to compute to browse Fabric_.
+      it shows _Sign in to browse Fabric_; clicking it starts the sign-in.
+- [ ] The status bar shows **Fabric: sign in**.
 - [ ] **View → Output → Fabric Connect** exists.
 
-## 2. Select the tenant
+## 2. Sign in (remembered per repo)
 
-Selecting the tenant needs a version newer than 1.1.7; 1.1.7 and earlier
-ask you to type the tenant GUID instead.
+The per-repo sign-in needs a version newer than 1.1.7; 1.1.7 and earlier
+ask you to type a tenant GUID instead.
 
-- [ ] Run **Fabric: Sign In**. **Expect:** a list titled _Select a Fabric
-      tenant_ with **Find tenants on my account…** and **Enter a tenant ID
-      or domain…** (plus any tenants you used before).
-- [ ] Choose **Find tenants on my account…**. **Expect:** the first time,
-      a Microsoft sign-in or consent prompt. Then every tenant your account
-      belongs to (home and guest), each with its name, domain and ID.
-- [ ] Pick the test tenant. **Expect:** browser sign-in if needed, then
-      _Signed in to <name> (<tenant ID>). The Fabric explorer now shows
-      this tenant._ The Fabric view lists that tenant's capacities.
-- [ ] Run **Fabric: Sign In** again. **Expect:** the tenant you just used is
-      at the top, marked **current** with a check mark.
-- [ ] **Enter a tenant ID or domain…** → type `not a tenant`. **Expect:** a
-      validation message; you cannot submit it.
-- [ ] **Enter a tenant ID or domain…** → type your tenant's domain (e.g.
-      `contoso.onmicrosoft.com`). **Expect:** _Looking up the tenant…_,
-      then sign-in to that tenant.
-- [ ] **Enter a tenant ID or domain…** → type a tenant GUID. **Expect:**
-      sign-in to that tenant.
-- [ ] _(Second tenant)_ Sign in to the other tenant. **Expect:** the Fabric
-      view switches to its capacities and workspaces. Sign in to the test
-      tenant again and it switches back.
+- [ ] Run **Fabric: Sign In**. **Expect:** a list titled _Sign in to
+      Fabric_ with the Microsoft accounts already signed in to VS Code and
+      **Sign in with another account…** (with no accounts, the browser
+      sign-in opens straight away).
+- [ ] Pick your account (or sign in with it in the browser). **Expect:**
+      _Signed in as you@… This repo will sign in with this account from
+      now on…_; the status bar shows **Fabric: you@…**; the Fabric view
+      lists your home tenant's capacities. No tenant ID was asked for.
+- [ ] Open `.fabric/local.json`. **Expect:** a `"signIn"` section with
+      `account`, `accountId` and `tenantId` — and no token.
+- [ ] **Developer: Reload Window**. **Expect:** no sign-in prompt; the
+      status bar shows the same account and the Fabric view loads.
+- [ ] Click the status bar item. **Expect:** **Switch Account…**, **Switch
+      Tenant…** and **Sign Out**.
+- [ ] _(Second tenant)_ **Switch Tenant…** → **Find tenants on my
+      account…**. **Expect:** the first time, a consent or sign-in prompt;
+      then every tenant your account belongs to, with name, domain and ID.
+      Pick the other tenant. **Expect:** the status bar shows
+      **Fabric: you@… · <tenant name>**, and the Fabric view switches to
+      that tenant.
+- [ ] **Switch Tenant…** → **Enter a tenant ID or domain…** → `not a
+    tenant`. **Expect:** a validation message; you cannot submit it.
+- [ ] **Switch Tenant…** → **Enter a tenant ID or domain…** → your test
+      tenant's domain (e.g. `contoso.onmicrosoft.com`), or its GUID.
+      **Expect:** the repo is signed in to the test tenant again; the
+      tenant you used before is listed at the top next time, marked
+      **current** when it is the active one.
+- [ ] _(Second account)_ Open another folder in a new window, sign it in
+      with a different account. **Expect:** each window keeps its own
+      account in its own status bar.
+- [ ] **Sign Out** from the status bar menu. **Expect:** _This repo no
+      longer signs in as you@…_; `"signIn"` is gone from
+      `.fabric/local.json`; the status bar shows **Fabric: sign in**. Your
+      account is still listed in VS Code's **Accounts** menu. Sign in
+      again before continuing.
+- [ ] Sign out of the account in VS Code's **Accounts** menu, with the
+      repo still signed in. **Expect:** the status bar shows a warning
+      icon with the account name; running something asks you to sign in.
+      Sign back in.
 - [ ] Press **Esc** at each step. **Expect:** nothing changes and no error.
-- [ ] **Developer: Reload Window**, then **Fabric: Sign In**. **Expect:**
-      recent tenants are still listed by name.
 
 ## 3. Connect to compute
 
-- [ ] Run **Fabric: Connect to Compute**. **Expect:** the same tenant
-      picker, then capacities with SKU, region and state.
+- [ ] Run **Fabric: Connect to Compute**. **Expect:** no tenant prompt
+      (the repo's sign-in is used); capacities with SKU, region and state.
 - [ ] Pick the capacity, then the **workspace without a Lakehouse**.
       **Expect:** an error saying to create a Lakehouse in the Fabric
       portal — _Fabric Connect never creates items_. Nothing is created
@@ -339,8 +356,9 @@ For each item you have:
       delete any pulled folders.
 - [ ] **Fabric: Disconnect from Compute**. **Expect:** the status bar shows
       _connect compute_ and the `"compute"` section is removed.
-- [ ] To sign out, use VS Code's **Accounts** menu (bottom left) → your
-      Microsoft account → **Sign Out**.
+- [ ] **Fabric: Sign Out** so the test repo forgets the sign-in. To remove
+      the account from VS Code as well, use the **Accounts** menu (bottom
+      left) → your Microsoft account → **Sign Out**.
 
 ## Reporting a problem
 
