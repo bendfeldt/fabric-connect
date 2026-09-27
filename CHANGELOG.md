@@ -4,7 +4,7 @@ All notable changes to Fabric Connect. Changes merged since the last
 release are listed under "Unreleased" until a maintainer runs the release
 workflow; each GitHub Release carries the matching `.vsix`.
 
-## Unreleased
+## 1.2.0 — Sign in per repo
 
 - **Sign in per repo** — `Fabric: Sign In` is now a real login: pick your
   Microsoft account (or log in with another in the browser) and the repo is
