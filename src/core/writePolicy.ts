@@ -104,6 +104,10 @@ export function assertWriteAllowed(
   if (service.kind === "kusto") {
     serviceOrigin(service); // throws for anything but a Fabric Kusto host
   }
+  if (service.kind === "arm") {
+    assertArmRequestAllowed(options, describe);
+    return;
+  }
   if (options.method === "GET") {
     return;
   }
@@ -124,6 +128,31 @@ export function assertWriteAllowed(
       },
     );
   }
+}
+
+/**
+ * The one Azure Resource Manager request the extension makes: listing the
+ * tenants the signed-in account belongs to (with an optional page token).
+ */
+const ARM_TENANTS_LIST =
+  /^\/tenants\?api-version=[0-9]{4}-[0-9]{2}-[0-9]{2}(&\$skiptoken=[A-Za-z0-9%._~-]+)?$/;
+
+function assertArmRequestAllowed(
+  options: FabricRequestOptions,
+  describe: string,
+): void {
+  if (options.method === "GET" && ARM_TENANTS_LIST.test(options.path)) {
+    return;
+  }
+  throw new LocalFirstViolationError(
+    `Blocked '${options.method}' request to Azure Resource Manager: Fabric Connect only lists your tenants there.`,
+    {
+      operation: "enforce local-first write policy",
+      entity: describe,
+      remediation:
+        "Azure Resource Manager is used only for 'GET /tenants'. If another call is genuinely needed, change src/core/writePolicy.ts together with docs/security.md.",
+    },
+  );
 }
 
 /** The only OneLake folder the extension writes to, inside a Lakehouse. */

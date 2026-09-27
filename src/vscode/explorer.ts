@@ -78,7 +78,8 @@ export class FabricExplorer
     private readonly oneLake: OneLakeClient,
     private readonly livy: ILivySessionManager,
     private readonly compute: () => Promise<ComputeProfile | undefined>,
-    private readonly lastTenant: () => string | undefined,
+    /** The tenant the user selected with 'Fabric: Sign In', if any. */
+    private readonly selectedTenant: () => string | undefined,
     private readonly names: NameCache,
     private readonly results: ResultsPanel,
     private readonly workspaceRoot: string | undefined,
@@ -203,10 +204,10 @@ export class FabricExplorer
         return [
           {
             kind: "message",
-            label: "Sign in or connect to compute to browse Fabric",
+            label: "Sign in to browse Fabric",
             command: {
-              title: "Connect",
-              command: "fabric-connect.connectCompute",
+              title: "Sign In",
+              command: "fabric-connect.signIn",
             },
           },
         ];
@@ -628,7 +629,9 @@ export class FabricExplorer
 
   private async tenant(): Promise<string | undefined> {
     if (this.tenantId === undefined) {
-      this.tenantId = (await this.compute())?.tenantId ?? this.lastTenant();
+      // The tenant the user selected wins; the compute connection's tenant
+      // is the fallback before anything has been selected.
+      this.tenantId = this.selectedTenant() ?? (await this.compute())?.tenantId;
     }
     return this.tenantId;
   }

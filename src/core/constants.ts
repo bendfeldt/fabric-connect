@@ -10,7 +10,8 @@ export const LIVY_API_VERSION = "2023-12-01";
 
 /**
  * Least-privilege delegated scope for the Fabric REST + Livy APIs. We
- * deliberately do not request broad Graph or management scopes.
+ * deliberately do not request broad Graph scopes; the management scope below
+ * is requested only when the user asks to list their tenants.
  */
 export const FABRIC_SCOPES: readonly string[] = [
   "https://api.fabric.microsoft.com/.default",
@@ -38,3 +39,19 @@ export const ONELAKE_API_VERSION = "2023-11-03";
 export const STORAGE_SCOPES: readonly string[] = [
   "https://storage.azure.com/.default",
 ];
+
+/** Azure Resource Manager, used for one call only: listing your tenants. */
+export const ARM_BASE_URL = "https://management.azure.com";
+
+export const ARM_SCOPES: readonly string[] = [
+  "https://management.azure.com/.default",
+];
+
+/** ARM API version for `GET /tenants`. */
+export const ARM_TENANTS_API_VERSION = "2022-12-01";
+
+/**
+ * Pseudo tenant ID meaning "the account's home tenant", used before any
+ * tenant is selected (to list the tenants the account belongs to).
+ */
+export const HOME_TENANT = "organizations";

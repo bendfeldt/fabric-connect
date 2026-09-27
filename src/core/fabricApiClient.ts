@@ -8,6 +8,8 @@
  */
 
 import {
+  ARM_BASE_URL,
+  ARM_SCOPES,
   FABRIC_API_BASE_URL,
   FABRIC_SCOPES,
   KUSTO_SCOPES,
@@ -77,13 +79,17 @@ export class FabricApiClient implements IFabricApiClient {
         ? POWERBI_SCOPES
         : service.kind === "kusto"
           ? KUSTO_SCOPES
-          : FABRIC_SCOPES);
+          : service.kind === "arm"
+            ? ARM_SCOPES
+            : FABRIC_SCOPES);
     const base =
       service.kind === "fabric"
         ? this.baseUrl
         : service.kind === "powerbi"
           ? POWERBI_API_BASE_URL
-          : serviceOrigin(service);
+          : service.kind === "arm"
+            ? ARM_BASE_URL
+            : serviceOrigin(service);
     const url = base + options.path;
 
     let lastError: FabricApiError | undefined;

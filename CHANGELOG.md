@@ -4,6 +4,21 @@ All notable changes to Fabric Connect. Changes merged since the last
 release are listed under "Unreleased" until a maintainer runs the release
 workflow; each GitHub Release carries the matching `.vsix`.
 
+## Unreleased
+
+- **Sign in per repo** — `Fabric: Sign In` is now a real login: pick your
+  Microsoft account (or log in with another in the browser) and the repo is
+  signed in to that account's tenant, with no tenant ID to type. Like a
+  Tabular Editor `.tmuo` file, the account and tenant are remembered in the
+  gitignored `.fabric/local.json`, so reopening the repo signs in again
+  silently, and different repos can use different accounts. A status bar
+  item shows who the repo is signed in as and offers **Switch Account**,
+  **Switch Tenant** (for guest access: lists the tenants on your account,
+  or takes a tenant ID or domain such as `contoso.onmicrosoft.com`) and
+  **Sign Out**. The explorer, API notebooks, compute and query files all
+  use the repo's sign-in.
+- Requires VS Code 1.93 or later (for choosing the Microsoft account).
+
 ## 1.1.7
 
 - Changelog: the packaging, walkthrough and docs entries are filed under
