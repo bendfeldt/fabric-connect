@@ -37,3 +37,25 @@ jobs:
           name: fabric-connect-build
           path: out/src/
           retention-days: 7
+
+      # The same packaging the Release workflow does, on every PR, so a
+      # .vsix that would ship sources, tests, agent tooling or stale build
+      # output is caught before merge rather than after a release.
+      - name: Package extension
+        run: npm run package
+
+      - name: Check packaged contents
+        run: |
+          unzip -Z1 fabric-connect-*.vsix > vsix-files.txt
+          cat vsix-files.txt
+          if grep -Ev '^(extension\.vsixmanifest|\[Content_Types\]\.xml|extension/(package\.json|readme\.md|changelog\.md|LICENSE\.txt|media/.*|out/src/.*\.js))$' vsix-files.txt; then
+            echo "::error::Unexpected files in the .vsix (see above); fix .vscodeignore."
+            exit 1
+          fi
+
+      - name: Upload .vsix
+        uses: actions/upload-artifact@v4
+        with:
+          name: fabric-connect-vsix
+          path: fabric-connect-*.vsix
+          retention-days: 7

@@ -52,6 +52,14 @@ Source of truth for scope: `docs/plan-local-first.md` (local-first, no deploymen
   through the shared client, so the write policy applies; only Fabric API
   URLs accepted.
 
+- Shipping and docs: `.vscodeignore` allowlist (only compiled JS, manifest,
+  README, CHANGELOG, LICENSE, media); `vscode:prepublish` cleans `out/`;
+  icon, Marketplace metadata, in-product walkthrough; manifest/activation
+  test (declared commands, notebook types, views, menus, walkthrough links
+  all wired); CI packages on every PR and checks `.vsix` contents; new
+  `docs/getting-started.md` and `docs/security.md`; README, user guide,
+  installation guide and CHANGELOG refreshed.
+
 ## Next
 
 All planned milestones (M0–M5) are implemented, as stacked PRs (one per
