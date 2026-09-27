@@ -1,26 +1,23 @@
-# Releases every change merged to main, without ever pushing to main directly,
-# so strict branch protection (require PR + required status checks) stays on
-# with no bypass list. Two phases, keyed on the pushed commit's message:
+# Releases only when a maintainer asks, without ever pushing to main
+# directly, so strict branch protection (require PR + required status
+# checks) stays on with no bypass list. Merging to main never releases on
+# its own. Two phases:
 #
-#   1. propose-bump — a normal merge lands on main: infer the semver bump from
-#      conventional commits since the last v* tag (BREAKING CHANGE/"!:" =>
-#      major, feat => minor, else patch), bump package.json on a
-#      bot/version-bump branch, open a PR titled "chore(release): vX.Y.Z",
-#      and enable auto-merge. The PR merges itself once required checks pass.
+#   1. propose-bump — run manually (Actions -> Release -> Run workflow).
+#      Infers the semver bump from conventional commits since the last v*
+#      tag (BREAKING CHANGE/"!:" => major, feat => minor, else patch) unless
+#      a bump is chosen explicitly, bumps package.json on a bot/version-bump
+#      branch, opens a PR titled "chore(release): vX.Y.Z" and enables
+#      auto-merge. The PR merges itself once required checks pass.
 #   2. publish-release — the bump PR's squash commit lands on main: package
 #      the .vsix and publish a GitHub Release, which creates the vX.Y.Z tag
-#      at that commit.
+#      at that commit. Every other push to main does nothing here.
 #
-# Merges whose commit subject starts with "docs:"/"docs(" or "ci:"/"ci(" (the
-# squash commit takes the PR title) change nothing that ships in the .vsix,
-# so they cut no release; their commits ride along with the next release.
-#
-# Multi-developer convergence: propose-bump always rebuilds bot/version-bump
-# from the live tip of main and recomputes the bump over the full range since
-# the last tag, so overlapping merges force-update the same PR with one
-# cumulative, correctly-sized bump. Runs are serialized by the concurrency
-# group; a stale bump PR is refreshed by the next run, never merged stale
-# (enable "require branches to be up to date" on the ruleset).
+# propose-bump always builds bot/version-bump from the live tip of main and
+# computes the bump over the full range since the last tag; running it again
+# before the PR merges force-updates the same PR. Runs are serialized by the
+# concurrency group (enable "require branches to be up to date" on the
+# ruleset so a stale bump PR is never merged).
 #
 # One-time repo setup required:
 #   - RELEASE_PAT secret: fine-grained PAT for this repo with read/write on
@@ -30,10 +27,17 @@
 #   - Settings -> General: "Allow auto-merge" on, squash merging allowed.
 #   - Ruleset on main: require PR, require Build/Test status checks, and no
 #     required human approval (the bot cannot approve its own PR; requiring
-#     approval turns releases human-gated instead of automatic).
+#     approval means someone must also approve the bump PR).
 name: Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump (auto = infer from commit messages since the last release)
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
   push:
     branches: [main]
 
@@ -43,15 +47,7 @@ concurrency:
 
 jobs:
   propose-bump:
-    # Skip the bump PR's own merge commit (handled by publish-release),
-    # docs-only and CI-only merges, and events without a head commit.
-    if: >-
-      ${{ github.event.head_commit != null
-      && !startsWith(github.event.head_commit.message, 'chore(release):')
-      && !startsWith(github.event.head_commit.message, 'docs:')
-      && !startsWith(github.event.head_commit.message, 'docs(')
-      && !startsWith(github.event.head_commit.message, 'ci:')
-      && !startsWith(github.event.head_commit.message, 'ci(') }}
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -75,7 +71,14 @@ jobs:
 
       - name: Determine version bump
         id: bump
+        env:
+          REQUESTED: ${{ inputs.bump }}
         run: |
+          if [ "$REQUESTED" != "auto" ]; then
+            echo "Bump chosen when the workflow was started: $REQUESTED"
+            echo "bump=$REQUESTED" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           last_tag="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
           if [ -n "$last_tag" ]; then
             range="$last_tag..HEAD"
@@ -113,8 +116,9 @@ jobs:
           body: >
             Automated ${{ steps.bump.outputs.bump }} version bump. Merging this
             PR publishes the v${{ steps.version.outputs.version }} GitHub
-            Release with the packaged .vsix. Force-updated from the tip of
-            main on every merge until it lands.
+            Release with the packaged .vsix. Started manually; running the
+            Release workflow again before this merges refreshes it from the
+            tip of main.
           delete-branch: true
 
       - name: Enable auto-merge
@@ -124,7 +128,7 @@ jobs:
         run: gh pr merge --auto --squash '${{ steps.pr.outputs.pull-request-number }}'
 
   publish-release:
-    if: ${{ github.event.head_commit != null && startsWith(github.event.head_commit.message, 'chore(release):') }}
+    if: ${{ github.event_name == 'push' && github.event.head_commit != null && startsWith(github.event.head_commit.message, 'chore(release):') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
