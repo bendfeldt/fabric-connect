@@ -204,10 +204,10 @@ export class FabricExplorer
         return [
           {
             kind: "message",
-            label: "Sign in or connect to compute to browse Fabric",
+            label: "Sign in to browse Fabric",
             command: {
-              title: "Connect",
-              command: "fabric-connect.connectCompute",
+              title: "Sign In",
+              command: "fabric-connect.signIn",
             },
           },
         ];

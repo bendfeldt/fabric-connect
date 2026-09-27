@@ -77,30 +77,49 @@ misconfiguration can never silently execute against the wrong workspace.
 
 ## 2. Sign in
 
-Run **`Fabric: Sign In`** from the Command Palette and select a tenant:
+Sign in once per repo, like a Tabular Editor `.tmuo` file: Fabric Connect
+remembers **which Microsoft account and tenant this repo uses** and signs
+in with them again, without a prompt, whenever you reopen it.
 
-- **Recent tenants** are listed by name (with their domain and ID); the
-  current one is marked.
-- **Find tenants on my account…** lists every tenant your Microsoft account
-  belongs to, home and guest, by name. The first time, VS Code asks you to
-  allow Azure Resource Manager access — it is used only to read that list.
-- **Enter a tenant ID or domain…** takes a tenant GUID (Entra admin center
-  → Overview) or a verified domain such as `contoso.onmicrosoft.com`,
-  which is looked up to its tenant ID.
+1. Run **`Fabric: Sign In`** (or click **Fabric: sign in** in the status
+   bar).
+2. Pick a Microsoft account that is already signed in to VS Code, or
+   **Sign in with another account…** to log in in the browser.
+3. The repo is now signed in to that account's own tenant — no tenant ID
+   needed. The status bar shows `Fabric: you@contoso.com`.
 
-Sign-in goes through VS Code's built-in Microsoft authentication provider:
-it handles the interactive login, caching, and refresh, and persists
-credentials in VS Code's SecretStorage. The extension never writes tokens to disk or logs
-them.
+The account name, VS Code's account ID and the tenant ID are saved under
+`"signIn"` in the gitignored `.fabric/local.json`. No token is saved there:
+sign-in goes through VS Code's built-in Microsoft authentication provider,
+which handles the login, caching and refresh and keeps credentials in VS
+Code's secret storage. Every token Fabric Connect asks for is for the
+repo's account, so a repo never borrows another account's session.
 
-**Switching tenants:** run `Fabric: Sign In` again and pick another
-tenant. The selected tenant is the one the Fabric explorer and API
-notebooks use. The compute connection keeps its own tenant (chosen with
-the same picker in `Fabric: Connect to Compute`), and notebooks mapped by
-`.fabric/targets.json` use their target's tenant.
+Click the status bar item (or run the commands) to:
 
-You can be signed in to multiple tenants at once; each notebook uses the
-tenant declared by its target.
+- **Switch Account…** — sign the repo in with a different account.
+- **Switch Tenant…** (`Fabric: Switch Tenant`) — for guest access to
+  another organization with the same account. Pick a recent tenant,
+  **Find tenants on my account…** (lists every tenant your account belongs
+  to, by name; the first time, VS Code asks you to allow Azure Resource
+  Manager access, used only to read that list), or **Enter a tenant ID or
+  domain…** (a GUID, or a verified domain such as
+  `contoso.onmicrosoft.com`). The status bar then shows
+  `you@contoso.com · Fabrikam`.
+- **Sign Out** (`Fabric: Sign Out`) — the repo forgets the sign-in. The
+  account stays signed in to VS Code; remove it there from the
+  **Accounts** menu.
+
+Different repos can be signed in with different accounts and tenants at
+the same time. If the saved account is no longer signed in to VS Code, the
+status bar shows a warning and you are asked to sign in when Fabric
+Connect next needs a token.
+
+The explorer, API notebooks, `Fabric: Connect to Compute` and query files
+use the repo's sign-in; if the repo is not signed in yet, they start the
+sign-in first. A compute connection keeps the tenant it was made in, and
+notebooks mapped by `.fabric/targets.json` use their target's tenant —
+all with the repo's account.
 
 ## 3. Open and edit notebooks
 
@@ -282,9 +301,9 @@ the query endpoint is allowed, and a Kusto token is only ever sent to a
 
 ## 9. Fabric explorer (read-only)
 
-The **Fabric** view in VS Code's Explorer side bar browses the tenant you
-selected with `Fabric: Sign In` (or, before you select one, the compute
-connection's tenant): **Capacities** (SKU, region, state) →
+The **Fabric** view in VS Code's Explorer side bar browses the tenant the
+repo is signed in to (or, before it signs in, the compute connection's
+tenant): **Capacities** (SKU, region, state) →
 workspaces on each → items grouped by type; **Workspaces without a
 capacity**; and the tenant's **Connections**. Lakehouses expand into their
 OneLake `Files` and `Tables`.
@@ -361,7 +380,10 @@ session stops.
 
 | Command                                         | What it does                                                   |
 | ----------------------------------------------- | -------------------------------------------------------------- |
-| `Fabric: Sign In`                               | Select a tenant by name, ID or domain and sign in              |
+| `Fabric: Sign In`                               | Sign this repo in with a Microsoft account (remembered)        |
+| `Fabric: Switch Tenant`                         | Sign this repo in to another tenant with the same account      |
+| `Fabric: Sign Out`                              | This repo forgets its sign-in                                  |
+| `Fabric: Account…`                              | Account menu (the status bar item)                             |
 | `Fabric: Open File as Fabric Notebook`          | Open any `.ipynb` with the Fabric notebook editor              |
 | `Fabric: Manage Lakehouses for Active Notebook` | Browse, attach/detach Lakehouses; set the default              |
 | `Fabric: Stop Livy Session`                     | Stop the active notebook's Livy session                        |

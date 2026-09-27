@@ -10,7 +10,6 @@
 
 import * as fs from "node:fs/promises";
 import * as vscode from "vscode";
-import { FABRIC_SCOPES } from "./core/constants";
 import { FabricApiClient } from "./core/fabricApiClient";
 import { DISPLAY_BOOTSTRAP_CODE } from "./core/displayProtocol";
 import {
@@ -35,6 +34,7 @@ import { LakehousePanel } from "./vscode/lakehousePanel";
 import { ModuleStager } from "./vscode/moduleStager";
 import { QueryRunner } from "./vscode/queryRunner";
 import { ResultsPanel } from "./vscode/resultsPanel";
+import { SignInManager } from "./vscode/signIn";
 import { TenantPicker } from "./vscode/tenantPicker";
 import {
   FabricNotebookController,
@@ -113,25 +113,31 @@ export function activate(context: vscode.ExtensionContext): void {
       readFile,
     });
 
-  // The tenant the user selected (Sign In) drives browsing; the compute
-  // connection's tenant is offered in the picker too.
-  const tenants: TenantPicker = new TenantPicker(
-    apiClient,
-    context.globalState,
-    async (): Promise<TenantInfo[]> => {
-      const profile = await computeConnection.current();
-      return profile === undefined ? [] : [{ id: profile.tenantId }];
-    },
+  // The repo's sign-in (account + tenant, saved in .fabric/local.json) is
+  // the tenant everything uses; signing in is asked for when it is missing.
+  let computeTenant = async (): Promise<TenantInfo[]> => [];
+  const tenants = new TenantPicker(apiClient, context.globalState, () =>
+    computeTenant(),
   );
-  const promptTenantId = async (): Promise<string | undefined> =>
-    (await tenants.pick())?.id;
+  const signIn = new SignInManager(
+    auth,
+    tenants,
+    workspaceRoot,
+    context.workspaceState,
+  );
+  const requireTenant = () => signIn.requireTenant();
 
   const computeConnection = new ComputeConnection(
     apiClient,
     workspaceRoot,
-    promptTenantId,
+    requireTenant,
   );
   const compute = () => computeConnection.current();
+  // The compute connection's tenant is offered when switching tenant.
+  computeTenant = async () => {
+    const profile = await compute();
+    return profile === undefined ? [] : [{ id: profile.tenantId }];
+  };
 
   const oneLake = new OneLakeClient(auth);
   const stager = new ModuleStager(oneLake, workspaceRoot);
@@ -154,7 +160,7 @@ export function activate(context: vscode.ExtensionContext): void {
     apiClient,
     workspaceRoot,
     compute,
-    promptTenantId,
+    requireTenant,
     resultsPanel,
   );
   const names = new NameCache();
@@ -163,7 +169,7 @@ export function activate(context: vscode.ExtensionContext): void {
     oneLake,
     livyManager,
     compute,
-    () => tenants.selected(),
+    () => signIn.tenant(),
     names,
     resultsPanel,
     workspaceRoot,
@@ -179,6 +185,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const lakehousePanel = new LakehousePanel(apiClient, targetResolver, compute);
 
   void computeConnection.refreshStatus();
+  void signIn.restore();
 
   context.subscriptions.push(
     output,
@@ -196,11 +203,16 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     new ApiNotebookController(
       apiClient,
-      async () => tenants.selected() ?? (await compute())?.tenantId,
+      async () =>
+        signIn.tenant() ??
+        (await compute())?.tenantId ??
+        (await signIn.requireTenant()),
     ),
     explorer,
     vscode.window.registerTreeDataProvider("fabricConnect.explorer", explorer),
     computeConnection.onDidChange(() => explorer.refresh()),
+    signIn,
+    signIn.onDidChange(() => explorer.refresh()),
     // Hovering a GUID anywhere names the Fabric item, workspace or capacity
     // behind it (from the explorer's listings and local .platform files).
     vscode.languages.registerHoverProvider(
@@ -235,19 +247,19 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("fabric-connect.signIn", () =>
       runReportingErrors(async () => {
-        const tenant = await tenants.pick();
-        if (tenant === undefined) {
-          return;
-        }
-        await auth.getToken(tenant.id, FABRIC_SCOPES);
-        explorer.refresh();
-        const name = tenant.displayName ?? tenant.defaultDomain;
-        void vscode.window.showInformationMessage(
-          name === undefined
-            ? `Signed in to tenant ${tenant.id}. The Fabric explorer now shows this tenant.`
-            : `Signed in to ${name} (${tenant.id}). The Fabric explorer now shows this tenant.`,
-        );
+        await signIn.signIn();
       }),
+    ),
+    vscode.commands.registerCommand("fabric-connect.switchTenant", () =>
+      runReportingErrors(async () => {
+        await signIn.switchTenant();
+      }),
+    ),
+    vscode.commands.registerCommand("fabric-connect.signOut", () =>
+      runReportingErrors(() => signIn.signOut()),
+    ),
+    vscode.commands.registerCommand("fabric-connect.accountMenu", () =>
+      runReportingErrors(() => signIn.showMenu()),
     ),
 
     vscode.commands.registerCommand("fabric-connect.openAsFabricNotebook", () =>

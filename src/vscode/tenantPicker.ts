@@ -1,9 +1,9 @@
 /**
- * Tenant Picker: how the user selects the Entra tenant to work in. Shows
- * recently used tenants (by name), finds every tenant the account belongs
- * to on request, and accepts a tenant ID or domain typed by hand. The
- * selection is remembered and becomes the tenant the explorer and API
- * notebooks use; compute and query prompts go through the same picker.
+ * Tenant Picker: the "Switch Tenant" step of signing in, for accounts that
+ * work in more than one tenant (e.g. as a guest). Shows recently used
+ * tenants (by name), finds every tenant the signed-in account belongs to on
+ * request, and accepts a tenant ID or domain typed by hand. The choice is
+ * saved by `SignInManager`; this class only remembers recent tenants.
  */
 
 import * as vscode from "vscode";
@@ -18,7 +18,6 @@ import {
 } from "../core/tenantDirectory";
 import type { IFabricApiClient } from "../core/types";
 
-const LAST_TENANT_KEY = "fabric-connect.lastTenantId";
 const RECENT_TENANTS_KEY = "fabric-connect.recentTenants";
 const MAX_RECENT = 10;
 
@@ -36,14 +35,11 @@ export class TenantPicker {
     private readonly otherTenants: () => Promise<TenantInfo[]>,
   ) {}
 
-  /** The tenant the user last selected, if any. */
-  selected(): string | undefined {
-    return this.state.get<string>(LAST_TENANT_KEY);
-  }
-
-  /** Asks the user for a tenant; `undefined` when they cancel. */
-  async pick(): Promise<TenantInfo | undefined> {
-    const current = this.selected();
+  /**
+   * Asks the user for a tenant; `undefined` when they cancel. `current` is
+   * the tenant the repo is signed in to, marked in the list.
+   */
+  async pick(current: string | undefined): Promise<TenantInfo | undefined> {
     const known = mergeTenantChoices(
       this.recent(),
       current === undefined ? [] : [{ id: current }],
@@ -67,7 +63,7 @@ export class TenantPicker {
       },
     ];
     const picked = await vscode.window.showQuickPick(choices, {
-      title: "Select a Fabric tenant",
+      title: "Switch Fabric tenant",
       placeHolder:
         known.length > 0
           ? "Pick a tenant, find the tenants on your account, or enter one"
@@ -142,7 +138,7 @@ export class TenantPicker {
     const picked = await vscode.window.showQuickPick(
       tenants.map((tenant) => this.tenantChoice(tenant, current)),
       {
-        title: `Select a Fabric tenant (${tenants.length} on your account)`,
+        title: `Switch Fabric tenant (${tenants.length} on your account)`,
         matchOnDescription: true,
         matchOnDetail: true,
         ignoreFocusOut: true,
@@ -153,7 +149,7 @@ export class TenantPicker {
 
   private async enterByHand(): Promise<TenantInfo | undefined> {
     const value = await vscode.window.showInputBox({
-      title: "Select a Fabric tenant",
+      title: "Switch Fabric tenant",
       prompt:
         "Tenant ID (GUID) or domain, e.g. contoso.onmicrosoft.com. Find the ID in Entra admin center → Overview.",
       ignoreFocusOut: true,
@@ -199,6 +195,5 @@ export class TenantPicker {
       MAX_RECENT,
     );
     await this.state.update(RECENT_TENANTS_KEY, recent);
-    await this.state.update(LAST_TENANT_KEY, tenant.id);
   }
 }

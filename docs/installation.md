@@ -7,7 +7,7 @@ three installation paths below, then verify the install and move on to the
 
 ## Prerequisites
 
-- **VS Code 1.85 or later** (the extension uses only the stable extension
+- **VS Code 1.93 or later** (the extension uses only the stable extension
   API).
 - A **Microsoft Entra ID account** with access to at least one Microsoft
   Fabric workspace. Sign-in uses VS Code's built-in Microsoft
