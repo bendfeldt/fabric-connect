@@ -3,7 +3,7 @@
 All notable changes to Fabric Connect. Versions are cut automatically by
 the release workflow; each GitHub Release carries the matching `.vsix`.
 
-## Unreleased
+## 1.1.6 — Ship-ready packaging and docs
 
 - Packaging: the `.vsix` now contains only the compiled extension, its
   manifest, README, changelog, license, icon and walkthrough pages. Build
