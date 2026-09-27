@@ -11,6 +11,10 @@
 #      the .vsix and publish a GitHub Release, which creates the vX.Y.Z tag
 #      at that commit.
 #
+# Merges whose commit subject starts with "docs:"/"docs(" or "ci:"/"ci(" (the
+# squash commit takes the PR title) change nothing that ships in the .vsix,
+# so they cut no release; their commits ride along with the next release.
+#
 # Multi-developer convergence: propose-bump always rebuilds bot/version-bump
 # from the live tip of main and recomputes the bump over the full range since
 # the last tag, so overlapping merges force-update the same PR with one
@@ -39,9 +43,15 @@ concurrency:
 
 jobs:
   propose-bump:
-    # Skip the bump PR's own merge commit (handled by publish-release) and
-    # events without a head commit.
-    if: ${{ github.event.head_commit != null && !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    # Skip the bump PR's own merge commit (handled by publish-release),
+    # docs-only and CI-only merges, and events without a head commit.
+    if: >-
+      ${{ github.event.head_commit != null
+      && !startsWith(github.event.head_commit.message, 'chore(release):')
+      && !startsWith(github.event.head_commit.message, 'docs:')
+      && !startsWith(github.event.head_commit.message, 'docs(')
+      && !startsWith(github.event.head_commit.message, 'ci:')
+      && !startsWith(github.event.head_commit.message, 'ci(') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
