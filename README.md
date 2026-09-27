@@ -121,8 +121,10 @@ generic, observable API traffic, and compatibility first — the Fabric REST
 API version is an explicit constant, and only VS Code's stable extension
 API is used.
 
-Releases are automated: merging to `main` opens a version-bump PR, and
-merging that publishes a GitHub Release with the `.vsix`. CI packages the
+Releases are manual: merging to `main` never releases. A maintainer runs
+**Actions → Release → Run workflow** (bump `auto`, `patch`, `minor` or
+`major`), which opens a version-bump PR; merging that publishes a GitHub
+Release with the `.vsix`. CI packages the
 extension on every PR and checks that the `.vsix` contains only the
 compiled extension, manifest, README, changelog, license and media.
 
