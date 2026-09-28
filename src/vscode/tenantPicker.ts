@@ -37,12 +37,17 @@ export class TenantPicker {
 
   /**
    * Asks the user for a tenant; `undefined` when they cancel. `current` is
-   * the tenant the repo is signed in to, marked in the list.
+   * the tenant the repo is signed in to, marked in the list; `title` names
+   * the flow the picker is part of.
    */
-  async pick(current: string | undefined): Promise<TenantInfo | undefined> {
+  async pick(
+    current: string | undefined,
+    title = "Switch Fabric tenant",
+  ): Promise<TenantInfo | undefined> {
+    // The current tenant comes first, so Enter keeps it.
     const known = mergeTenantChoices(
-      this.recent(),
       current === undefined ? [] : [{ id: current }],
+      this.recent(),
       await this.otherTenants(),
     );
     const choices: Choice[] = [
@@ -63,7 +68,7 @@ export class TenantPicker {
       },
     ];
     const picked = await vscode.window.showQuickPick(choices, {
-      title: "Switch Fabric tenant",
+      title,
       placeHolder:
         known.length > 0
           ? "Pick a tenant, find the tenants on your account, or enter one"

@@ -85,8 +85,10 @@ in with them again, without a prompt, whenever you reopen it.
    bar).
 2. Pick a Microsoft account that is already signed in to VS Code, or
    **Sign in with another account…** to log in in the browser.
-3. The repo is now signed in to that account's own tenant — no tenant ID
-   needed. The status bar shows `Fabric: you@contoso.com`.
+3. Pick the tenant. The account's own tenant is listed first, so Enter
+   keeps it; for guest access pick a recent tenant, **Find tenants on my
+   account…**, or **Enter a tenant ID or domain…**. The status bar shows
+   `Fabric: you@contoso.com`.
 
 The account name, VS Code's account ID and the tenant ID are saved under
 `"signIn"` in the gitignored `.fabric/local.json`. No token is saved there:

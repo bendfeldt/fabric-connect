@@ -6,8 +6,8 @@
  * repos can use different accounts and tenants at the same time.
  *
  * - Sign In: pick an account already signed in to VS Code, or log in with
- *   another one in the browser. The tenant is the account's own (read from
- *   the token), so no tenant ID is needed.
+ *   another one in the browser, then pick the tenant. The account's own
+ *   tenant (read from the token) is offered first, so Enter keeps it.
  * - Switch Tenant: for guest access to other organizations — the tenant
  *   picker lists the account's tenants, or takes an ID or domain.
  * - Sign Out: the repo forgets the sign-in; the account itself stays signed
@@ -31,6 +31,7 @@ import {
   writeSignInProfile,
 } from "../core/signInProfile";
 import { LOCAL_OVERRIDE_FILE } from "../core/targetResolver";
+import type { TenantInfo } from "../core/tenantDirectory";
 import type {
   AccountInfo,
   AccountChoice,
@@ -130,7 +131,7 @@ export class SignInManager implements vscode.Disposable {
 
   /**
    * Interactive sign-in: pick an account signed in to VS Code, or log in
-   * with another one. The repo is signed in to that account's own tenant.
+   * with another one, then the tenant (the account's own is the default).
    */
   async signIn(): Promise<SignInProfile | undefined> {
     const choice = await this.pickAccount();
@@ -138,8 +139,8 @@ export class SignInManager implements vscode.Disposable {
       return undefined;
     }
     const { account, accessToken } = await this.auth.signIn(choice);
-    const tenantId = tenantFromToken(accessToken);
-    if (tenantId === undefined) {
+    const homeTenantId = tenantFromToken(accessToken);
+    if (homeTenantId === undefined) {
       throw new AuthError(
         "Signed in, but the token did not say which tenant the account belongs to.",
         {
@@ -150,14 +151,34 @@ export class SignInManager implements vscode.Disposable {
         },
       );
     }
-    const profile: SignInProfile = {
-      account: account.label,
-      accountId: account.id,
-      tenantId,
-    };
+    // Finding the account's tenants and checking guest access need tokens
+    // for the account just picked; the previous one is back on cancel/error.
+    const previous = this.auth.currentAccount();
+    this.auth.useAccount(account);
+    let tenant: TenantInfo | undefined;
+    let chosen = false;
+    try {
+      tenant = await this.tenants.pick(
+        homeTenantId,
+        "Sign in to Fabric — pick the tenant",
+      );
+      if (tenant !== undefined && tenant.id !== homeTenantId) {
+        // Sign in to that tenant now, so a missing guest access fails here.
+        await this.auth.getToken(tenant.id, FABRIC_SCOPES);
+      }
+      chosen = tenant !== undefined;
+    } finally {
+      if (!chosen) {
+        this.auth.useAccount(previous);
+      }
+    }
+    if (tenant === undefined) {
+      return undefined;
+    }
+    const profile = profileFor(account.label, account.id, tenant);
     await this.save(profile, account);
     void vscode.window.showInformationMessage(
-      `Signed in as ${account.label}. This repo will sign in with this account from now on; use 'Fabric: Switch Tenant' to work in another tenant.`,
+      `Signed in as ${account.label} to ${describeTenant(tenant)}. This repo will sign in this way from now on.`,
     );
     return profile;
   }
@@ -174,19 +195,10 @@ export class SignInManager implements vscode.Disposable {
     }
     // Sign in to that tenant now, so a missing guest access fails here.
     await this.auth.getToken(tenant.id, FABRIC_SCOPES);
-    const profile: SignInProfile = {
-      account: current.account,
-      ...(current.accountId === undefined
-        ? {}
-        : { accountId: current.accountId }),
-      tenantId: tenant.id,
-      ...(tenant.displayName === undefined
-        ? {}
-        : { tenantName: tenant.displayName }),
-    };
+    const profile = profileFor(current.account, current.accountId, tenant);
     await this.save(profile, undefined);
     void vscode.window.showInformationMessage(
-      `This repo now signs in to ${tenant.displayName ?? tenant.defaultDomain ?? tenant.id} as ${current.account}.`,
+      `This repo now signs in to ${describeTenant(tenant)} as ${current.account}.`,
     );
     return profile;
   }
@@ -358,4 +370,23 @@ export class SignInManager implements vscode.Disposable {
       return undefined;
     }
   }
+}
+
+function profileFor(
+  account: string,
+  accountId: string | undefined,
+  tenant: TenantInfo,
+): SignInProfile {
+  return {
+    account,
+    ...(accountId === undefined ? {} : { accountId }),
+    tenantId: tenant.id,
+    ...(tenant.displayName === undefined
+      ? {}
+      : { tenantName: tenant.displayName }),
+  };
+}
+
+function describeTenant(tenant: TenantInfo): string {
+  return tenant.displayName ?? tenant.defaultDomain ?? tenant.id;
 }

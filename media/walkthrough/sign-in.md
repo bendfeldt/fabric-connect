@@ -1,8 +1,9 @@
 # Sign in
 
-Run **Fabric: Sign In** and pick your Microsoft account (or sign in with
-another one in the browser). The repo is signed in to your account's
-tenant — no tenant ID needed.
+Run **Fabric: Sign In**, pick your Microsoft account (or sign in with
+another one in the browser), then pick the tenant. Your account's own
+tenant is listed first, so Enter keeps it; for guest access, find the
+tenants on your account or enter a tenant ID or domain.
 
 - **Remembered per repo**, like a Tabular Editor `.tmuo` file: the account
   and tenant are saved in your gitignored `.fabric/local.json`, and
