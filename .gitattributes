@@ -1,0 +1,6 @@
+# Keep LF in the repo and in every working tree, regardless of each
+# contributor's core.autocrlf (Windows defaults to CRLF checkouts).
+* text=auto eol=lf
+
+*.png binary
+*.vsix binary
