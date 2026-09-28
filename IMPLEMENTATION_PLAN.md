@@ -60,6 +60,13 @@ Source of truth for scope: `docs/plan-local-first.md` (local-first, no deploymen
   `docs/getting-started.md` and `docs/security.md`; README, user guide,
   installation guide and CHANGELOG refreshed.
 
+- Setup feedback on 1.2.0 (2026-09-28): `.gitattributes` keeps LF for
+  Windows contributors; Sign In now asks for the tenant (home tenant
+  first, tenant step runs as the picked account); walkthrough Sign In /
+  Connect Compute steps complete via `onContext` keys and advance when
+  started from the walkthrough. The `DEP0169 url.parse()` warning during
+  `code --install-extension` comes from VS Code's CLI, not the extension.
+
 ## Next
 
 All planned milestones (M0–M5) are implemented, as stacked PRs (one per
@@ -81,6 +88,9 @@ Remaining milestones M1–M5: see `docs/plan-local-first.md`.
 - The layout of a Spark Job Definition's git folder (`Main/`, `Libs/`) is
   assumed from Fabric's item definition docs; not checked against a live
   export in this environment.
+- Sign-in tenant step and walkthrough advance are not yet checked in a
+  running VS Code; see the sign-in and walkthrough items in
+  `docs/testing.md`.
 - The VS Code layer (quick picks, status bar) is compiled but was
   not exercised in a running VS Code in this environment; core logic is
   unit-tested against faked HTTP.
