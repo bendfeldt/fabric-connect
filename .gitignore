@@ -10,3 +10,6 @@ node_modules/
 # workspace IDs. The committed .fabric/targets.json holds only target
 # shape; workspace IDs stay local.
 .fabric/local.json
+
+.headroom_wrap*
+.vscode
