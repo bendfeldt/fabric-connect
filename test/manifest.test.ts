@@ -27,6 +27,7 @@ const manifest = JSON.parse(
     configuration: { properties: Record<string, unknown> };
     walkthroughs?: Array<{
       steps: Array<{
+        id: string;
         description: string;
         media: { markdown?: string };
         completionEvents?: string[];
@@ -88,6 +89,7 @@ function vscodeStub(workspaceRoot: string, recorded: Recorded): unknown {
         recorded.commands.push(id);
         return disposable;
       },
+      executeCommand: async () => undefined,
     },
     workspace: {
       workspaceFolders: [{ uri: { fsPath: workspaceRoot } }],
@@ -247,6 +249,26 @@ test("menus and walkthroughs only reference declared commands and existing media
         step.media.markdown,
       );
     }
+  }
+});
+
+test("setup walkthrough steps tick on success, not on clicking the link", () => {
+  // onCommand fires when the link is clicked, even if sign-in is cancelled.
+  const steps = new Map(
+    (manifest.contributes.walkthroughs ?? [])
+      .flatMap((w) => w.steps)
+      .map((step) => [step.id, step]),
+  );
+  for (const [id, context] of [
+    ["signIn", "fabricConnect.signedIn"],
+    ["connectCompute", "fabricConnect.computeConnected"],
+  ]) {
+    assert.deepEqual(steps.get(id)?.completionEvents, [`onContext:${context}`]);
+    assert.match(
+      steps.get(id)?.description ?? "",
+      /\?%5B%22walkthrough%22%5D\)/,
+      `${id} link passes "walkthrough" so success moves to the next step`,
+    );
   }
 });
 

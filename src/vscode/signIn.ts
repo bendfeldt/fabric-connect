@@ -110,6 +110,7 @@ export class SignInManager implements vscode.Disposable {
     } catch (error) {
       this.profile = undefined;
       this.auth.useAccount(undefined);
+      setSignedInContext(false);
       this.show(
         "$(warning) Fabric: invalid sign-in",
         error instanceof Error ? error.message : String(error),
@@ -300,6 +301,7 @@ export class SignInManager implements vscode.Disposable {
 
   private refreshStatus(): void {
     const profile = this.profile;
+    setSignedInContext(profile !== undefined);
     if (profile === undefined) {
       this.show(
         "$(sign-in) Fabric: sign in",
@@ -385,6 +387,15 @@ function profileFor(
       ? {}
       : { tenantName: tenant.displayName }),
   };
+}
+
+/** Lets the walkthrough tick its "sign in" step on success. */
+function setSignedInContext(signedIn: boolean): void {
+  void vscode.commands.executeCommand(
+    "setContext",
+    "fabricConnect.signedIn",
+    signedIn,
+  );
 }
 
 function describeTenant(tenant: TenantInfo): string {

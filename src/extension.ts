@@ -245,9 +245,14 @@ export function activate(context: vscode.ExtensionContext): void {
       { transientOutputs: true },
     ),
 
-    vscode.commands.registerCommand("fabric-connect.signIn", () =>
+    vscode.commands.registerCommand("fabric-connect.signIn", (from?: unknown) =>
       runReportingErrors(async () => {
-        await signIn.signIn();
+        if (
+          (await signIn.signIn()) !== undefined &&
+          from === FROM_WALKTHROUGH
+        ) {
+          await openWalkthroughStep("connectCompute");
+        }
       }),
     ),
     vscode.commands.registerCommand("fabric-connect.switchTenant", () =>
@@ -443,8 +448,17 @@ export function activate(context: vscode.ExtensionContext): void {
       }),
     ),
 
-    vscode.commands.registerCommand("fabric-connect.connectCompute", () =>
-      runReportingErrors(() => computeConnection.connect()),
+    vscode.commands.registerCommand(
+      "fabric-connect.connectCompute",
+      (from?: unknown) =>
+        runReportingErrors(async () => {
+          if (
+            (await computeConnection.connect()) &&
+            from === FROM_WALKTHROUGH
+          ) {
+            await openWalkthroughStep("notebooks");
+          }
+        }),
     ),
 
     vscode.commands.registerCommand("fabric-connect.disconnectCompute", () =>
@@ -456,6 +470,17 @@ export function activate(context: vscode.ExtensionContext): void {
 export function deactivate(): void {
   // Livy sessions are intentionally left running so the next window can
   // reattach to them (see LivySessionManager.dispose).
+}
+
+/** Argument the walkthrough's links pass, so a success moves it along. */
+const FROM_WALKTHROUGH = "walkthrough";
+const WALKTHROUGH = "bendfeldt.fabric-connect#gettingStarted";
+
+async function openWalkthroughStep(step: string): Promise<void> {
+  await vscode.commands.executeCommand("workbench.action.openWalkthrough", {
+    category: WALKTHROUGH,
+    step: `${WALKTHROUGH}#${step}`,
+  });
 }
 
 async function runReportingErrors(action: () => Promise<void>): Promise<void> {

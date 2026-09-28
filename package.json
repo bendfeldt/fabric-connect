@@ -400,23 +400,23 @@
           {
             "id": "signIn",
             "title": "Sign in with your Microsoft account",
-            "description": "Sign in once per repo and pick the tenant; the account and tenant are remembered in your gitignored .fabric/local.json and reused silently next time.\n[Sign In](command:fabric-connect.signIn)",
+            "description": "Sign in once per repo and pick the tenant; the account and tenant are remembered in your gitignored .fabric/local.json and reused silently next time.\n[Sign In](command:fabric-connect.signIn?%5B%22walkthrough%22%5D)",
             "media": {
               "markdown": "media/walkthrough/sign-in.md"
             },
             "completionEvents": [
-              "onCommand:fabric-connect.signIn"
+              "onContext:fabricConnect.signedIn"
             ]
           },
           {
             "id": "connectCompute",
             "title": "Connect this repo to Fabric compute",
-            "description": "Pick a capacity (SKU), a workspace on it, an existing host Lakehouse and optionally an Environment. Saved in your gitignored .fabric/local.json.\n[Connect to Compute](command:fabric-connect.connectCompute)",
+            "description": "Pick a capacity (SKU), a workspace on it, an existing host Lakehouse and optionally an Environment. Saved in your gitignored .fabric/local.json.\n[Connect to Compute](command:fabric-connect.connectCompute?%5B%22walkthrough%22%5D)",
             "media": {
               "markdown": "media/walkthrough/connect-compute.md"
             },
             "completionEvents": [
-              "onCommand:fabric-connect.connectCompute"
+              "onContext:fabricConnect.computeConnected"
             ]
           },
           {

@@ -156,6 +156,12 @@ can check with `git diff` that saving changes nothing unexpected.
 - [ ] **Extensions** view → Fabric Connect shows the version you installed.
 - [ ] **Help → Welcome → Walkthroughs → Get started with Fabric Connect**
       opens, and each step's link runs its command.
+- [ ] From the walkthrough, click **Sign In** and press Escape.
+      **Expect:** the step stays unticked.
+- [ ] Click **Sign In** again and finish it. **Expect:** the step ticks
+      and the walkthrough moves to **Connect this repo to Fabric compute**;
+      finishing that one ticks it and moves to the notebooks step. After
+      **Developer: Reload Window** both steps are still ticked.
 - [ ] The **Fabric** view is in the Explorer side bar. Before you sign in
       it shows _Sign in to browse Fabric_; clicking it starts the sign-in.
 - [ ] The status bar shows **Fabric: sign in**.
