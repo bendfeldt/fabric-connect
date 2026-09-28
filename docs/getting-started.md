@@ -19,7 +19,7 @@ You need:
 
 - **VS Code 1.93 or later.**
 - **A Microsoft Entra ID account** that can use Microsoft Fabric. You sign
-  in with the account; no tenant ID is needed.
+  in with the account and pick the tenant (your own is the default).
 - **A Fabric capacity** you can run Spark on, with **a workspace assigned
   to it** that contains **at least one Lakehouse**. Fabric Connect never
   creates Lakehouses; if the workspace has none, create one in the Fabric

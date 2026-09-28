@@ -171,9 +171,14 @@ ask you to type a tenant GUID instead.
       **Sign in with another account…** (with no accounts, the browser
       sign-in opens straight away).
 - [ ] Pick your account (or sign in with it in the browser). **Expect:**
-      _Signed in as you@… This repo will sign in with this account from
-      now on…_; the status bar shows **Fabric: you@…**; the Fabric view
-      lists your home tenant's capacities. No tenant ID was asked for.
+      a list titled _Sign in to Fabric — pick the tenant_ with your home
+      tenant marked current, **Find tenants on my account…** and **Enter a
+      tenant ID or domain…**.
+- [ ] Press Enter on the home tenant. **Expect:** _Signed in as you@… to
+      <tenant>…_; the status bar shows **Fabric: you@…**; the Fabric view
+      lists your home tenant's capacities.
+- [ ] Sign In again and press Escape on the tenant list. **Expect:**
+      nothing changes; the repo keeps its previous sign-in.
 - [ ] Open `.fabric/local.json`. **Expect:** a `"signIn"` section with
       `account`, `accountId` and `tenantId` — and no token.
 - [ ] **Developer: Reload Window**. **Expect:** no sign-in prompt; the

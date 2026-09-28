@@ -35,6 +35,11 @@ export class EntraAuthProvider implements IAuthProvider {
     this.account = account;
   }
 
+  /** The account set by `useAccount`, if any. */
+  currentAccount(): AccountInfo | undefined {
+    return this.account;
+  }
+
   /** Microsoft accounts signed in to VS Code. */
   async accounts(): Promise<readonly AccountInfo[]> {
     return vscode.authentication.getAccounts(MICROSOFT_AUTH_PROVIDER);

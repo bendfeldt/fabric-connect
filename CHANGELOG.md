@@ -4,6 +4,14 @@ All notable changes to Fabric Connect. Changes merged since the last
 release are listed under "Unreleased" until a maintainer runs the release
 workflow; each GitHub Release carries the matching `.vsix`.
 
+## Unreleased
+
+- **Sign In asks for the tenant** — after picking the account, you pick
+  the tenant: your account's own tenant is listed first (Enter keeps it),
+  alongside recent tenants, **Find tenants on my account…** and **Enter a
+  tenant ID or domain…**. Before, Sign In always used the home tenant and
+  guest tenants needed a separate **Switch Tenant**.
+
 ## 1.2.0 — Sign in per repo
 
 - **Sign in per repo** — `Fabric: Sign In` is now a real login: pick your

@@ -400,7 +400,7 @@
           {
             "id": "signIn",
             "title": "Sign in with your Microsoft account",
-            "description": "Sign in once per repo; the account and tenant are remembered in your gitignored .fabric/local.json and reused silently next time.\n[Sign In](command:fabric-connect.signIn)",
+            "description": "Sign in once per repo and pick the tenant; the account and tenant are remembered in your gitignored .fabric/local.json and reused silently next time.\n[Sign In](command:fabric-connect.signIn)",
             "media": {
               "markdown": "media/walkthrough/sign-in.md"
             },
