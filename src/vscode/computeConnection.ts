@@ -64,18 +64,21 @@ export class ComputeConnection implements vscode.Disposable {
   async refreshStatus(): Promise<void> {
     if (this.workspaceRoot === undefined) {
       this.statusBar.hide();
+      setConnectedContext(false);
       return;
     }
     let profile: ComputeProfile | undefined;
     try {
       profile = await this.current();
     } catch (error) {
+      setConnectedContext(false);
       this.statusBar.text = "$(warning) Fabric: invalid compute";
       this.statusBar.tooltip =
         error instanceof Error ? error.message : String(error);
       this.statusBar.show();
       return;
     }
+    setConnectedContext(profile !== undefined);
     if (profile === undefined) {
       this.statusBar.text = "$(plug) Fabric: connect compute";
       this.statusBar.tooltip =
@@ -91,11 +94,12 @@ export class ComputeConnection implements vscode.Disposable {
     this.statusBar.show();
   }
 
-  async connect(): Promise<void> {
+  /** Walks through the pickers; `true` once a connection is saved. */
+  async connect(): Promise<boolean> {
     const root = this.requireRoot();
     const tenantId = await this.promptTenantId();
     if (tenantId === undefined) {
-      return;
+      return false;
     }
 
     const capacities = await listCapacities(this.api, tenantId);
@@ -120,7 +124,7 @@ export class ComputeConnection implements vscode.Disposable {
       "Pick the capacity (SKU) to run on",
     );
     if (capacity === undefined) {
-      return;
+      return false;
     }
     if (capacity.state !== "Active") {
       throw new ComputeError(
@@ -151,12 +155,12 @@ export class ComputeConnection implements vscode.Disposable {
       `Pick a workspace on ${capacity.displayName}`,
     );
     if (workspace === undefined) {
-      return;
+      return false;
     }
 
     const lakehouse = await this.pickLakehouse(tenantId, workspace);
     if (lakehouse === undefined) {
-      return;
+      return false;
     }
 
     const environments = await listEnvironments(
@@ -179,7 +183,7 @@ export class ComputeConnection implements vscode.Disposable {
         "Pick an Environment (libraries and Spark settings), or none",
       );
       if (chosen === undefined) {
-        return;
+        return false;
       }
       environment = chosen.id === "" ? undefined : chosen;
     }
@@ -205,6 +209,7 @@ export class ComputeConnection implements vscode.Disposable {
       `Connected to Fabric compute: ${describeCompute(profile)}.`,
     );
     await this.warnIfNotIgnored(root);
+    return true;
   }
 
   async disconnect(): Promise<void> {
@@ -324,4 +329,13 @@ async function pick<T>(
     ignoreFocusOut: true,
   });
   return chosen?.value;
+}
+
+/** Lets the walkthrough tick its "connect compute" step on success. */
+function setConnectedContext(connected: boolean): void {
+  void vscode.commands.executeCommand(
+    "setContext",
+    "fabricConnect.computeConnected",
+    connected,
+  );
 }

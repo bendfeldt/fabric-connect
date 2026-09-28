@@ -11,6 +11,10 @@ workflow; each GitHub Release carries the matching `.vsix`.
   alongside recent tenants, **Find tenants on my account…** and **Enter a
   tenant ID or domain…**. Before, Sign In always used the home tenant and
   guest tenants needed a separate **Switch Tenant**.
+- **Walkthrough follows setup** — the Sign In and Connect to Compute steps
+  tick only once you have actually signed in or connected (not when the
+  link is clicked), stay ticked after a reload, and move on to the next
+  step when started from the walkthrough.
 
 ## 1.2.0 — Sign in per repo
 
