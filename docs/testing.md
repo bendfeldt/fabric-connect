@@ -197,8 +197,9 @@ ask you to type a tenant GUID instead.
       Pick the other tenant. **Expect:** the status bar shows
       **Fabric: you@… · <tenant name>**, and the Fabric view switches to
       that tenant.
-- [ ] **Switch Tenant…** → **Enter a tenant ID or domain…** → `not a
-  tenant`. **Expect:** a validation message; you cannot submit it.
+- [ ] **Switch Tenant…** → **Enter a tenant ID or domain…** →
+      `not a tenant`. **Expect:** a validation message; you cannot submit
+      it.
 - [ ] **Switch Tenant…** → **Enter a tenant ID or domain…** → your test
       tenant's domain (e.g. `contoso.onmicrosoft.com`), or its GUID.
       **Expect:** the repo is signed in to the test tenant again; the
