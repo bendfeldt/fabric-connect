@@ -61,6 +61,10 @@ npm run compile        # or: npm run watch
 Open the folder in VS Code and press `F5` to launch an Extension
 Development Host window with the extension loaded.
 
+Formatting uses the Prettier version pinned in `package.json` (install the
+VS Code Prettier extension and it picks up the repo's copy). Run
+`npm run format` to format, `npm run format:check` to check.
+
 ## Verify the installation
 
 - Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and type
