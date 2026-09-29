@@ -474,11 +474,14 @@
     "watch": "tsc -watch -p ./",
     "test": "npm run clean && tsc -p ./ && node --test out/test/*.test.js",
     "vscode:prepublish": "npm run clean && npm run compile",
-    "package": "npx --yes @vscode/vsce@3.9.2 package"
+    "package": "npx --yes @vscode/vsce@3.9.2 package",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@types/node": "^18.19.0",
     "@types/vscode": "^1.93.0",
+    "prettier": "3.8.5",
     "typescript": "^5.4.0"
   }
 }
