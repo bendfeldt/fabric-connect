@@ -44,7 +44,9 @@ npm run package                       # produces fabric-connect-<version>.vsix
 ```
 
 Then install the generated `.vsix` as in option 1. This is exactly what
-the [Release workflow](../.github/workflows/release.yml) does in CI.
+the [Release workflow](../.github/workflows/release.yml) does in CI. For
+the step-by-step local test loop (rebuild, reinstall, reload), see
+[Build and install a `.vsix` locally](local-build.md).
 
 ## Option 3 — Run from source (development)
 

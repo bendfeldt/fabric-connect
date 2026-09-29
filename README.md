@@ -61,6 +61,8 @@ Connect**.
   command, setting and error.
 - **[Installation guide](docs/installation.md)** — install a released
   `.vsix`, build one from source, or run from source.
+- **[Build a `.vsix` locally](docs/local-build.md)** — package and install
+  your working tree to test a fix, without a release.
 - **[Test and validate](docs/testing.md)** — a checklist for validating an
   installed build, feature by feature.
 - **[Security and data](docs/security.md)** — what the extension talks to,
