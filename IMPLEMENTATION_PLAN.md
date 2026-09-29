@@ -67,7 +67,23 @@ Source of truth for scope: `docs/plan-local-first.md` (local-first, no deploymen
   started from the walkthrough. The `DEP0169 url.parse()` warning during
   `code --install-extension` comes from VS Code's CLI, not the extension.
 
+- Fabric side bar, feedback 2026-09-29 part 1 of 3: Activity Bar
+  container `fabric-connect` with Configuration, Tenants, Capacities,
+  Workspaces (SKU via `describeWorkspaceCapacity`) and Connections views;
+  the Explorer side bar view stays. `FabricExplorer` gained an
+  `ExplorerRoot`; `SignInManager.switchTo(tenant)` backs the Tenants view.
+
 ## Next
+
+- Feedback part 2: **Repo Items** view from `LocalItemIndex` (type → item
+  by `.platform` displayName → content files, `.platform` hidden); click a
+  notebook to open it in the Fabric notebook editor; right-click **Open
+  .platform** and **Edit Item Metadata…** (displayName/description via a
+  pure, round-trip-tested `updatePlatform`, applied as a `WorkspaceEdit`).
+- Feedback part 3: pin Lakehouses from Repo Items (attachments listed
+  under a notebook; Pin… / Set as Default / Unpin through the notebook
+  serializer and `attachLakehouse`/`detachLakehouse`). Never creates a
+  Lakehouse (D3).
 
 All planned milestones (M0–M5) are implemented, as stacked PRs (one per
 milestone; the user asked for all of them in one run, overriding the
@@ -88,6 +104,8 @@ Remaining milestones M1–M5: see `docs/plan-local-first.md`.
 - The layout of a Spark Job Definition's git folder (`Main/`, `Libs/`) is
   assumed from Fabric's item definition docs; not checked against a live
   export in this environment.
+- The Fabric side bar is not yet checked in a running VS Code (section 1
+  and 9 of `docs/testing.md`).
 - Sign-in tenant step and walkthrough advance are not yet checked in a
   running VS Code; see the sign-in and walkthrough items in
   `docs/testing.md`.

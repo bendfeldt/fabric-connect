@@ -22,6 +22,9 @@ const manifest = JSON.parse(
   contributes: {
     commands: Array<{ command: string }>;
     notebooks: Array<{ type: string }>;
+    viewsContainers?: {
+      activitybar?: Array<{ id: string; icon: string }>;
+    };
     views: Record<string, Array<{ id: string }>>;
     menus: Record<string, Array<{ command: string }>>;
     configuration: { properties: Record<string, unknown> };
@@ -270,6 +273,30 @@ test("setup walkthrough steps tick on success, not on clicking the link", () => 
       `${id} link passes "walkthrough" so success moves to the next step`,
     );
   }
+});
+
+test("a Fabric Activity Bar container holds the views, next to the Explorer's", () => {
+  const containers = manifest.contributes.viewsContainers?.activitybar ?? [];
+  const fabric = containers.find((c) => c.id === "fabric-connect");
+  assert.ok(fabric !== undefined, "Activity Bar container fabric-connect");
+  assert.match(fabric.icon, /\.svg$/, "Activity Bar icons are SVG");
+  const svg = readFileSync(path.join(ROOT, fabric.icon), "utf8");
+  assert.match(svg, /currentColor/, "the icon follows the theme colour");
+  assert.deepEqual(
+    (manifest.contributes.views["fabric-connect"] ?? []).map((v) => v.id),
+    [
+      "fabricConnect.configuration",
+      "fabricConnect.tenants",
+      "fabricConnect.capacities",
+      "fabricConnect.workspaces",
+      "fabricConnect.connections",
+    ],
+  );
+  assert.deepEqual(
+    (manifest.contributes.views["explorer"] ?? []).map((v) => v.id),
+    ["fabricConnect.explorer"],
+    "the Explorer side bar keeps its Fabric view",
+  );
 });
 
 test("the icon and entry point referenced by the manifest exist", () => {

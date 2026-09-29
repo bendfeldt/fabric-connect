@@ -125,6 +125,32 @@ export async function listWorkspaces(
     );
 }
 
+/**
+ * The capacity a workspace runs on, as shown next to it: `F64 · prod-cap`,
+ * plus the state when it is not running. A capacity the user cannot list
+ * (no admin or contributor rights on it) is "unknown capacity".
+ */
+export function describeWorkspaceCapacity(
+  workspace: WorkspaceInfo,
+  capacities: readonly CapacityInfo[],
+): string {
+  if (workspace.capacityId === undefined) {
+    return "no capacity";
+  }
+  const id = workspace.capacityId.toLowerCase();
+  const capacity = capacities.find((c) => c.id.toLowerCase() === id);
+  if (capacity === undefined) {
+    return "unknown capacity";
+  }
+  return [
+    capacity.sku,
+    capacity.displayName,
+    capacity.state === "Active" ? undefined : capacity.state,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export function listLakehouses(
   api: IFabricApiClient,
   tenantId: string,

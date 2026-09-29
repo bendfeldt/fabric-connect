@@ -28,7 +28,8 @@ import {
   ApiNotebookSerializer,
 } from "./vscode/apiNotebookController";
 import { CodeRunner } from "./vscode/codeRunner";
-import { FabricExplorer } from "./vscode/explorer";
+import { ConfigurationView } from "./vscode/configurationView";
+import { type ExplorerRoot, FabricExplorer } from "./vscode/explorer";
 import { ComputeConnection } from "./vscode/computeConnection";
 import { LakehousePanel } from "./vscode/lakehousePanel";
 import { ModuleStager } from "./vscode/moduleStager";
@@ -36,6 +37,7 @@ import { QueryRunner } from "./vscode/queryRunner";
 import { ResultsPanel } from "./vscode/resultsPanel";
 import { SignInManager } from "./vscode/signIn";
 import { TenantPicker } from "./vscode/tenantPicker";
+import { TenantsView } from "./vscode/tenantsView";
 import {
   FabricNotebookController,
   resolveNotebookHost,
@@ -164,16 +166,35 @@ export function activate(context: vscode.ExtensionContext): void {
     resultsPanel,
   );
   const names = new NameCache();
-  const explorer = new FabricExplorer(
-    apiClient,
-    oneLake,
-    livyManager,
-    compute,
-    () => signIn.tenant(),
-    names,
-    resultsPanel,
-    workspaceRoot,
-  );
+  const newExplorer = (root: ExplorerRoot) =>
+    new FabricExplorer(
+      apiClient,
+      oneLake,
+      livyManager,
+      compute,
+      () => signIn.tenant(),
+      names,
+      resultsPanel,
+      workspaceRoot,
+      root,
+    );
+  // The Explorer side bar's "Fabric" tree, and its parts as the views of
+  // the Fabric Activity Bar container.
+  const explorer = newExplorer("all");
+  const explorerViews: Array<[string, FabricExplorer]> = [
+    ["fabricConnect.explorer", explorer],
+    ["fabricConnect.capacities", newExplorer("capacities")],
+    ["fabricConnect.workspaces", newExplorer("workspaces")],
+    ["fabricConnect.connections", newExplorer("connections")],
+  ];
+  const explorers = explorerViews.map(([, view]) => view);
+  const refreshExplorers = () => {
+    for (const view of explorers) {
+      view.refresh();
+    }
+  };
+  const configurationView = new ConfigurationView(signIn, compute);
+  const tenantsView = new TenantsView(apiClient, signIn, tenants);
   const codeRunner = new CodeRunner(
     apiClient,
     livyManager,
@@ -208,11 +229,30 @@ export function activate(context: vscode.ExtensionContext): void {
         (await compute())?.tenantId ??
         (await signIn.requireTenant()),
     ),
-    explorer,
-    vscode.window.registerTreeDataProvider("fabricConnect.explorer", explorer),
-    computeConnection.onDidChange(() => explorer.refresh()),
+    ...explorers,
+    ...explorerViews.map(([id, view]) =>
+      vscode.window.registerTreeDataProvider(id, view),
+    ),
+    configurationView,
+    vscode.window.registerTreeDataProvider(
+      "fabricConnect.configuration",
+      configurationView,
+    ),
+    tenantsView,
+    vscode.window.registerTreeDataProvider(
+      "fabricConnect.tenants",
+      tenantsView,
+    ),
+    computeConnection.onDidChange(() => {
+      refreshExplorers();
+      configurationView.refresh();
+    }),
     signIn,
-    signIn.onDidChange(() => explorer.refresh()),
+    signIn.onDidChange(() => {
+      refreshExplorers();
+      configurationView.refresh();
+      tenantsView.refresh();
+    }),
     // Hovering a GUID anywhere names the Fabric item, workspace or capacity
     // behind it (from the explorer's listings and local .platform files).
     vscode.languages.registerHoverProvider(
@@ -259,6 +299,18 @@ export function activate(context: vscode.ExtensionContext): void {
       runReportingErrors(async () => {
         await signIn.switchTenant();
       }),
+    ),
+    vscode.commands.registerCommand(
+      "fabric-connect.useTenant",
+      (tenant?: TenantInfo) =>
+        runReportingErrors(async () => {
+          await (tenant === undefined
+            ? signIn.switchTenant()
+            : signIn.switchTo(tenant));
+        }),
+    ),
+    vscode.commands.registerCommand("fabric-connect.findTenants", () =>
+      runReportingErrors(() => tenantsView.find()),
     ),
     vscode.commands.registerCommand("fabric-connect.signOut", () =>
       runReportingErrors(() => signIn.signOut()),
@@ -430,7 +482,7 @@ export function activate(context: vscode.ExtensionContext): void {
       runReportingErrors(() => queryRunner.changeTarget()),
     ),
 
-    ...explorerCommands(explorer),
+    ...explorerCommands(explorer, refreshExplorers),
 
     vscode.commands.registerCommand("fabric-connect.newApiNotebook", () =>
       runReportingErrors(async () => {
@@ -493,8 +545,15 @@ async function runReportingErrors(action: () => Promise<void>): Promise<void> {
   }
 }
 
-/** Explorer context-menu commands; each receives the clicked tree node. */
-function explorerCommands(explorer: FabricExplorer): vscode.Disposable[] {
+/**
+ * Explorer context-menu commands; each receives the clicked tree node. The
+ * nodes of every explorer view have the same shape, so one explorer runs
+ * the actions for all of them.
+ */
+function explorerCommands(
+  explorer: FabricExplorer,
+  refresh: () => void,
+): vscode.Disposable[] {
   type Node = Parameters<FabricExplorer["copyId"]>[0];
   const actions: Record<string, (node: Node) => Promise<void>> = {
     "explorer.copyId": (n) => explorer.copyId(n),
@@ -509,7 +568,7 @@ function explorerCommands(explorer: FabricExplorer): vscode.Disposable[] {
   };
   return [
     vscode.commands.registerCommand("fabric-connect.explorer.refresh", () =>
-      explorer.refresh(),
+      refresh(),
     ),
     ...Object.entries(actions).map(([id, action]) =>
       vscode.commands.registerCommand(`fabric-connect.${id}`, (node: Node) =>

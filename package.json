@@ -87,15 +87,29 @@
     "commands": [
       {
         "command": "fabric-connect.signIn",
-        "title": "Fabric: Sign In"
+        "title": "Fabric: Sign In",
+        "icon": "$(sign-in)"
       },
       {
         "command": "fabric-connect.switchTenant",
-        "title": "Fabric: Switch Tenant"
+        "title": "Fabric: Switch Tenant",
+        "icon": "$(organization)"
+      },
+      {
+        "command": "fabric-connect.useTenant",
+        "title": "Use Tenant",
+        "category": "Fabric"
+      },
+      {
+        "command": "fabric-connect.findTenants",
+        "title": "Find Tenants on My Account",
+        "category": "Fabric",
+        "icon": "$(search)"
       },
       {
         "command": "fabric-connect.signOut",
-        "title": "Fabric: Sign Out"
+        "title": "Fabric: Sign Out",
+        "icon": "$(sign-out)"
       },
       {
         "command": "fabric-connect.accountMenu",
@@ -115,11 +129,13 @@
       },
       {
         "command": "fabric-connect.connectCompute",
-        "title": "Fabric: Connect to Compute"
+        "title": "Fabric: Connect to Compute",
+        "icon": "$(plug)"
       },
       {
         "command": "fabric-connect.disconnectCompute",
-        "title": "Fabric: Disconnect from Compute"
+        "title": "Fabric: Disconnect from Compute",
+        "icon": "$(debug-disconnect)"
       },
       {
         "command": "fabric-connect.restartLivySession",
@@ -288,60 +304,103 @@
         {
           "command": "fabric-connect.explorer.openInFabric",
           "when": "false"
+        },
+        {
+          "command": "fabric-connect.useTenant",
+          "when": "false"
+        },
+        {
+          "command": "fabric-connect.findTenants",
+          "when": "false"
         }
       ],
       "view/title": [
         {
           "command": "fabric-connect.explorer.refresh",
-          "when": "view == fabricConnect.explorer",
+          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/",
           "group": "navigation"
+        },
+        {
+          "command": "fabric-connect.findTenants",
+          "when": "view == fabricConnect.tenants",
+          "group": "navigation@1"
+        },
+        {
+          "command": "fabric-connect.switchTenant",
+          "when": "view == fabricConnect.tenants",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
         {
           "command": "fabric-connect.explorer.pullItem",
-          "when": "view == fabricConnect.explorer && viewItem =~ /fabricItem/",
+          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/ && viewItem =~ /fabricItem/",
           "group": "1_pull"
         },
         {
           "command": "fabric-connect.explorer.copySqlConnectionString",
-          "when": "view == fabricConnect.explorer && viewItem =~ /\\bsql\\b/",
+          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/ && viewItem =~ /\\bsql\\b/",
           "group": "2_copy"
         },
         {
           "command": "fabric-connect.explorer.copyId",
-          "when": "view == fabricConnect.explorer && viewItem =~ /fabric(Item|Workspace|Capacity|Connection)/",
+          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/ && viewItem =~ /fabric(Item|Workspace|Capacity|Connection)/",
           "group": "2_copy"
         },
         {
           "command": "fabric-connect.explorer.copyName",
-          "when": "view == fabricConnect.explorer && viewItem =~ /fabric/",
+          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/ && viewItem =~ /fabric/",
           "group": "2_copy"
         },
         {
           "command": "fabric-connect.explorer.copyOneLakePath",
-          "when": "view == fabricConnect.explorer && viewItem =~ /fabric(Table|Folder|File|Item)/",
+          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/ && viewItem =~ /fabric(Table|Folder|File|Item)/",
           "group": "2_copy"
         },
         {
           "command": "fabric-connect.explorer.previewTable",
-          "when": "view == fabricConnect.explorer && viewItem == fabricTable",
+          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/ && viewItem == fabricTable",
           "group": "inline"
         },
         {
           "command": "fabric-connect.explorer.previewTable",
-          "when": "view == fabricConnect.explorer && viewItem == fabricTable",
+          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/ && viewItem == fabricTable",
           "group": "0_preview"
         },
         {
           "command": "fabric-connect.explorer.previewFile",
-          "when": "view == fabricConnect.explorer && viewItem == fabricFile",
+          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/ && viewItem == fabricFile",
           "group": "0_preview"
         },
         {
           "command": "fabric-connect.explorer.openInFabric",
-          "when": "view == fabricConnect.explorer && viewItem =~ /fabric(Item|Workspace)/",
+          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/ && viewItem =~ /fabric(Item|Workspace)/",
           "group": "3_open"
+        },
+        {
+          "command": "fabric-connect.signIn",
+          "when": "view == fabricConnect.configuration && viewItem =~ /fabricConfigAccount/",
+          "group": "inline@1"
+        },
+        {
+          "command": "fabric-connect.signOut",
+          "when": "view == fabricConnect.configuration && viewItem =~ /fabricConfigAccount/",
+          "group": "inline@2"
+        },
+        {
+          "command": "fabric-connect.switchTenant",
+          "when": "view == fabricConnect.configuration && viewItem =~ /fabricConfigTenant/",
+          "group": "inline"
+        },
+        {
+          "command": "fabric-connect.connectCompute",
+          "when": "view == fabricConnect.configuration && viewItem =~ /fabricConfigCompute/",
+          "group": "inline@1"
+        },
+        {
+          "command": "fabric-connect.disconnectCompute",
+          "when": "view == fabricConnect.configuration && viewItem =~ /\\bconnected\\b/",
+          "group": "inline@2"
         }
       ]
     },
@@ -383,7 +442,39 @@
         ]
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "fabric-connect",
+          "title": "Fabric",
+          "icon": "media/fabric-activity.svg"
+        }
+      ]
+    },
     "views": {
+      "fabric-connect": [
+        {
+          "id": "fabricConnect.configuration",
+          "name": "Configuration"
+        },
+        {
+          "id": "fabricConnect.tenants",
+          "name": "Tenants"
+        },
+        {
+          "id": "fabricConnect.capacities",
+          "name": "Capacities"
+        },
+        {
+          "id": "fabricConnect.workspaces",
+          "name": "Workspaces"
+        },
+        {
+          "id": "fabricConnect.connections",
+          "name": "Connections",
+          "visibility": "collapsed"
+        }
+      ],
       "explorer": [
         {
           "id": "fabricConnect.explorer",
@@ -391,6 +482,16 @@
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "fabricConnect.configuration",
+        "contents": "Sign in with your Microsoft account to connect this repo to Fabric.\n[Sign In](command:fabric-connect.signIn)"
+      },
+      {
+        "view": "fabricConnect.tenants",
+        "contents": "Sign in to see the tenants your account can use.\n[Sign In](command:fabric-connect.signIn)"
+      }
+    ],
     "walkthroughs": [
       {
         "id": "gettingStarted",

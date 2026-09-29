@@ -1,6 +1,10 @@
 # Browse Fabric
 
-The **Fabric** view (Explorer side bar) is read-only:
+Click the **Fabric** icon in the Activity Bar: **Configuration** (account,
+tenant, compute), **Tenants** (click one to switch), **Capacities**,
+**Workspaces** (with the SKU each runs on) and **Connections**. The same
+tree is the **Fabric** view in the Explorer side bar. Browsing is
+read-only:
 
 - **Capacities** → workspaces → items by type
 - Lakehouse **Files** and **Tables** in OneLake

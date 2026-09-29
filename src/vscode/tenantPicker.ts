@@ -44,11 +44,8 @@ export class TenantPicker {
     current: string | undefined,
     title = "Switch Fabric tenant",
   ): Promise<TenantInfo | undefined> {
-    // The current tenant comes first, so Enter keeps it.
-    const known = mergeTenantChoices(
+    const known = await this.known(
       current === undefined ? [] : [{ id: current }],
-      this.recent(),
-      await this.otherTenants(),
     );
     const choices: Choice[] = [
       ...known.map((tenant) => this.tenantChoice(tenant, current)),
@@ -90,6 +87,18 @@ export class TenantPicker {
       await this.remember(tenant);
     }
     return tenant;
+  }
+
+  /**
+   * Tenants known without asking Azure: `current` first (so Enter keeps it
+   * in the picker), then recently used ones and those from elsewhere.
+   */
+  async known(current: readonly TenantInfo[]): Promise<TenantInfo[]> {
+    return mergeTenantChoices(
+      current,
+      this.recent(),
+      await this.otherTenants(),
+    );
   }
 
   private tenantChoice(
@@ -194,7 +203,8 @@ export class TenantPicker {
     );
   }
 
-  private async remember(tenant: TenantInfo): Promise<void> {
+  /** Puts a tenant at the top of the recently used list. */
+  async remember(tenant: TenantInfo): Promise<void> {
     const recent = mergeTenantChoices([tenant], this.recent()).slice(
       0,
       MAX_RECENT,
