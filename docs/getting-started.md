@@ -283,7 +283,11 @@ Connection String**.
 
 ## 10. Explore Fabric and pull items into the repo
 
-Open the **Fabric** view in the Explorer side bar:
+Click the **Fabric** icon in the Activity Bar. Its **Configuration** view
+shows what the repo signs in as and its compute, **Tenants** switches the
+tenant, and **Capacities**, **Workspaces** (each with the SKU it runs on)
+and **Connections** browse it. The same tree is also the **Fabric** view in
+the Explorer side bar:
 
 - **Capacities** → workspaces → items grouped by type;
 - **Workspaces without a capacity**;

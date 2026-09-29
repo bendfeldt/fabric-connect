@@ -303,7 +303,29 @@ the query endpoint is allowed, and a Kusto token is only ever sent to a
 
 ## 9. Fabric explorer (read-only)
 
-The **Fabric** view in VS Code's Explorer side bar browses the tenant the
+**Fabric side bar.** Click the **Fabric** icon in the Activity Bar (next to
+Explorer and Source Control), the way the Databricks extension works. Its
+views:
+
+- **Configuration** — the account and tenant the repo signs in with, and
+  its compute (capacity, workspace, host Lakehouse, Environment). The
+  inline buttons sign in, sign out, switch tenant, connect or disconnect.
+- **Tenants** — the tenants you can use, the current one checked. Click
+  one to sign the repo in to it (same account); every view follows. The
+  list shows the current, recently used and compute tenants; **Find
+  tenants on my account…** (or the search button) adds every tenant your
+  account belongs to. The first time, VS Code asks you to allow Azure
+  Resource Manager access. The organization button enters a tenant ID or
+  domain.
+- **Capacities** — SKU, region and state; each expands to its workspaces.
+- **Workspaces** — every workspace, with the SKU and capacity it runs on
+  (and the state when the capacity is paused), _no capacity_, or _unknown
+  capacity_ when you cannot see the capacity itself (or capacities cannot
+  be listed at all; the workspaces still show).
+- **Connections** — collapsed by default.
+
+**Explorer side bar.** The **Fabric** view in VS Code's Explorer side bar
+stays, with the same tree in one place. It browses the tenant the
 repo is signed in to (or, before it signs in, the compute connection's
 tenant): **Capacities** (SKU, region, state) →
 workspaces on each → items grouped by type; **Workspaces without a

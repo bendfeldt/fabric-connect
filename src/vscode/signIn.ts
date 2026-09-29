@@ -94,6 +94,16 @@ export class SignInManager implements vscode.Disposable {
     return this.profile?.tenantId;
   }
 
+  /** The repo's sign-in, if it has one. */
+  current(): SignInProfile | undefined {
+    return this.profile;
+  }
+
+  /** False when the saved account is no longer signed in to VS Code. */
+  accountSignedIn(): boolean {
+    return this.accountAvailable;
+  }
+
   /** The repo's tenant, signing in first if the repo is not signed in. */
   async requireTenant(): Promise<string | undefined> {
     return this.profile?.tenantId ?? (await this.signIn())?.tenantId;
@@ -191,11 +201,18 @@ export class SignInManager implements vscode.Disposable {
       return undefined;
     }
     const tenant = await this.tenants.pick(current.tenantId);
-    if (tenant === undefined) {
+    return tenant === undefined ? undefined : this.switchTo(tenant);
+  }
+
+  /** Signs the repo in to the given tenant with the same account. */
+  async switchTo(tenant: TenantInfo): Promise<SignInProfile | undefined> {
+    const current = this.profile ?? (await this.signIn());
+    if (current === undefined) {
       return undefined;
     }
     // Sign in to that tenant now, so a missing guest access fails here.
     await this.auth.getToken(tenant.id, FABRIC_SCOPES);
+    await this.tenants.remember(tenant);
     const profile = profileFor(current.account, current.accountId, tenant);
     await this.save(profile, undefined);
     void vscode.window.showInformationMessage(

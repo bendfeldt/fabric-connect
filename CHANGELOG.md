@@ -6,6 +6,12 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+- **Fabric side bar** — a **Fabric** icon in the Activity Bar, like the
+  Databricks extension: **Configuration** (account, tenant and compute,
+  with sign in/out, switch tenant, connect/disconnect buttons), **Tenants**
+  (click one to switch; finds every tenant on your account on request),
+  **Capacities**, **Workspaces** (each shows the SKU and capacity it runs
+  on) and **Connections**. The Explorer side bar's **Fabric** view stays.
 - **Sign In asks for the tenant** — after picking the account, you pick
   the tenant: your account's own tenant is listed first (Enter keeps it),
   alongside recent tenants, **Find tenants on my account…** and **Enter a

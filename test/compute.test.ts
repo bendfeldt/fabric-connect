@@ -8,6 +8,7 @@ import {
 } from "../src/core/computeProfile";
 import { ComputeError, TargetConfigError } from "../src/core/errors";
 import {
+  describeWorkspaceCapacity,
   listAll,
   listCapacities,
   listWorkspaces,
@@ -193,6 +194,40 @@ test("capacities carry SKU, region and state; workspaces filter by capacity", as
   assert.deepEqual(
     onCapacity.map((w) => w.displayName),
     ["Sandbox"],
+  );
+});
+
+test("a workspace shows the SKU and name of its capacity, and when it is paused", () => {
+  const capacity = {
+    id: CAP,
+    displayName: "dev-cap",
+    sku: "F4",
+    region: "West Europe",
+    state: "Active",
+  };
+  const workspace = (capacityId?: string) => ({
+    id: WS,
+    displayName: "Sandbox",
+    type: "Workspace",
+    capacityId,
+  });
+  assert.equal(
+    describeWorkspaceCapacity(workspace(CAP.toUpperCase()), [capacity]),
+    "F4 · dev-cap",
+  );
+  assert.equal(
+    describeWorkspaceCapacity(workspace(CAP), [
+      { ...capacity, state: "Inactive" },
+    ]),
+    "F4 · dev-cap · Inactive",
+  );
+  assert.equal(
+    describeWorkspaceCapacity(workspace(), [capacity]),
+    "no capacity",
+  );
+  assert.equal(
+    describeWorkspaceCapacity(workspace("not-listed"), [capacity]),
+    "unknown capacity",
   );
 });
 

@@ -164,6 +164,11 @@ can check with `git diff` that saving changes nothing unexpected.
       **Developer: Reload Window** both steps are still ticked.
 - [ ] The **Fabric** view is in the Explorer side bar. Before you sign in
       it shows _Sign in to browse Fabric_; clicking it starts the sign-in.
+- [ ] A **Fabric** icon is in the Activity Bar, next to Explorer and
+      Source Control. Click it. **Expect:** the views **Configuration**,
+      **Tenants**, **Capacities**, **Workspaces** and **Connections**
+      (collapsed). Before you sign in, Configuration and Tenants show a
+      **Sign In** button.
 - [ ] The status bar shows **Fabric: sign in**.
 - [ ] **View → Output → Fabric Connect** exists.
 
@@ -336,6 +341,20 @@ For each item you have:
       `.fabric/local.json`. **Expect:** a hover naming the item, workspace
       or capacity.
 - [ ] **Connections** lists the tenant's connections.
+- [ ] Fabric side bar → **Configuration**. **Expect:** Account, Tenant and
+      Compute rows. Compute expands to Capacity (name · SKU), Workspace,
+      Lakehouse and, when set, Environment. The inline buttons sign in,
+      sign out, switch tenant, connect and disconnect; each change shows
+      up in the view straight away.
+- [ ] **Tenants**. **Expect:** the current tenant with a check; click
+      **Find tenants on my account…**. **Expect:** every tenant on your
+      account. Click another tenant. **Expect:** it gets the check, the
+      status bar and Configuration show it, and Capacities and Workspaces
+      reload for it.
+- [ ] **Workspaces**. **Expect:** every workspace, each with the SKU and
+      name of its capacity, _no capacity_ for ones without, and the state
+      when the capacity is paused. Right-click actions work as in the
+      Explorer's Fabric view.
 
 ## 10. API notebooks
 
