@@ -6,8 +6,11 @@
  * which the editor turns back into a table. Everything else falls through
  * to `print`, as in plain Python.
  *
- * The payload is framed by ASCII record separators (U+001E), which do not
- * occur in normal program output, so ordinary prints around it survive.
+ * The payload is a line of its own: the tag, then single-line JSON, framed
+ * by ASCII record separators (U+001E). Parsing does not rely on the
+ * framing, because Fabric's Livy endpoint trims the end of the output and
+ * so drops the trailing separator. Only whole lines that start with the tag
+ * are taken, so ordinary prints around a payload survive.
  */
 
 const TAG = "FABRIC_CONNECT_DISPLAY";
@@ -59,16 +62,49 @@ export interface ExtractedOutput {
 /** Splits `display()` payloads out of a statement's text/plain output. */
 export function extractDisplays(text: string): ExtractedOutput {
   const tables: DisplayTable[] = [];
-  const pattern = new RegExp(`${RS}${TAG}(.*?)${RS}\\n?`, "gs");
-  const remaining = text.replace(pattern, (whole, json: string) => {
-    const table = parseTable(json);
-    if (table === undefined) {
-      return whole; // not ours after all: leave the text as printed
+  const chunks: string[] = [];
+  const markers = new RegExp(`${RS}?${TAG}`, "g");
+  let consumed = 0;
+  for (let marker = markers.exec(text); marker; marker = markers.exec(text)) {
+    const start = marker.index;
+    const framed = marker[0].startsWith(RS);
+    const lineStart = start === 0 || text.charAt(start - 1) === "\n";
+    if (!framed && !lineStart) {
+      continue;
     }
-    tables.push(table);
-    return "";
-  });
-  return { text: remaining, tables };
+    const contentStart = start + marker[0].length;
+    const payload = displayPayloadAt(text, contentStart);
+    if (payload === undefined) {
+      continue;
+    }
+    const closing = skipJsonWhitespace(text, payload.end);
+    // A line-start separator introducing another table opens that next record.
+    const nextRecord =
+      (closing === 0 || text.charAt(closing - 1) === "\n") &&
+      text.startsWith(`${RS}${TAG}`, closing) &&
+      displayPayloadAt(text, closing + RS.length + TAG.length) !== undefined;
+    let end: number | undefined;
+    if (framed && text.charAt(closing) === RS && !nextRecord) {
+      end = lineEnd(text, closing + 1) ?? closing + 1;
+    } else if (
+      lineStart &&
+      payload.start === contentStart &&
+      !/[\r\n]/.test(text.slice(payload.start, payload.end))
+    ) {
+      const bareEnd =
+        text.charAt(payload.end) === RS ? payload.end + 1 : payload.end;
+      end = lineEnd(text, bareEnd);
+    }
+    if (end === undefined) {
+      continue;
+    }
+    chunks.push(text.slice(consumed, start));
+    tables.push(payload.table);
+    consumed = end;
+    markers.lastIndex = end;
+  }
+  chunks.push(text.slice(consumed));
+  return { text: chunks.join(""), tables };
 }
 
 /**
@@ -152,6 +188,70 @@ function formatCell(value: unknown): string {
     return "null";
   }
   return typeof value === "object" ? JSON.stringify(value) : String(value);
+}
+
+function displayPayloadAt(
+  text: string,
+  position: number,
+): { start: number; end: number; table: DisplayTable } | undefined {
+  const start = skipJsonWhitespace(text, position);
+  const end = jsonObjectEnd(text, start);
+  if (end === undefined) {
+    return undefined;
+  }
+  const table = parseTable(text.slice(start, end));
+  return table === undefined ? undefined : { start, end, table };
+}
+
+function skipJsonWhitespace(text: string, position: number): number {
+  while (position < text.length && " \t\r\n".includes(text.charAt(position))) {
+    position++;
+  }
+  return position;
+}
+
+function lineEnd(text: string, position: number): number | undefined {
+  if (position === text.length) {
+    return position;
+  }
+  if (text.startsWith("\r\n", position)) {
+    return position + 2;
+  }
+  return text.charAt(position) === "\n" ? position + 1 : undefined;
+}
+
+function jsonObjectEnd(text: string, start: number): number | undefined {
+  if (text.charAt(start) !== "{") {
+    return undefined;
+  }
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let position = start; position < text.length; position++) {
+    const character = text.charAt(position);
+    if (
+      character === RS ||
+      (character === "\n" && text.startsWith(TAG, position + 1))
+    ) {
+      return undefined;
+    }
+    if (quoted) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        quoted = false;
+      }
+    } else if (character === '"') {
+      quoted = true;
+    } else if (character === "{") {
+      depth++;
+    } else if (character === "}" && --depth === 0) {
+      return position + 1;
+    }
+  }
+  return undefined;
 }
 
 function parseTable(json: string): DisplayTable | undefined {

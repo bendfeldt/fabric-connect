@@ -6,6 +6,15 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+- **Fix: `display(df)` shows a table** — the raw
+  `FABRIC_CONNECT_DISPLAY{…}` text was printed instead. Fabric's Livy
+  drops the trailing control character that framed the table data; the
+  framing is no longer required.
+
+- **Fix: Spark sessions started on Fabric** — Fabric's Livy returns
+  session IDs as GUID strings; a numeric ID was required, so every
+  accepted session failed with "returned no session ID".
+
 - **Fabric side bar** — a **Fabric** icon in the Activity Bar, like the
   Databricks extension: **Configuration** (account, tenant and compute,
   with sign in/out, switch tenant, connect/disconnect buttons), **Tenants**

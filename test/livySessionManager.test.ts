@@ -4,6 +4,7 @@ import { FabricApiError, LivyError } from "../src/core/errors";
 import {
   LivySessionManager,
   listLivySessions,
+  livyId,
   type LivyTarget,
   type SessionStore,
 } from "../src/core/livySessionManager";
@@ -107,6 +108,91 @@ test("starts a session, runs a statement, returns its data", async () => {
   assert.equal([...store.data.values()][0], "7");
 });
 
+test("Fabric's GUID session IDs work end to end", async () => {
+  const SESSION = "6a9d3b2e-1f4c-4e8a-9b7d-2c5e8f1a3d40";
+  const api = scriptedApi([
+    [/POST .*\/sessions$/, () => ({ id: SESSION, state: "starting" })],
+    [new RegExp(`GET .*/sessions/${SESSION}$`), () => ({ state: "idle" })],
+    [
+      new RegExp(`POST .*/sessions/${SESSION}/statements$`),
+      () => ({ id: 0, state: "waiting" }),
+    ],
+    [
+      new RegExp(`GET .*/sessions/${SESSION}/statements/0$`),
+      () => ({
+        id: 0,
+        state: "available",
+        output: { status: "ok", data: { "text/plain": "1" } },
+      }),
+    ],
+  ]);
+  const store = memoryStore();
+  const result = await manager(api, store).execute(
+    TARGET,
+    "spark.sql('SELECT 1')",
+    "pyspark",
+    NEVER_CANCELLED,
+  );
+  assert.equal(result.status, "ok");
+  assert.deepEqual([...store.data.values()], [SESSION]);
+});
+
+test("a persisted GUID session is reattached", async () => {
+  const SESSION = "6a9d3b2e-1f4c-4e8a-9b7d-2c5e8f1a3d40";
+  const key = `livy-session/${TARGET.tenantId}/${TARGET.workspaceId}/${TARGET.lakehouseId}`;
+  const api = scriptedApi([
+    [new RegExp(`GET .*/sessions/${SESSION}$`), () => ({ state: "idle" })],
+    [
+      new RegExp(`POST .*/sessions/${SESSION}/statements$`),
+      () => ({ id: "3", state: "waiting" }),
+    ],
+    [
+      new RegExp(`GET .*/sessions/${SESSION}/statements/3$`),
+      () => ({ id: 3, state: "available", output: { status: "ok", data: {} } }),
+    ],
+  ]);
+  const result = await manager(api, memoryStore({ [key]: SESSION })).execute(
+    TARGET,
+    "x",
+    "pyspark",
+    NEVER_CANCELLED,
+  );
+  assert.equal(result.status, "ok");
+  assert.ok(
+    !api.calls.some((c) => /POST .*\/sessions$/.test(`${c.method} ${c.path}`)),
+  );
+});
+
+test("a session response without a usable ID names its fields, not values", async () => {
+  const api = scriptedApi([
+    [
+      /POST .*\/sessions$/,
+      () => ({ sessionId: "secret-value-xyz", state: "starting" }),
+    ],
+  ]);
+  await assert.rejects(
+    manager(api, memoryStore()).execute(
+      TARGET,
+      "x",
+      "pyspark",
+      NEVER_CANCELLED,
+    ),
+    (error: unknown) =>
+      error instanceof LivyError &&
+      error.kind === "protocol" &&
+      /Response fields: sessionId, state\./.test(error.message) &&
+      !/secret-value-xyz/.test(error.message),
+  );
+});
+
+test("Livy IDs are path-safe: integers and GUID-like tokens only", () => {
+  assert.equal(livyId(7), "7");
+  assert.equal(livyId(" 6a9d3b2e-1f4c "), "6a9d3b2e-1f4c");
+  for (const bad of [undefined, null, "", "../x", "a/b", -1, 1.5, NaN, {}]) {
+    assert.equal(livyId(bad), undefined, String(bad));
+  }
+});
+
 test("reattaches to a persisted live session instead of starting fresh", async () => {
   const api = scriptedApi([
     [/GET .*\/sessions\/42$/, () => ({ id: 42, state: "idle" })],
@@ -187,6 +273,68 @@ test("session start failure is an actionable infra error, distinct from cell err
       assert.match(error.message, /Resume the capacity/);
       return true;
     },
+  );
+});
+
+test("an unmapped session-start failure keeps the service's message and names the host", async () => {
+  const api = scriptedApi([
+    [
+      /POST .*\/sessions$/,
+      () =>
+        new FabricApiError(
+          "The Fabric API request 'POST /x' failed with HTTP 400 because the request was rejected. Service message: LakehouseNotFound",
+          { operation: "call Fabric API", status: 400, correlationId: "c-1" },
+        ),
+    ],
+  ]);
+  await assert.rejects(
+    manager(api, memoryStore()).execute(
+      TARGET,
+      "x",
+      "pyspark",
+      NEVER_CANCELLED,
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof LivyError);
+      assert.match(error.message, /Fabric rejected the session request/);
+      assert.match(error.message, /HTTP 400/);
+      assert.match(error.message, /LakehouseNotFound/);
+      assert.match(error.message, /c-1/);
+      assert.match(
+        error.message,
+        new RegExp(
+          `Lakehouse ${TARGET.lakehouseId} in workspace ${TARGET.workspaceId}`,
+        ),
+      );
+      assert.doesNotMatch(error.message, /could not be started/);
+      return true;
+    },
+  );
+});
+
+test("a session that dies while starting reports Livy's own reason", async () => {
+  const api = scriptedApi([
+    [/POST .*\/sessions$/, () => ({ id: 7, state: "starting" })],
+    [
+      /GET .*\/sessions\/7$/,
+      () => ({
+        id: 7,
+        state: "dead",
+        errorInfo: [{ message: "Workspace capacity is paused" }],
+      }),
+    ],
+  ]);
+  await assert.rejects(
+    manager(api, memoryStore()).execute(
+      TARGET,
+      "x",
+      "pyspark",
+      NEVER_CANCELLED,
+    ),
+    (error: unknown) =>
+      error instanceof LivyError &&
+      /state 'dead'/.test(error.message) &&
+      /Workspace capacity is paused/.test(error.message),
   );
 });
 
