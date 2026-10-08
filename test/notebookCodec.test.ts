@@ -3,6 +3,8 @@ import { test } from "node:test";
 import { NotebookFidelityError } from "../src/core/errors";
 import {
   attachLakehouse,
+  withLogicalIdsUnbound,
+  getEnvironmentAttachment,
   defaultRawCell,
   detachLakehouse,
   getLakehouseAttachments,
@@ -229,6 +231,120 @@ test("attach and detach update metadata and support multiple lakehouses", () => 
   assert.equal(attachments.defaultLakehouse, undefined);
   assert.equal(attachments.known.length, 1);
   assert.equal(attachments.known[0].id, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+});
+
+test("set as default moves name and workspace to a Lakehouse in another workspace", () => {
+  const parsed = parseNotebook(portalText, "notebook-content.ipynb");
+  const other = {
+    id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    name: "Silver",
+    workspaceId: "99999999-8888-7777-6666-555555555555",
+  };
+  const switched = attachLakehouse(parsed.root, other, true);
+  const attachments = getLakehouseAttachments(switched);
+  assert.deepEqual(attachments.defaultLakehouse, other);
+  assert.deepEqual(
+    attachments.known.map((k) => k.id),
+    ["11111111-2222-3333-4444-555555555555", other.id],
+    "the old default stays attached",
+  );
+  const again = attachLakehouse(switched, other, true);
+  assert.equal(
+    getLakehouseAttachments(again).known.length,
+    2,
+    "setting the same default twice attaches it once",
+  );
+});
+
+test("the first Lakehouse attached to a bare notebook becomes its default", () => {
+  const bare = { metadata: {} };
+  const attached = attachLakehouse(
+    bare,
+    {
+      id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      name: "Bronze",
+      workspaceId: "w",
+    },
+    false,
+  );
+  const attachments = getLakehouseAttachments(attached);
+  assert.equal(attachments.defaultLakehouse?.name, "Bronze");
+  assert.equal(attachments.defaultLakehouse?.workspaceId, "w");
+  assert.equal(attachments.known.length, 1);
+});
+
+test("placeholder IDs are unbound; attaching replaces them with real ones", () => {
+  const NIL = "00000000-0000-0000-0000-000000000000";
+  const root = {
+    metadata: {
+      dependencies: {
+        lakehouse: {
+          default_lakehouse: NIL,
+          default_lakehouse_name: "Bronze",
+          default_lakehouse_workspace_id: NIL,
+          known_lakehouses: [{ id: NIL }],
+        },
+        environment: { environmentId: NIL, workspaceId: NIL },
+      },
+    },
+  };
+  assert.deepEqual(getLakehouseAttachments(root), {
+    unboundDefault: { name: "Bronze" },
+    known: [],
+  });
+  assert.equal(getEnvironmentAttachment(root), undefined);
+  const real = {
+    id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    name: "Silver",
+    workspaceId: "99999999-8888-7777-6666-555555555555",
+  };
+  const bound = attachLakehouse(root, real, false);
+  const dep = (
+    bound.metadata as { dependencies: { lakehouse: Record<string, unknown> } }
+  ).dependencies.lakehouse;
+  assert.deepEqual(dep, {
+    default_lakehouse: real.id,
+    default_lakehouse_name: real.name,
+    default_lakehouse_workspace_id: real.workspaceId,
+    known_lakehouses: [{ id: real.id }],
+  });
+  assert.deepEqual(getLakehouseAttachments(bound).defaultLakehouse, real);
+  // A real default's placeholder workspace reads as unknown, not as zeros.
+  const halfBound = attachLakehouse(root, { id: real.id }, true);
+  assert.equal(
+    getLakehouseAttachments(halfBound).defaultLakehouse?.workspaceId,
+    undefined,
+  );
+});
+
+test("a logical ID from git (a repo Lakehouse's logicalId) is an unbound default", () => {
+  const LOGICAL = "abcdef00-1111-2222-3333-444455556666";
+  const DEPLOYED = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+  const names = (id: string) => (id === LOGICAL ? "lh_analytics" : undefined);
+  const logical = withLogicalIdsUnbound(
+    {
+      defaultLakehouse: { id: LOGICAL, workspaceId: "w" },
+      known: [{ id: LOGICAL }, { id: DEPLOYED }],
+    },
+    names,
+  );
+  assert.deepEqual(logical, {
+    unboundDefault: { name: "lh_analytics" },
+    known: [{ id: DEPLOYED }],
+  });
+  const deployed = {
+    defaultLakehouse: { id: DEPLOYED, name: "Silver", workspaceId: "w" },
+    known: [{ id: DEPLOYED }],
+  };
+  assert.deepEqual(withLogicalIdsUnbound(deployed, names), deployed);
+  // The name the notebook keeps wins over the repo item's.
+  assert.deepEqual(
+    withLogicalIdsUnbound(
+      { defaultLakehouse: { id: LOGICAL, name: "Kept" }, known: [] },
+      names,
+    ).unboundDefault,
+    { name: "Kept" },
+  );
 });
 
 test("attach and detach never mutate the input root", () => {

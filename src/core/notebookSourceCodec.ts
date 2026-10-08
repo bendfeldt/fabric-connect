@@ -215,6 +215,57 @@ export function parseNotebookSource(
   return { fileName, prefix, fileLanguage, root, originalText: text, cells };
 }
 
+/** Where one cell sits in the file's text, for running it from a text editor. */
+export interface SourceCellRange {
+  /** Position among the notebook's cells (METADATA blocks not counted). */
+  readonly index: number;
+  readonly kind: SourceCellKind;
+  /** VS Code language ID, as the notebook editor would run it. */
+  readonly language: string;
+  /** What runs: MAGIC prefixes decoded, exactly as in the notebook editor. */
+  readonly source: string;
+  /** Zero-based line of the cell's `CELL` marker. */
+  readonly markerLine: number;
+  /** Zero-based last line of the cell's block (its METADATA included). */
+  readonly endLine: number;
+}
+
+/**
+ * The cells of a source-format notebook with their line ranges. Read-only:
+ * built on the same parse as the notebook editor, so a cell runs the same
+ * code either way.
+ */
+export function sourceCellRanges(
+  text: string,
+  fileName: string,
+): SourceCellRange[] {
+  const parsed = parseNotebookSource(text, fileName);
+  const starts = findMarkers(text, parsed.prefix)
+    .filter((m) => m.kind !== "metadata")
+    .map((m) => lineAt(text, m.start));
+  const lastLine = lineAt(text, text.length) - (text.endsWith("\n") ? 1 : 0);
+  return parsed.cells.map((cell, index) => ({
+    index,
+    kind: cell.kind,
+    language: cell.language,
+    source: cell.source,
+    markerLine: starts[index],
+    endLine: index + 1 < starts.length ? starts[index + 1] - 1 : lastLine,
+  }));
+}
+
+function lineAt(text: string, offset: number): number {
+  let line = 0;
+  for (
+    let i = text.indexOf("\n");
+    i !== -1 && i < offset;
+    i = text.indexOf("\n", i + 1)
+  ) {
+    line++;
+  }
+  return line;
+}
+
 export function serializeNotebookSource(input: SourceSerializeInput): string {
   const { prefix, originalText } = input;
   try {

@@ -6,6 +6,12 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+- **Fix: notebooks from git with placeholder Lakehouse IDs** — Fabric
+  stores logical/placeholder IDs (`00000000-…`) for attached Lakehouses in
+  git. Those were sent to Livy (HTTP 400). Now such a default shows as
+  _not bound_, running says to attach one, and attaching (or Set as
+  Default) writes the real IDs over the placeholders, as in the portal.
+
 - **Fix: `display(df)` shows a table** — the raw
   `FABRIC_CONNECT_DISPLAY{…}` text was printed instead. Fabric's Livy
   drops the trailing control character that framed the table data; the
