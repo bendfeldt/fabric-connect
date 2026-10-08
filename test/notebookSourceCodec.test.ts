@@ -10,6 +10,7 @@ import {
   isNotebookSource,
   parseNotebookSource,
   serializeNotebookSource,
+  sourceCellRanges,
   type ParsedSourceNotebook,
   type SourceSerializeCell,
 } from "../src/core/notebookSourceCodec";
@@ -224,6 +225,47 @@ test("unknown notebook metadata survives a metadata edit", () => {
   assert.ok(out.endsWith(RICH.slice(RICH.indexOf("# MARKDOWN"))));
 });
 
+/** A git-synced notebook whose Lakehouse is not bound: placeholder IDs. */
+const UNBOUND = RICH.replace(
+  "11111111-1111-1111-1111-111111111111",
+  "00000000-0000-0000-0000-000000000000",
+).replace(
+  "22222222-2222-2222-2222-222222222222",
+  "00000000-0000-0000-0000-000000000000",
+);
+
+test("placeholder Lakehouse IDs read as an unbound default and round-trip unchanged", () => {
+  const parsed = parseNotebookSource(UNBOUND, "notebook-content.py");
+  const attachments = getLakehouseAttachments(parsed.root);
+  assert.equal(attachments.defaultLakehouse, undefined);
+  assert.deepEqual(attachments.unboundDefault, { name: "Bronze" });
+  assert.equal(roundTrip(parsed, unchangedCells(parsed)), UNBOUND);
+});
+
+test("attaching a Lakehouse binds an unbound default and changes only those lines", () => {
+  const parsed = parseNotebookSource(UNBOUND, "notebook-content.py");
+  const bound = attachLakehouse(
+    parsed.root,
+    {
+      id: "33333333-3333-3333-3333-333333333333",
+      name: "Silver",
+      workspaceId: "44444444-4444-4444-4444-444444444444",
+    },
+    false,
+  );
+  const out = roundTrip(parsed, unchangedCells(parsed), bound);
+  const reparsed = parseNotebookSource(out, "notebook-content.py");
+  assert.deepEqual(getLakehouseAttachments(reparsed.root).defaultLakehouse, {
+    id: "33333333-3333-3333-3333-333333333333",
+    name: "Silver",
+    workspaceId: "44444444-4444-4444-4444-444444444444",
+  });
+  assert.doesNotMatch(out, /0{8}-0{4}/, "no placeholder left");
+  // Everything from the first cell on is untouched.
+  const firstCell = (text: string) => text.slice(text.indexOf("# MARKDOWN"));
+  assert.equal(firstCell(out), firstCell(UNBOUND));
+});
+
 test("new, deleted and re-languaged cells round-trip through parse", () => {
   const parsed = parseNotebookSource(RICH, "notebook-content.py");
   const cells = unchangedCells(parsed);
@@ -261,6 +303,49 @@ test("changing a cell's language rewrites it with magic and metadata", () => {
   assert.equal(cell.language, "sql");
   assert.equal(cell.raw.meta?.["language"], "sparksql");
   assert.match(out, /# MAGIC %%sql\n# MAGIC SELECT 2\n/);
+});
+
+test("cell ranges point at each cell's marker and run the parsed source", () => {
+  const lines = RICH.split("\n");
+  const ranges = sourceCellRanges(RICH, "notebook-content.py");
+  const parsed = parseNotebookSource(RICH, "notebook-content.py");
+  assert.deepEqual(
+    ranges.map((r) => [r.index, r.kind, r.language]),
+    [
+      [0, "markdown", "markdown"],
+      [1, "parameters", "python"],
+      [2, "code", "python"],
+      [3, "code", "sql"],
+    ],
+  );
+  for (const range of ranges) {
+    assert.match(
+      lines[range.markerLine],
+      /^# (CELL|MARKDOWN|PARAMETERS CELL) \*{20}$/,
+    );
+    assert.equal(range.source, parsed.cells[range.index].source);
+  }
+  // Blocks tile the file: each ends right before the next cell's marker.
+  for (let i = 0; i + 1 < ranges.length; i++) {
+    assert.equal(ranges[i].endLine, ranges[i + 1].markerLine - 1);
+  }
+  assert.equal(ranges[3].endLine, lines.length - 2); // last line before the final newline
+  assert.equal(ranges[3].source, "%%sql\nSELECT *\n\nFROM raw");
+});
+
+test("cell ranges in a -- prefixed SQL notebook", () => {
+  const text =
+    "-- Fabric notebook source\n\n-- CELL ********************\n\nSELECT 1\n";
+  assert.deepEqual(sourceCellRanges(text, "notebook-content.sql"), [
+    {
+      index: 0,
+      kind: "code",
+      language: "sql",
+      source: "SELECT 1",
+      markerLine: 2,
+      endLine: 4,
+    },
+  ]);
 });
 
 test("SQL-file notebooks use the -- prefix", () => {

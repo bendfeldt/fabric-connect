@@ -223,9 +223,32 @@ function notebookUnchanged(input: SerializeInput): boolean {
   return true;
 }
 
-/** Default + attached lakehouses, from the same metadata Fabric writes. */
+/**
+ * True for an ID that does not name a real item: missing, empty, or the
+ * all-zero GUID that Fabric's git integration and deployment tools leave
+ * in notebook metadata when a Lakehouse is not bound to the workspace.
+ */
+export function isUnboundId(id: string | undefined): boolean {
+  return id === undefined || id.trim() === "" || NIL_GUID.test(id.trim());
+}
+
+const NIL_GUID = /^0{8}-0{4}-0{4}-0{4}-0{12}$/;
+
+/** The ID when it names a real item, else undefined (see `isUnboundId`). */
+export function boundId(id: string | undefined): string | undefined {
+  return isUnboundId(id) ? undefined : id;
+}
+
+/**
+ * Default + attached lakehouses, from the same metadata Fabric writes.
+ * A default whose ID is a placeholder (see `isUnboundId`) is reported as
+ * `unboundDefault`, not as a default: it names no Lakehouse Livy can use
+ * until one is attached. Placeholder workspace IDs read as unknown and
+ * placeholder entries in `known_lakehouses` are skipped.
+ */
 export function getLakehouseAttachments(root: Record<string, unknown>): {
   defaultLakehouse?: LakehouseAttachment;
+  unboundDefault?: { readonly name?: string };
   known: LakehouseAttachment[];
 } {
   const dep = lakehouseMetadata(root);
@@ -233,27 +256,73 @@ export function getLakehouseAttachments(root: Record<string, unknown>): {
     return { known: [] };
   }
   const defaultId = asString(dep["default_lakehouse"]);
-  const defaultLakehouse: LakehouseAttachment | undefined =
-    defaultId === undefined
-      ? undefined
-      : {
-          id: defaultId,
-          name: asString(dep["default_lakehouse_name"]),
-          workspaceId: asString(dep["default_lakehouse_workspace_id"]),
-        };
+  const defaultName = asString(dep["default_lakehouse_name"]);
+  const defaultWorkspace = asString(dep["default_lakehouse_workspace_id"]);
+  const defaultLakehouse: LakehouseAttachment | undefined = isUnboundId(
+    defaultId,
+  )
+    ? undefined
+    : {
+        id: defaultId as string,
+        name: defaultName,
+        workspaceId: isUnboundId(defaultWorkspace)
+          ? undefined
+          : defaultWorkspace,
+      };
+  const unboundDefault =
+    defaultId !== undefined && defaultLakehouse === undefined
+      ? { ...(defaultName === undefined ? {} : { name: defaultName }) }
+      : undefined;
   const knownRaw = dep["known_lakehouses"];
   const known: LakehouseAttachment[] = [];
   if (Array.isArray(knownRaw)) {
     for (const entry of knownRaw) {
       if (isRecord(entry)) {
         const id = asString(entry["id"]);
-        if (id !== undefined) {
-          known.push({ id });
+        if (!isUnboundId(id)) {
+          known.push({ id: id as string });
         }
       }
     }
   }
-  return { defaultLakehouse, known };
+  return {
+    ...(defaultLakehouse === undefined ? {} : { defaultLakehouse }),
+    ...(unboundDefault === undefined ? {} : { unboundDefault }),
+    known,
+  };
+}
+
+/** What `getLakehouseAttachments` returns. */
+export interface LakehouseAttachments {
+  readonly defaultLakehouse?: LakehouseAttachment;
+  readonly unboundDefault?: { readonly name?: string };
+  readonly known: LakehouseAttachment[];
+}
+
+/**
+ * Treats a default Lakehouse whose ID is a logical ID from git (the
+ * `logicalId` of a Lakehouse item in the repo, not a deployed item) as
+ * unbound, named from that item; attached Lakehouses with logical IDs are
+ * dropped. `logicalLakehouseName` returns the repo item's display name for
+ * a logical ID, or undefined for anything else.
+ */
+export function withLogicalIdsUnbound(
+  attachments: LakehouseAttachments,
+  logicalLakehouseName: (id: string) => string | undefined,
+): LakehouseAttachments {
+  const known = attachments.known.filter(
+    (k) => logicalLakehouseName(k.id) === undefined,
+  );
+  const current = attachments.defaultLakehouse;
+  const logicalName =
+    current === undefined ? undefined : logicalLakehouseName(current.id);
+  if (current === undefined || logicalName === undefined) {
+    return { ...attachments, known };
+  }
+  return {
+    unboundDefault: { name: current.name ?? logicalName },
+    known,
+  };
 }
 
 /** Environment declared in the notebook's metadata, as Fabric writes it. */
@@ -273,7 +342,7 @@ export function getEnvironmentAttachment(
     return undefined;
   }
   const id = asString(environment["environmentId"]);
-  if (id === undefined || id.length === 0) {
+  if (id === undefined || isUnboundId(id)) {
     return undefined;
   }
   return { id, workspaceId: asString(environment["workspaceId"]) };
@@ -293,11 +362,14 @@ export function attachLakehouse(
   const metadata = ensureObject(clone, "metadata");
   const dependencies = ensureObject(metadata, "dependencies");
   const dep = ensureObject(dependencies, "lakehouse");
-  const known = knownList(dep);
+  // Placeholder entries (see `isUnboundId`) are replaced by real ones.
+  const known = knownList(dep).filter((k) => !isUnboundId(asString(k["id"])));
+  dep["known_lakehouses"] = known;
   if (!known.some((k) => asString(k["id"]) === lakehouse.id)) {
     known.push({ id: lakehouse.id });
   }
-  if (makeDefault || dep["default_lakehouse"] === undefined) {
+  // An unbound (placeholder) default counts as none, so attaching binds it.
+  if (makeDefault || isUnboundId(asString(dep["default_lakehouse"]))) {
     dep["default_lakehouse"] = lakehouse.id;
     if (lakehouse.name !== undefined) {
       dep["default_lakehouse_name"] = lakehouse.name;
