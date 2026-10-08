@@ -4,8 +4,12 @@
  *
  * - Account: the Microsoft account; switch it or sign out.
  * - Tenant: the tenant the repo signs in to; switch it.
- * - Compute: the connected capacity, workspace, host Lakehouse and
- *   Environment; connect (change) or disconnect.
+ * - Compute: the connected capacity; connect (change) or disconnect. Its
+ *   host Lakehouse (and Environment) for code without a Lakehouse of its
+ *   own, or "picked when needed"; change it.
+ * - Python modules: whether `import` uses your working tree (Local) or the
+ *   Fabric environment's installed packages (Remote); change it. Same
+ *   state and text as the status bar item (`ModuleStager`).
  *
  * The rows only show state kept by `SignInManager` and `ComputeConnection`
  * (both in the gitignored `.fabric/local.json`); every action runs their
@@ -13,14 +17,27 @@
  */
 
 import * as vscode from "vscode";
-import type { ComputeProfile } from "../core/computeProfile";
+import {
+  type ComputeProfile,
+  capacityDisplayName,
+  hostOf,
+} from "../core/computeProfile";
+import type { ModulesDescription } from "../core/moduleStaging";
 import type { SignInManager } from "./signIn";
 
 type Node =
   | { kind: "account" }
   | { kind: "tenant" }
   | { kind: "compute"; profile: ComputeProfile | undefined; error?: string }
-  | { kind: "detail"; label: string; value: string; icon: string };
+  | { kind: "modules"; description: ModulesDescription }
+  | {
+      kind: "detail";
+      label: string;
+      value: string;
+      icon: string;
+      contextValue?: string;
+      tooltip?: string;
+    };
 
 export class ConfigurationView
   implements vscode.TreeDataProvider<Node>, vscode.Disposable
@@ -31,6 +48,12 @@ export class ConfigurationView
   constructor(
     private readonly signIn: SignInManager,
     private readonly compute: () => Promise<ComputeProfile | undefined>,
+    /** Why the capacity's real name is not shown, when it is not. */
+    private readonly nameHiddenReason: (
+      profile: ComputeProfile,
+    ) => string | undefined,
+    /** Python modules mode, as `ModuleStager.describe` reports it. */
+    private readonly modules: () => Promise<ModulesDescription>,
   ) {}
 
   dispose(): void {
@@ -81,15 +104,16 @@ export class ConfigurationView
           item.iconPath = new vscode.ThemeIcon("warning");
         } else if (profile === undefined) {
           item.description = "not connected";
-          item.tooltip =
-            "Pick the capacity, workspace and Lakehouse your code runs on.";
+          item.tooltip = "Pick the capacity your code runs on.";
           item.iconPath = new vscode.ThemeIcon("plug");
           item.command = {
             title: "Connect to Compute",
             command: "fabric-connect.connectCompute",
           };
         } else {
-          item.description = profile.workspaceName;
+          item.description = [capacityDisplayName(profile), profile.sku]
+            .filter(Boolean)
+            .join(" · ");
           item.iconPath = new vscode.ThemeIcon("server-environment");
         }
         item.contextValue =
@@ -98,13 +122,38 @@ export class ConfigurationView
             : "fabricConfigCompute connected";
         return item;
       }
+      case "modules": {
+        const item = new vscode.TreeItem("Python modules", none);
+        item.description = node.description.label;
+        item.tooltip = node.description.tooltip;
+        item.iconPath = new vscode.ThemeIcon(node.description.icon);
+        item.contextValue = "fabricConfigModules";
+        item.command = {
+          title: "Python Modules",
+          command: "fabric-connect.pythonModules",
+        };
+        return item;
+      }
       case "detail": {
         const item = new vscode.TreeItem(node.label, none);
         item.description = node.value;
         item.iconPath = new vscode.ThemeIcon(node.icon);
+        item.contextValue = node.contextValue;
+        item.tooltip = node.tooltip;
         return item;
       }
     }
+  }
+
+  /** Why a capacity shows the name it does, when that needs saying. */
+  private capacityTooltip(p: ComputeProfile): string | undefined {
+    if (p.capacityLabel !== undefined) {
+      return `Your name for this capacity (listed as '${p.capacityName ?? p.capacityId}'). Rename it with the pencil.`;
+    }
+    const hidden = this.nameHiddenReason(p);
+    return hidden === undefined
+      ? undefined
+      : `${hidden} Give it a name with the pencil (Name This Capacity…).`;
   }
 
   async getChildren(node?: Node): Promise<Node[]> {
@@ -123,7 +172,12 @@ export class ConfigurationView
           error: error instanceof Error ? error.message : String(error),
         };
       }
-      return [{ kind: "account" }, { kind: "tenant" }, compute];
+      return [
+        { kind: "account" },
+        { kind: "tenant" },
+        compute,
+        { kind: "modules", description: await this.modules() },
+      ];
     }
     if (node.kind !== "compute" || node.profile === undefined) {
       return [];
@@ -134,27 +188,37 @@ export class ConfigurationView
       {
         kind: "detail",
         label: "Capacity",
-        value: [p.capacityName ?? unnamed, p.sku].filter(Boolean).join(" · "),
+        value: [capacityDisplayName(p) ?? unnamed, p.sku]
+          .filter(Boolean)
+          .join(" · "),
         icon: "server",
-      },
-      {
-        kind: "detail",
-        label: "Workspace",
-        value: p.workspaceName ?? unnamed,
-        icon: "folder-library",
-      },
-      {
-        kind: "detail",
-        label: "Lakehouse",
-        value: p.lakehouseName ?? unnamed,
-        icon: "database",
+        contextValue: "fabricConfigCapacity",
+        tooltip: this.capacityTooltip(p),
       },
     ];
-    if (p.environmentId !== undefined) {
+    const hosted = hostOf(p);
+    if (hosted === undefined) {
+      details.push({
+        kind: "detail",
+        label: "Host Lakehouse",
+        value: "picked when needed",
+        icon: "database",
+        contextValue: "fabricConfigHost",
+      });
+      return details;
+    }
+    details.push({
+      kind: "detail",
+      label: "Host Lakehouse",
+      value: `${hosted.lakehouseName ?? unnamed} · ${hosted.workspaceName ?? unnamed}`,
+      icon: "database",
+      contextValue: "fabricConfigHost",
+    });
+    if (hosted.environmentId !== undefined) {
       details.push({
         kind: "detail",
         label: "Environment",
-        value: p.environmentName ?? unnamed,
+        value: hosted.environmentName ?? unnamed,
         icon: "package",
       });
     }

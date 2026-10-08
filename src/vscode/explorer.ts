@@ -1,5 +1,8 @@
 /**
  * Read-only Fabric explorer: capacities → workspaces → items by type;
+ * capacities include those only known from a workspace's `capacityId`
+ * (see `capacitiesFromWorkspaces`), and the connected capacity is checked,
+ * expanded and its workspaces highlighted;
  * Lakehouses expand into their OneLake `Files` and `Tables`; plus the
  * tenant's connections. Every call is a GET (or the allowlisted
  * getDefinition read); nothing here changes a workspace.
@@ -17,37 +20,44 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import type { ComputeProfile } from "../core/computeProfile";
+import type { ComputeProfile, HostedCompute } from "../core/computeProfile";
 import { extractDisplays } from "../core/displayProtocol";
 import { ExplorerError } from "../core/errors";
 import {
   type CapacityInfo,
   type WorkspaceInfo,
-  describeWorkspaceCapacity,
+  capacitiesFromWorkspaces,
   listAll,
   listCapacities,
+  listPowerBiCapacities,
   listWorkspaces,
+  mergeCapacities,
 } from "../core/fabricCatalog";
 import { getItemDefinition, itemFolderName } from "../core/itemDefinition";
 import type { ILivySessionManager } from "../core/livySessionManager";
 import type { NameCache } from "../core/nameCache";
 import { type OneLakeClient, abfssUri } from "../core/oneLakeClient";
 import type { IFabricApiClient } from "../core/types";
+import {
+  type ItemInfo,
+  ONELAKE_ITEMS,
+  type OneLakeNode,
+  listOneLakeChildren,
+  oneLakeRoots,
+  oneLakeTreeItem,
+} from "./oneLakeNodes";
 import type { ResultsPanel } from "./resultsPanel";
-
-interface ItemInfo {
-  readonly id: string;
-  readonly displayName: string;
-  readonly type: string;
-  readonly workspaceId: string;
-  readonly workspaceName: string;
-}
 
 type Node =
   | { kind: "message"; label: string; command?: vscode.Command }
   | { kind: "group"; group: "capacities" | "unassigned" | "connections" }
-  | { kind: "capacity"; capacity: CapacityInfo }
-  | { kind: "workspace"; workspace: WorkspaceInfo; capacity?: string }
+  | { kind: "capacity"; capacity: CapacityInfo; selected: boolean }
+  | {
+      kind: "workspace";
+      workspace: WorkspaceInfo;
+      /** On the connected capacity. */
+      onSelected?: boolean;
+    }
   | {
       kind: "typeGroup";
       workspace: WorkspaceInfo;
@@ -55,24 +65,14 @@ type Node =
       items: ItemInfo[];
     }
   | { kind: "item"; item: ItemInfo }
-  | {
-      kind: "onelake";
-      item: ItemInfo;
-      path: string;
-      isDirectory: boolean;
-      isTable: boolean;
-    }
+  | OneLakeNode
   | { kind: "connection"; label: string; description: string; id: string };
 
 /**
- * What a view shows at the top: the whole tree, or one part of it —
- * capacities (each with its workspaces), every workspace (with the
- * capacity it runs on), or connections.
+ * What a view shows at the top: the whole tree, or just the connections.
  */
-export type ExplorerRoot = "all" | "capacities" | "workspaces" | "connections";
+export type ExplorerRoot = "all" | "connections";
 
-/** Item types that expand into OneLake Files/Tables. */
-const ONELAKE_ITEMS = new Set(["Lakehouse"]);
 /** Item types with a SQL connection string. */
 const SQL_ITEMS = new Set(["Lakehouse", "Warehouse", "SQLEndpoint"]);
 const PREVIEW_BYTES = 64 * 1024;
@@ -96,6 +96,10 @@ export class FabricExplorer
     private readonly names: NameCache,
     private readonly results: ResultsPanel,
     private readonly workspaceRoot: string | undefined,
+    /** The connected capacity, if any. */
+    private readonly selectedCapacity: () => Promise<string | undefined>,
+    /** The compute with its host Lakehouse, asked for when missing. */
+    private readonly requireHost: () => Promise<HostedCompute>,
     private readonly root: ExplorerRoot = "all",
   ) {}
 
@@ -128,27 +132,55 @@ export class FabricExplorer
         return new vscode.TreeItem(labels[node.group], collapsed);
       }
       case "capacity": {
-        const item = new vscode.TreeItem(node.capacity.displayName, collapsed);
+        const { capacity } = node;
+        const item = new vscode.TreeItem(
+          capacity.displayName,
+          node.selected ? vscode.TreeItemCollapsibleState.Expanded : collapsed,
+        );
+        // A new id when selection changes, so the expanded state applies.
+        item.id = `capacity:${capacity.id}:${node.selected ? "selected" : ""}`;
+        const unknown = capacity.state === "Unknown";
         item.description = [
-          node.capacity.sku,
-          node.capacity.region,
-          node.capacity.state,
+          capacity.sku,
+          capacity.region,
+          unknown ? "details not visible to you" : capacity.state,
+          node.selected ? "connected" : "",
         ]
           .filter(Boolean)
           .join(" · ");
-        item.iconPath = new vscode.ThemeIcon(
-          node.capacity.state === "Active"
-            ? "server-environment"
-            : "debug-pause",
-        );
-        item.contextValue = "fabricCapacity";
+        item.tooltip = unknown
+          ? "Your workspaces run on this capacity. Its SKU, region and state need rights on the capacity itself."
+          : undefined;
+        item.iconPath = node.selected
+          ? new vscode.ThemeIcon(
+              "pass-filled",
+              new vscode.ThemeColor("charts.green"),
+            )
+          : new vscode.ThemeIcon(
+              capacity.state === "Active" || unknown
+                ? "server-environment"
+                : "debug-pause",
+            );
+        item.contextValue = node.selected
+          ? "fabricCapacity selected"
+          : "fabricCapacity";
         return item;
       }
       case "workspace": {
         const item = new vscode.TreeItem(node.workspace.displayName, collapsed);
-        item.description = node.capacity;
-        item.iconPath = new vscode.ThemeIcon("folder-library");
-        item.contextValue = "fabricWorkspace";
+        item.description = node.onSelected
+          ? "on connected capacity"
+          : undefined;
+        item.iconPath = node.onSelected
+          ? new vscode.ThemeIcon(
+              "folder-library",
+              new vscode.ThemeColor("charts.green"),
+            )
+          : new vscode.ThemeIcon("folder-library");
+        item.contextValue =
+          node.workspace.capacityId === undefined
+            ? "fabricWorkspace"
+            : "fabricWorkspace onCapacity";
         return item;
       }
       case "typeGroup": {
@@ -172,24 +204,8 @@ export class FabricExplorer
           .join(" ");
         return item;
       }
-      case "onelake": {
-        const name = node.path.split("/").pop() ?? node.path;
-        // Table folders stay expandable: in schema-enabled Lakehouses the
-        // first level under Tables/ is a schema that holds the tables.
-        const item = new vscode.TreeItem(
-          name,
-          node.isDirectory ? collapsed : none,
-        );
-        item.iconPath = new vscode.ThemeIcon(
-          node.isTable ? "table" : node.isDirectory ? "folder" : "file",
-        );
-        item.contextValue = node.isTable
-          ? "fabricTable"
-          : node.isDirectory
-            ? "fabricFolder"
-            : "fabricFile";
-        return item;
-      }
+      case "onelake":
+        return oneLakeTreeItem(node);
       case "connection": {
         const item = new vscode.TreeItem(node.label, none);
         item.description = node.description;
@@ -235,24 +251,6 @@ export class FabricExplorer
             { kind: "group", group: "unassigned" },
             { kind: "group", group: "connections" },
           ];
-        case "workspaces": {
-          // Capacities only label the workspaces: when they cannot be
-          // listed (no rights on any capacity), the workspaces still show.
-          let capacities: CapacityInfo[] = [];
-          try {
-            capacities = await this.allCapacities(tenantId);
-          } catch {
-            // Each workspace on a capacity then says "unknown capacity".
-          }
-          return (await this.allWorkspaces(tenantId))
-            .slice()
-            .sort((a, b) => a.displayName.localeCompare(b.displayName))
-            .map((workspace) => ({
-              kind: "workspace",
-              workspace,
-              capacity: describeWorkspaceCapacity(workspace, capacities),
-            }));
-        }
         default:
           return this.children({ kind: "group", group: this.root });
       }
@@ -267,7 +265,12 @@ export class FabricExplorer
           // Fetched on every expand, so a paused or resumed capacity shows
           // its current state.
           const capacities = await this.allCapacities(tenantId, true);
-          return capacities.map((capacity) => ({ kind: "capacity", capacity }));
+          const selected = await this.selectedCapacityLower();
+          return capacities.map((capacity) => ({
+            kind: "capacity",
+            capacity,
+            selected: capacity.id.toLowerCase() === selected,
+          }));
         }
         if (node.group === "unassigned") {
           return (await this.allWorkspaces(tenantId))
@@ -300,7 +303,11 @@ export class FabricExplorer
             (w) =>
               w.capacityId?.toLowerCase() === node.capacity.id.toLowerCase(),
           )
-          .map((workspace) => ({ kind: "workspace", workspace }));
+          .map((workspace) => ({
+            kind: "workspace",
+            workspace,
+            onSelected: node.selected,
+          }));
       case "workspace": {
         const raw = await listAll<Record<string, unknown>>(
           this.api,
@@ -345,56 +352,9 @@ export class FabricExplorer
       case "typeGroup":
         return node.items.map((item) => ({ kind: "item", item }));
       case "item":
-        return ONELAKE_ITEMS.has(node.item.type)
-          ? [
-              {
-                kind: "onelake",
-                item: node.item,
-                path: "Files",
-                isDirectory: true,
-                isTable: false,
-              },
-              {
-                kind: "onelake",
-                item: node.item,
-                path: "Tables",
-                isDirectory: true,
-                isTable: false,
-              },
-            ]
-          : [];
-      case "onelake": {
-        const entries = await this.oneLake.list(
-          {
-            tenantId,
-            workspaceId: node.item.workspaceId,
-            itemId: node.item.id,
-          },
-          node.path,
-        );
-        const underTables =
-          node.path === "Tables" || node.path.startsWith("Tables/");
-        return entries
-          .sort((a, b) =>
-            a.isDirectory === b.isDirectory
-              ? a.path.localeCompare(b.path)
-              : a.isDirectory
-                ? -1
-                : 1,
-          )
-          .map((entry) => ({
-            kind: "onelake",
-            item: node.item,
-            path: entry.path,
-            isDirectory: entry.isDirectory,
-            // Directories under Tables/ get the preview action; a schema
-            // folder simply fails to read as Delta and says so.
-            isTable:
-              underTables &&
-              entry.isDirectory &&
-              !entry.path.split("/").some((part) => part.startsWith("_")),
-          }));
-      }
+        return ONELAKE_ITEMS.has(node.item.type) ? oneLakeRoots(node.item) : [];
+      case "onelake":
+        return listOneLakeChildren(this.oneLake, tenantId, node);
       default:
         return [];
     }
@@ -497,18 +457,9 @@ export class FabricExplorer
     if (node.kind !== "onelake" || !node.isTable) {
       return;
     }
-    const compute = await this.compute();
-    if (compute === undefined) {
-      throw new ExplorerError(
-        "Cannot preview the table: no compute is connected.",
-        {
-          operation: "preview table",
-          entity: `table ${node.path}`,
-          remediation:
-            "Run 'Fabric: Connect to Compute' first; previews run on its Spark session.",
-        },
-      );
-    }
+    // Previews run on the connected capacity's host Lakehouse; one is
+    // asked for when none is picked yet.
+    const compute = await this.requireHost();
     const uri = abfssUri(node.item.workspaceId, node.item.id, node.path);
     const code = `display(spark.read.format("delta").load(${JSON.stringify(uri)}).limit(100))`;
     const result = await vscode.window.withProgress(
@@ -681,12 +632,27 @@ export class FabricExplorer
     return tenantId;
   }
 
+  /**
+   * Listed capacities (Fabric and Power BI) plus those behind the user's
+   * workspaces. Not being
+   * allowed to list capacities is normal for workspace members: those
+   * capacities then come from the workspaces alone.
+   */
   private async allCapacities(
     tenantId: string,
     fresh = false,
   ): Promise<CapacityInfo[]> {
     if (this.capacities === undefined || fresh) {
-      this.capacities = await listCapacities(this.api, tenantId);
+      const none = (): CapacityInfo[] => [];
+      const [fabric, powerBi, workspaces] = await Promise.all([
+        listCapacities(this.api, tenantId).catch(none),
+        listPowerBiCapacities(this.api, tenantId).catch(none),
+        this.allWorkspaces(tenantId),
+      ]);
+      this.capacities = capacitiesFromWorkspaces(
+        workspaces,
+        mergeCapacities(fabric, powerBi),
+      );
       for (const c of this.capacities) {
         this.names.remember(c.id, {
           kind: "capacity",
@@ -696,6 +662,37 @@ export class FabricExplorer
       }
     }
     return this.capacities;
+  }
+
+  /** The connected capacity's ID in lower case; an invalid local.json connects none. */
+  private async selectedCapacityLower(): Promise<string | undefined> {
+    try {
+      return (await this.selectedCapacity())?.toLowerCase();
+    } catch {
+      // The Configuration view and status bar report the invalid file.
+      return undefined;
+    }
+  }
+
+  /**
+   * The capacity a node stands for: the capacity itself, or the one a
+   * workspace runs on.
+   */
+  async capacityOf(node: Node): Promise<CapacityInfo | undefined> {
+    if (node.kind === "capacity") {
+      return node.capacity;
+    }
+    const id =
+      node.kind === "workspace"
+        ? node.workspace.capacityId?.toLowerCase()
+        : undefined;
+    const tenantId = await this.tenant();
+    if (id === undefined || tenantId === undefined) {
+      return undefined;
+    }
+    return (await this.allCapacities(tenantId)).find(
+      (c) => c.id.toLowerCase() === id,
+    );
   }
 
   private async allWorkspaces(tenantId: string): Promise<WorkspaceInfo[]> {

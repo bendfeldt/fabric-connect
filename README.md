@@ -4,8 +4,8 @@
 
 **Local-first Microsoft Fabric development in VS Code** — a "Databricks
 Connect for Fabric". Your notebooks, Python modules, Spark jobs and queries
-live in your git repo. Connect the repo once to Fabric compute (a capacity,
-a workspace on it and a host Lakehouse) and run everything from the editor.
+live in your git repo. Connect the repo once to a Fabric capacity and run
+everything from the editor.
 
 **Nothing is ever deployed.** Fabric Connect never creates, updates or
 deletes workspace items — Lakehouses included — and refuses, in code,
@@ -45,7 +45,7 @@ deployment pipelines, CI).
 2. Open your repo and add `.fabric/local.json` to its `.gitignore`.
 3. **Fabric: Sign In** with your Microsoft account — remembered for this
    repo, like a Tabular Editor `.tmuo` file.
-4. **Fabric: Connect to Compute** → capacity → workspace → Lakehouse.
+4. **Fabric: Connect to Compute** → pick the capacity.
 5. Open a `*.Notebook/notebook-content.py` (or `.ipynb`), pick the
    **Fabric Livy** kernel and run a cell.
 
@@ -78,7 +78,8 @@ Connect**.
 | ----------------------------------------------- | -------------------------------------------------------------- |
 | `Fabric: Sign In`                               | Sign this repo in with a Microsoft account (remembered)        |
 | `Fabric: Switch Tenant` / `Fabric: Sign Out`    | Use another tenant with the same account / forget the sign-in  |
-| `Fabric: Connect to Compute`                    | Pick capacity → workspace → host Lakehouse (→ Environment)     |
+| `Fabric: Connect to Compute`                    | Pick the capacity to run on                                    |
+| `Fabric: Change Host Lakehouse…`                | Pick the host Lakehouse (→ Environment) on that capacity       |
 | `Fabric: Disconnect from Compute`               | Remove the saved compute connection                            |
 | `Fabric: Open File as Fabric Notebook`          | Open any `.ipynb` with the Fabric notebook editor              |
 | `Fabric: Manage Lakehouses for Active Notebook` | Attach/detach Lakehouses, set the default                      |

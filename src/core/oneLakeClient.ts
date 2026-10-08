@@ -227,3 +227,71 @@ export class OneLakeClient {
     });
   }
 }
+
+/** A listed OneLake entry as a tree shows it. */
+export interface OneLakeChildEntry extends OneLakePath {
+  /**
+   * A folder under `Tables/` (not `_delta_log` and the like): a table, or
+   * in schema-enabled Lakehouses a schema that holds the tables.
+   */
+  readonly isTable: boolean;
+}
+
+/** Entries of one listed folder: folders first, then by name. */
+export function oneLakeChildEntries(
+  entries: readonly OneLakePath[],
+  parentPath: string,
+): OneLakeChildEntry[] {
+  const underTables =
+    parentPath === "Tables" || parentPath.startsWith("Tables/");
+  return [...entries]
+    .sort((a, b) =>
+      a.isDirectory === b.isDirectory
+        ? a.path.localeCompare(b.path)
+        : a.isDirectory
+          ? -1
+          : 1,
+    )
+    .map((entry) => ({
+      ...entry,
+      isTable:
+        underTables &&
+        entry.isDirectory &&
+        !entry.path.split("/").some((part) => part.startsWith("_")),
+    }));
+}
+
+/** A Fabric item whose OneLake (Files, Tables) can be browsed. */
+export interface OneLakeItem {
+  readonly id: string;
+  readonly displayName: string;
+  readonly type: string;
+  readonly workspaceId: string;
+  readonly workspaceName: string;
+}
+
+/**
+ * A notebook's Lakehouse as a browsable item, or undefined when its
+ * workspace is unknown: Fabric's `known_lakehouses` metadata names only
+ * IDs, so for those the workspace comes from a listing (`listed`).
+ */
+export function browsableLakehouse(
+  lakehouse: {
+    readonly id: string;
+    readonly name?: string;
+    readonly workspaceId?: string;
+  },
+  listed?: { readonly name: string; readonly workspaceId: string },
+): OneLakeItem | undefined {
+  const workspaceId = lakehouse.workspaceId ?? listed?.workspaceId;
+  if (workspaceId === undefined) {
+    return undefined;
+  }
+  return {
+    id: lakehouse.id,
+    displayName: lakehouse.name ?? listed?.name ?? "Lakehouse",
+    type: "Lakehouse",
+    workspaceId,
+    workspaceName: "",
+  };
+}

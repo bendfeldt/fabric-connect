@@ -1,8 +1,10 @@
 /**
- * Run a file, a selection, or a Spark Job Definition from the working tree
- * on the connected compute — the Databricks Connect workflow: edit locally,
- * run remotely, see the result in the editor. Output goes to the
- * "Fabric Connect: Run" output channel (tables rendered as text).
+ * Run a file, a selection, a notebook's cells (from its text file), or a
+ * Spark Job Definition from the working tree on the connected compute —
+ * the Databricks Connect workflow: edit locally, run remotely, see the
+ * result in the editor. Output goes to the "Fabric Connect: Run" output
+ * channel (tables rendered as text); notebook cells also show their tables
+ * in the Fabric Results panel.
  */
 
 import * as fs from "node:fs/promises";
@@ -11,16 +13,19 @@ import * as vscode from "vscode";
 import { toStatement } from "../core/cellCode";
 import type { ComputeProfile } from "../core/computeProfile";
 import {
+  type DisplayTable,
   extractDisplays,
   livySqlResultToTable,
   renderTableText,
 } from "../core/displayProtocol";
-import { FabricConnectError } from "../core/errors";
+import { FabricConnectError, LivyError } from "../core/errors";
 import { type LivyHost, resolveLivyHost } from "../core/livyHost";
+import { boundId } from "../core/notebookCodec";
 import type {
   ILivySessionManager,
   LivyStatementResult,
 } from "../core/livySessionManager";
+import { sourceCellRanges } from "../core/notebookSourceCodec";
 import { expandRunMagics, hasRunMagic } from "../core/runExpansion";
 import {
   SJD_SETTINGS_FILE,
@@ -36,9 +41,9 @@ import type {
 } from "../core/types";
 import type { ModuleStager } from "./moduleStager";
 import type { RunContext } from "./notebookController";
+import type { ResultsPanel } from "./resultsPanel";
 
 const RUNNABLE_LANGUAGES = new Set(["python", "sql", "scala", "r"]);
-const NIL_GUID = /^0{8}-0{4}-0{4}-0{4}-0{12}$/;
 
 export class CodeRunner implements vscode.Disposable {
   private readonly output = vscode.window.createOutputChannel(
@@ -52,6 +57,13 @@ export class CodeRunner implements vscode.Disposable {
     private readonly compute: () => Promise<ComputeProfile | undefined>,
     private readonly run: RunContext,
     private readonly stager: ModuleStager,
+    /** The tenant the repo is signed in to, if any. */
+    private readonly signedInTenant: () => string | undefined,
+    /** Resolves, asking for a host Lakehouse first when one is needed. */
+    private readonly runWithHost: <T>(resolve: () => Promise<T>) => Promise<T>,
+    /** The host a notebook's cells run on: its own Lakehouse, as in the notebook editor. */
+    private readonly notebookHost: (uri: vscode.Uri) => Promise<LivyHost>,
+    private readonly results: ResultsPanel,
   ) {}
 
   dispose(): void {
@@ -94,6 +106,7 @@ export class CodeRunner implements vscode.Disposable {
     return resolveLivyHost({
       entity,
       target: await this.targets.resolveTargetIfMapped(path.dirname(filePath)),
+      signedInTenant: this.signedInTenant(),
       compute: await this.compute(),
     });
   }
@@ -113,7 +126,9 @@ export class CodeRunner implements vscode.Disposable {
         },
       );
     }
-    const host = await this.hostFor(document.uri.fsPath, entity);
+    const host = await this.runWithHost(() =>
+      this.hostFor(document.uri.fsPath, entity),
+    );
     let { kind, code } = toStatement(text, document.languageId, entity);
     if (kind === "pyspark" && hasRunMagic(code)) {
       code = await expandRunMagics(code, await this.run.index(), this.run.fs);
@@ -127,29 +142,143 @@ export class CodeRunner implements vscode.Disposable {
         title: `Running ${entity} on Fabric…`,
         cancellable: true,
       },
-      async (_progress, token) => {
-        if (kind === "pyspark") {
-          const prelude = await this.run.prepare?.(host.target);
-          if (prelude !== undefined) {
-            const staged = await this.livy.execute(
-              host.target,
-              prelude,
-              "pyspark",
-              token,
-            );
-            if (staged.status !== "ok") {
-              this.print(staged, "staging local modules");
-              return;
-            }
-          }
-        }
-        const result = await this.livy.execute(host.target, code, kind, token);
-        this.print(result, entity);
-      },
+      (_progress, token) => this.execute(host, kind, code, entity, token),
     );
     this.output.appendLine(
       `■ done in ${((Date.now() - started) / 1000).toFixed(1)}s\n`,
     );
+  }
+
+  /**
+   * Runs cells of a source-format notebook from its text editor, in order,
+   * on the notebook's own host (shared session with the notebook editor).
+   * `which` is one cell, every cell up to and including one, or all. Stops
+   * at the first cell that fails, as the portal does.
+   */
+  async runNotebookCells(
+    uri: vscode.Uri,
+    which: { cell: number; above?: boolean } | "all",
+  ): Promise<void> {
+    const document = await vscode.workspace.openTextDocument(uri);
+    const name = path
+      .basename(path.dirname(uri.fsPath))
+      .replace(/\.Notebook$/, "");
+    const cells = sourceCellRanges(
+      document.getText(),
+      path.basename(uri.fsPath),
+    ).filter(
+      (cell) =>
+        cell.kind !== "markdown" &&
+        (which === "all" ||
+          cell.index === which.cell ||
+          (which.above === true && cell.index < which.cell)),
+    );
+    if (cells.length === 0) {
+      throw new FabricConnectError(
+        `Cannot run notebook ${name}: there is no code cell to run.`,
+        {
+          operation: "run notebook cells",
+          entity: `notebook ${name}`,
+          remediation:
+            "Add a '# CELL ********************' block, or click Run Cell on a code cell.",
+        },
+      );
+    }
+    const host = await this.runWithHost(() => this.notebookHost(uri));
+    this.output.show(true);
+    this.output.appendLine(`▶ notebook ${name} on ${host.label}`);
+    const started = Date.now();
+    const tables: DisplayTable[] = [];
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `Running ${name} on Fabric…`,
+        cancellable: true,
+      },
+      async (progress, token) => {
+        for (const cell of cells) {
+          const entity = `cell ${cell.index + 1} of ${name}`;
+          progress.report({ message: entity });
+          this.output.appendLine(`▶ ${entity}`);
+          try {
+            let { kind, code } = toStatement(
+              cell.source,
+              cell.language,
+              entity,
+            );
+            if (kind === "pyspark" && hasRunMagic(code)) {
+              code = await expandRunMagics(
+                code,
+                await this.run.index(),
+                this.run.fs,
+              );
+            }
+            const ran = await this.execute(host, kind, code, entity, token);
+            tables.push(...ran.tables);
+            if (!ran.ok) {
+              return; // stop at the first failing (or cancelled) cell
+            }
+          } catch (error) {
+            // Cancelled while queued or while the session started: as clean
+            // as a cancel while running. Anything else (an unsupported
+            // magic, a %run that cannot be expanded) stops here too, and
+            // the cells that ran keep their output.
+            this.output.appendLine(
+              error instanceof LivyError && error.kind === "cancelled"
+                ? "  (cancelled)"
+                : `✗ ${entity}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+            return;
+          }
+        }
+      },
+    );
+    if (tables.length > 0) {
+      this.results.show(name, host.label, tables);
+    }
+    this.output.appendLine(
+      `■ done in ${((Date.now() - started) / 1000).toFixed(1)}s\n`,
+    );
+  }
+
+  /**
+   * Stages local modules (Python), runs one statement on the host and
+   * prints its result; `ok` is false when it failed or was cancelled.
+   */
+  private async execute(
+    host: LivyHost,
+    kind: ReturnType<typeof toStatement>["kind"],
+    code: string,
+    entity: string,
+    token: vscode.CancellationToken,
+  ): Promise<{ ok: boolean; tables: DisplayTable[] }> {
+    if (kind === "pyspark") {
+      const prelude = await this.run.prepare?.(host.target);
+      if (prelude !== undefined) {
+        const staged = await this.livy.execute(
+          host.target,
+          prelude,
+          "pyspark",
+          token,
+        );
+        if (staged.status !== "ok") {
+          this.print(staged, "staging local modules");
+          return { ok: false, tables: [] };
+        }
+      }
+    }
+    const result = await this.livy.execute(host.target, code, kind, token);
+    const tables = this.print(result, entity);
+    if (result.status === "error") {
+      const hint = await this.run.importHint?.(
+        result.errorName,
+        result.errorValue,
+      );
+      if (hint !== undefined) {
+        this.output.appendLine(`  ${hint}`);
+      }
+    }
+    return { ok: result.status === "ok", tables };
   }
 
   async runSparkJob(uri?: vscode.Uri): Promise<void> {
@@ -195,21 +324,31 @@ export class CodeRunner implements vscode.Disposable {
       folder,
       settings,
     );
-    const lakehouse = settings.defaultLakehouseArtifactId;
-    const environment = settings.environmentArtifactId;
-    const host = resolveLivyHost({
-      entity: `Spark job ${name}`,
-      notebookDefault:
-        lakehouse === undefined || NIL_GUID.test(lakehouse)
-          ? undefined
-          : { id: lakehouse, name: "job's default Lakehouse" },
-      notebookEnvironment:
-        environment === undefined || NIL_GUID.test(environment)
-          ? undefined
-          : { id: environment },
-      target: await this.targets.resolveTargetIfMapped(path.dirname(folder)),
-      compute: await this.compute(),
-    });
+    const lakehouse = boundId(settings.defaultLakehouseArtifactId);
+    const environment = boundId(settings.environmentArtifactId);
+    const target = await this.targets.resolveTargetIfMapped(
+      path.dirname(folder),
+    );
+    const host = await this.runWithHost(async () =>
+      resolveLivyHost({
+        entity: `Spark job ${name}`,
+        // A job's settings name its Lakehouse but not the workspace: Fabric
+        // keeps it in the job's own workspace, i.e. the folder's target.
+        notebookDefault:
+          lakehouse === undefined
+            ? undefined
+            : {
+                id: lakehouse,
+                name: "job's default Lakehouse",
+                workspaceId: target?.workspaceId,
+              },
+        notebookEnvironment:
+          environment === undefined ? undefined : { id: environment },
+        target,
+        signedInTenant: this.signedInTenant(),
+        compute: await this.compute(),
+      }),
+    );
 
     this.output.show(true);
     this.output.appendLine(`▶ Spark job ${name} on ${host.label}`);
@@ -267,10 +406,11 @@ export class CodeRunner implements vscode.Disposable {
     );
   }
 
-  private print(result: LivyStatementResult, entity: string): void {
+  /** Prints a result to the output channel; returns the tables in it. */
+  private print(result: LivyStatementResult, entity: string): DisplayTable[] {
     if (result.status === "cancelled") {
       this.output.appendLine("  (cancelled)");
-      return;
+      return [];
     }
     if (result.status === "error") {
       this.output.appendLine(
@@ -279,8 +419,9 @@ export class CodeRunner implements vscode.Disposable {
       for (const line of result.traceback ?? []) {
         this.output.append(line.endsWith("\n") ? line : `${line}\n`);
       }
-      return;
+      return [];
     }
+    const found: DisplayTable[] = [];
     const data = result.data ?? {};
     const plain = data["text/plain"];
     if (typeof plain === "string") {
@@ -291,10 +432,12 @@ export class CodeRunner implements vscode.Disposable {
       for (const table of tables) {
         this.output.appendLine(renderTableText(table));
       }
+      found.push(...tables);
     }
     const sqlTable = livySqlResultToTable(data["application/json"]);
     if (sqlTable !== undefined) {
       this.output.appendLine(renderTableText(sqlTable));
+      found.push(sqlTable);
     }
     const other = Object.keys(data).filter(
       (mime) =>
@@ -306,6 +449,7 @@ export class CodeRunner implements vscode.Disposable {
         `  (${other.join(", ")} output not shown here — run the code in a Fabric notebook to see it)`,
       );
     }
+    return found;
   }
 }
 

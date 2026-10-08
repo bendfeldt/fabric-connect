@@ -48,6 +48,29 @@ export class LakehouseError extends FabricConnectError {}
 /** Connecting to compute: capacity, workspace, host Lakehouse, environment. */
 export class ComputeError extends FabricConnectError {}
 
+/**
+ * Code without a Lakehouse of its own needs the connected capacity's host
+ * Lakehouse, and none is picked yet. The editor layer answers it by asking
+ * for one and retrying.
+ */
+export class HostLakehouseNeededError extends ComputeError {}
+
+/**
+ * A notebook declares a default Lakehouse that is not bound to a deployed
+ * Lakehouse (placeholder or logical IDs from git). `lakehouseName` is the
+ * name its metadata keeps, for binding by name.
+ */
+export class DefaultLakehouseUnboundError extends ComputeError {
+  constructor(
+    message: string,
+    details: ErrorDetails & { readonly lakehouseName?: string },
+  ) {
+    super(message, details);
+    this.lakehouseName = details.lakehouseName;
+  }
+  readonly lakehouseName?: string;
+}
+
 /** OneLake file operations (browse, preview, scratch staging). */
 export class OneLakeError extends FabricConnectError {}
 
@@ -62,6 +85,9 @@ export class QueryError extends FabricConnectError {}
 
 /** Pulling an item's definition into the repo. */
 export class PullError extends FabricConnectError {}
+
+/** Editing an item's `.platform` metadata in the repo. */
+export class ItemMetadataError extends FabricConnectError {}
 
 /** Browsing Fabric in the explorer (listings, previews, copy actions). */
 export class ExplorerError extends FabricConnectError {}

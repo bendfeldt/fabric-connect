@@ -10,8 +10,8 @@ talks to and stores, see [Security and data](security.md).
 - **Local-first** — your code (notebooks, modules, jobs, queries) lives in
   your repo. Fabric Connect runs it on Fabric and never publishes, deploys,
   creates or changes workspace items.
-- **Compute connection** — the capacity, workspace, host Lakehouse and
-  optional Environment this repo runs on (section 5), saved per machine in
+- **Compute connection** — the capacity this repo runs on (section 5),
+  plus a host Lakehouse picked when first needed, saved per machine in
   `.fabric/local.json`.
 - **Host Lakehouse** — the Lakehouse a Spark session runs on. Relative
   paths (`Files/…`) and unqualified table names resolve against it.
@@ -132,6 +132,22 @@ default — `*.Notebook/notebook-content.py` (and `.scala`, `.sql`, `.r`) —
 which open in the same editor. For any other `.ipynb`, run **`Fabric: Open
 File as Fabric Notebook`** and pick the file.
 
+**Open as Text** (the code icon in the notebook toolbar) reopens the same
+file as editable text — handy for reviewing or fixing its `# META`
+metadata. **Fabric: Open as Notebook** (notebook icon in the editor
+title) switches back. In the text view:
+
+- **▷ Run Cell | Run All Above** sit above each `# CELL` block, **Run
+  All** on the first line. Cells run on the notebook's own host (its
+  default Lakehouse or local binding, else the connected compute), in the
+  same Livy session as the notebook editor. Unsaved edits run.
+- Output goes to the **Fabric Connect: Run** output channel; `display()`
+  and SQL tables also open in **Fabric Results** beside the editor. **Run
+  All Above** and **Run All** stop at the first cell that fails.
+- Changing Lakehouses (Lakehouses view, Manage Lakehouses) writes the
+  file. Save your text edits first: with unsaved changes it refuses, so
+  two editors never write one file.
+
 Portal compatibility is a tested guarantee, not an aspiration:
 
 - An unmodified notebook saves **byte-for-byte identical** to what was
@@ -143,6 +159,12 @@ Portal compatibility is a tested guarantee, not an aspiration:
 - Cell outputs are transient: they show in the editor but are never
   written into the `.ipynb`, matching what Fabric's git integration
   expects.
+- **Reviewing changes before you commit:** clicking a notebook in Source
+  Control shows VS Code's cell diff, which hides metadata changes.
+  Right-click it → **Fabric: Open Changes as Text** (also the compare icon
+  on the row, and in the notebook toolbar) for the raw file diff — HEAD
+  against the working tree, read-only, the lines you commit, metadata
+  included. A new notebook shows an empty left side.
 
 ## 4. Attach Lakehouses
 
@@ -158,6 +180,38 @@ change is undoable (`Ctrl+Z`), and saving writes the attachment into the
 same notebook metadata the Fabric portal uses. One panel exists per
 notebook; invoking the command again reveals the existing panel.
 
+**Lakehouses view.** The Fabric side bar's **Lakehouses** view does the
+same as the portal's Lakehouse pane, for the active Fabric notebook or the
+notebook selected in **Repo** (named in the view title):
+
+- **Attached to this notebook** — its Lakehouses, the default first with a
+  yellow star.
+- One group per workspace on the **connected capacity**, each listing its
+  Lakehouses when expanded; attached ones are checked. Not connected: a
+  **Connect** link instead of a list.
+- Inline buttons: **Attach to Notebook** (+), **Set as Default Lakehouse**
+  (star) and **Detach from Notebook** (×). Several Lakehouses can be
+  attached; the first one attached becomes the default, and the default
+  is what Spark SQL and relative paths resolve against.
+- **Browse a Lakehouse:** expand a Lakehouse row into its OneLake
+  **Tables** (schemas, then tables, in schema-enabled Lakehouses) and
+  **Files**, listed one folder at a time. **Preview Table** (inline on a
+  table) shows its first rows in Fabric Results; **Preview File** opens
+  the file's start as a read-only text document; **Copy OneLake Path**
+  copies the `abfss://` path. Read-only, the same as the Fabric explorer.
+  A Lakehouse expands right away when the notebook's metadata names its
+  workspace (the portal writes it for the default). Others — attached
+  Lakehouses, whose metadata holds only IDs, or a default from older
+  metadata — expand once their workspace is expanded below.
+
+Each action writes the notebook file's metadata
+(`metadata.dependencies.lakehouse`, the same keys the portal writes —
+including the default's workspace) and saves it, without opening an
+editor when the notebook is not open; when it is open in the notebook
+editor, `Ctrl+Z` there undoes the change. Repo lists a notebook's attached Lakehouses under it,
+read-only (default starred); change them in the Lakehouses view. Fabric
+Connect never creates a Lakehouse.
+
 ## 5. Connect to compute
 
 Fabric Connect is local-first: your code lives in your repo, and you
@@ -165,21 +219,85 @@ connect the repo once to the Fabric compute it runs on — like attaching a
 Databricks Connect project to a cluster. Run **`Fabric: Connect to
 Compute`** (or click the Fabric item in the status bar) and pick:
 
-1. the **capacity** (shown with SKU and region) — the capacity that is
-   billed; a paused capacity is refused;
-2. a **workspace** assigned to that capacity;
-3. an existing **host Lakehouse** for Spark sessions;
-4. optionally an **Environment** (libraries and Spark settings); otherwise
-   the workspace starter pool is used.
+1. the **capacity** — the capacity that is billed. The list holds every
+   capacity your workspaces run on (the connected one first). SKU, region
+   and state show when you have rights on the capacity itself; otherwise
+   it is named `Capacity <id prefix>`. A capacity known to be paused is
+   refused.
+
+That is all: no workspace or Lakehouse is asked. The plug button on
+Configuration → Compute does the same (and changes the capacity later);
+so does **Connect to This Capacity** on a capacity in the Explorer side
+bar's Fabric view.
+
+Code without a Lakehouse of its own (a plain `.py`/`.sql` file, a
+selection, a table preview, a notebook with no default Lakehouse) also
+needs a **host Lakehouse**, because Livy only starts Spark sessions on a
+Lakehouse. The first time such code runs you pick one — the Lakehouses of
+the capacity's workspaces, grouped by workspace — and optionally an
+**Environment**; it is saved and reused. Change it with **Change Host
+Lakehouse…** (the pencil on Configuration → Compute → Host Lakehouse, or
+`Fabric: Change Host Lakehouse…`). Connecting another capacity drops a
+host on the old one.
 
 The connection is saved under `"compute"` in your gitignored
 `.fabric/local.json` (the extension warns if that file isn't in your root
 `.gitignore`). **`Fabric: Disconnect from Compute`** removes it.
 
+**Notebooks from git: bind the default Lakehouse.** Fabric's git
+integration "stores logical identifiers for attached resources in
+notebook metadata", and for notebooks in git "the physical ID of the
+attached lakehouse … is replaced with a logical ID" ([Notebook source
+control and deployment](https://learn.microsoft.com/fabric/data-engineering/notebook-source-control-deployment)).
+Such a notebook's `default_lakehouse` (and its workspace) can be
+`00000000-0000-0000-0000-000000000000`, which names no Lakehouse Livy can
+start a session on. Fabric Connect shows that default as _not bound_
+(warning row in the Lakehouses view and under the notebook in Repo;
+status bar _Livy: default Lakehouse not bound_) and refuses to run the
+notebook instead of guessing. A default whose ID is the `logicalId` of a
+`<name>.Lakehouse/.platform` in your repo (a logical ID from git) counts
+as not bound too. The quickest fix is **Bind Lakehouse…** (in the
+notification shown when a cell fails, on the status bar item, or the link
+button on the warning row): it looks for a Lakehouse with the name the
+notebook keeps (e.g. `lh_analytics`) in the connected capacity's
+workspaces, like Fabric's Lakehouse auto-binding, and asks before binding
+(or lets you pick when several workspaces have one).
+
+**Binding is per notebook and stays on your machine.** The binding is
+saved under `"lakehouseBindings"` in your gitignored `.fabric/local.json`,
+keyed by the notebook's folder (e.g.
+`notebooks/consolidated_entity_template.Notebook`). The notebook file is
+**not** changed: no git diff, and Fabric's logical IDs stay in place for
+its auto-binding in other workspaces. Each notebook is bound on its own;
+another notebook with the same placeholder default stays _not bound_
+until you bind it. The Lakehouses view shows a bound default with a
+green link icon (_bound on this machine_); its unplug button
+(**Unbind**) removes the binding. The status bar reads
+`… (bound on this machine)`.
+
+To change the notebook itself instead (a choice you commit), **Attach** a
+Lakehouse or **Set as Default** in the Lakehouses view: that writes the
+real `default_lakehouse`, `default_lakehouse_name` and
+`default_lakehouse_workspace_id` into the notebook, as attaching in the
+portal does, and removes the notebook's local binding.
+
+The repo's `.platform` files are scanned once and rescanned only when a
+`.platform` file is added, changed or deleted.
+
+**When a Spark session cannot start**, the error names the Lakehouse and
+workspace, the HTTP status and Fabric's own message. For a notebook it
+also checks the Lakehouse's workspace once and says the likely cause: a
+workspace that doesn't exist or you can't access (common for notebooks
+synced from another workspace — set a new default in the Lakehouses
+view), a workspace with no capacity, or a Lakehouse that no longer exists.
+
 **Which Lakehouse runs your code.** A notebook with a default Lakehouse
-runs on that Lakehouse (in its target's workspace, or its own workspace if
-the folder isn't mapped). Anything without its own Lakehouse runs on the
-connected compute. Relative paths such as `Files/…` and unqualified table
+runs on that Lakehouse, in the workspace saved with it in the notebook's
+metadata — the remote workspace a folder is mapped to in `targets.json`
+does not change that (it only decides the tenant). If an older notebook's
+metadata has no workspace for its default Lakehouse, running it says so:
+click **Set as Default** on it in the Lakehouses view to write it.
+Anything without its own Lakehouse runs on the connected compute. Relative paths such as `Files/…` and unqualified table
 names resolve against that host, so a second status-bar item shows which
 one is in effect for the active notebook. If a folder's target and the
 connected compute are in different tenants, running is refused.
@@ -256,14 +374,33 @@ The Databricks Connect workflow: edit locally, run on Fabric.
   notebooks on that host. `%run` and cell magics work as in notebooks.
   Output (text, `display()` tables as text) appears in the **Fabric
   Connect: Run** output channel.
-- **Your local modules.** Set **`fabric-connect.sourceRoots`** (e.g.
-  `["src"]`) and every Python run — notebook cells included — first stages
+- **Your local modules: Local or Remote.** The **Python modules** row in
+  the Configuration view (Fabric side bar), the _Modules_ status bar item,
+  or **`Fabric: Python Modules`** picks where `import` finds your
+  packages, saved per repo in `fabric-connect.pythonModules`. The row and
+  the status bar always show the same mode:
+  - **Remote** — what the Fabric environment has installed, e.g. your
+    published wheel. Nothing is staged. This is the default unless
+    `fabric-connect.sourceRoots` is set. After switching from Local, run
+    **Fabric: Restart Livy Session**: a running session keeps the code it
+    already staged.
+  - **Local** — your working tree. The source folders are
+    `fabric-connect.sourceRoots` if set, else the folders `pyproject.toml`
+    names (setuptools `packages.find.where` or `package-dir`, Hatch wheel
+    `packages`, Poetry `packages.from`), else `src`.
+
+  When an import fails on Remote for a package that is also in your repo
+  (e.g. `cannot import name 'entity' from 'analytics'`, because the
+  installed wheel is older), the error says so and how to switch.
+
+  On Local, every Python run — notebook cells included — first stages
   the `.py` files under those folders to the session: they are zipped,
   uploaded to the host Lakehouse's scratch folder `Files/.fabric-connect/`,
   added with `addPyFile`, and stale copies are dropped from `sys.modules`.
   `import mypkg` then loads your working tree's code. Unchanged sources are
   not re-uploaded. The scratch folder is deleted when you stop or restart
   the session.
+
 - **Spark Job Definitions.** Right-click a `*.SparkJobDefinition` folder →
   **`Fabric: Run Spark Job Definition`**. Settings (arguments, main class,
   libraries, default Lakehouse, Environment) come from
@@ -308,20 +445,38 @@ Explorer and Source Control), the way the Databricks extension works. Its
 views:
 
 - **Configuration** — the account and tenant the repo signs in with, and
-  its compute (capacity, workspace, host Lakehouse, Environment). The
+  its compute (capacity; host Lakehouse and Environment once picked). The
   inline buttons sign in, sign out, switch tenant, connect or disconnect.
-- **Tenants** — the tenants you can use, the current one checked. Click
-  one to sign the repo in to it (same account); every view follows. The
-  list shows the current, recently used and compute tenants; **Find
-  tenants on my account…** (or the search button) adds every tenant your
-  account belongs to. The first time, VS Code asks you to allow Azure
-  Resource Manager access. The organization button enters a tenant ID or
-  domain.
-- **Capacities** — SKU, region and state; each expands to its workspaces.
-- **Workspaces** — every workspace, with the SKU and capacity it runs on
-  (and the state when the capacity is paused), _no capacity_, or _unknown
-  capacity_ when you cannot see the capacity itself (or capacities cannot
-  be listed at all; the workspaces still show).
+  **Switch Tenant** lists the current, recently used and compute tenants,
+  **Find tenants on my account…** and **Enter tenant ID or domain…**;
+  every view follows the tenant you pick.
+- **Capacity name** — Configuration → Compute → Capacity shows the
+  capacity's real name. It comes from Fabric's capacity list, else Power
+  BI's. Both only give it to people with rights on the capacity itself;
+  otherwise it reads `Capacity <id prefix>`, the tooltip says why (and,
+  if listing failed, the HTTP status and service message), and the pencil
+  (**Name This Capacity…**) lets you give it a name, saved in your
+  gitignored `.fabric/local.json`. A real name found later replaces the
+  placeholder automatically.
+- **Repo** — your repo's Fabric items, inside the folders that lead to
+  them on disk. A folder holding a `.platform` file is a Fabric item,
+  shown by its display name and type, with its own files under it and
+  `.platform` hidden (a folder with a broken `.platform` shows as a plain
+  folder). Folders without items and loose files are not shown — run
+  those from the editor or the file Explorer. Folders hidden by
+  `files.exclude` (plain or `**/name` patterns), `.git` and
+  `node_modules` are left out. Click a **Notebook** to open it in the
+  Fabric notebook editor. The play button (or right-click → **Run on
+  Fabric**) runs a notebook (all cells) or a Spark Job Definition. The
+  view title shows the connected compute (or _no compute_). The tree
+  follows file changes.
+  Right-click an item → **Open .platform** to see the file, or **Edit
+  Item Metadata…** to change its display name and description: the edit
+  keeps every other field, the indentation and the line endings, can be
+  undone in the editor, and is saved. The folder keeps its name; Fabric
+  uses the display name on the next git sync.
+- **Lakehouses** — attach Lakehouses to a notebook and pick its default;
+  see [Attach Lakehouses](#4-attach-lakehouses).
 - **Connections** — collapsed by default.
 
 **Explorer side bar.** The **Fabric** view in VS Code's Explorer side bar
@@ -419,7 +574,8 @@ session stops.
 | `Fabric: Run Query File`                        | Run a `.kql` / `.dax` / `.graphql` file against its bound item |
 | `Fabric: Change Query Target`                   | Re-pick the item a query file runs against                     |
 | `Fabric: New API Notebook`                      | Open a new `.fabnb` REST API notebook                          |
-| `Fabric: Connect to Compute`                    | Pick capacity → workspace → host Lakehouse (→ Environment)     |
+| `Fabric: Connect to Compute`                    | Pick the capacity to run on                                    |
+| `Fabric: Change Host Lakehouse…`                | Pick the host Lakehouse (→ Environment) on that capacity       |
 | `Fabric: Disconnect from Compute`               | Remove the saved compute connection                            |
 
 ## Settings
@@ -465,9 +621,11 @@ cases:
 - **`display(df)` prints text instead of a table** — the session's
   `display()` setup did not run (e.g. the session was started elsewhere);
   run **Fabric: Restart Livy Session**.
-- **`import mypkg` imports an old version or fails** — check
-  `fabric-connect.sourceRoots` points at the folder that _contains_ the
-  package (e.g. `src`, not `src/mypkg`), then run the cell again.
+- **`import mypkg` imports an old version or fails** — on Remote you get
+  the Fabric environment's installed copy: run **Fabric: Python Modules**
+  and pick Local to use your working tree. On Local, check the source
+  folder is the one that _contains_ the package (e.g. `src`, not
+  `src/mypkg`), then run the cell again.
 - **A consent prompt appears on the first KQL or DAX query** — expected:
   Kusto and Power BI use permissions separate from the Fabric API.
 - **API calls failing or behaving oddly** — enable

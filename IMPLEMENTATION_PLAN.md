@@ -73,17 +73,85 @@ Source of truth for scope: `docs/plan-local-first.md` (local-first, no deploymen
   the Explorer side bar view stays. `FabricExplorer` gained an
   `ExplorerRoot`; `SignInManager.switchTo(tenant)` backs the Tenants view.
 
+- Side bar feedback 2026-10-02 (uncommitted at the user's request, five
+  steps in one working tree):
+  1. Tenants view removed; tenant switching (incl. find on account) stays
+     in Configuration / status bar via Switch Tenant.
+  2. Capacities from workspaces: `capacitiesFromWorkspaces` /
+     `listUsableCapacities` (forbidden `/capacities` no longer hides the
+     capacity); `selectedCapacityId` in `.fabric/local.json`; Select
+     Capacity checks + expands it and highlights its workspaces; Connect
+     to Compute offers it first and accepts a preset.
+  3. **Repo** view replaces the remote Workspaces view (`repoTree.ts` pure
+     rules + `repoView.ts`): working tree on disk, item folders by
+     `.platform` displayName, run notebooks / SJDs / code / query files.
+     The explorer's `"workspaces"` root is gone.
+  4. Open .platform / Edit Item Metadata… (`updatePlatform`, keeps other
+     fields, indentation, EOL and BOM; tested).
+  5. **Lakehouses** view: attach / set default / detach on the active or
+     Repo-selected notebook, from workspaces on the selected capacity;
+     writes and saves notebook metadata (`lakehouseAttachments.ts`, shared
+     with the Lakehouse panel). Repo lists a notebook's attachments.
+
+- Side bar feedback round 2 (2026-10-02, uncommitted): no workspace
+  selection (user dropped it); Lakehouses lists every accessible
+  workspace (`orderWorkspaces`: selected capacity first); option B —
+  `resolveLivyHost` takes a notebook default's workspace from its
+  metadata only, targets.json supplies the tenant (two tests changed as a
+  flagged spec change); Repo shows only item folders and their ancestors
+  (`foldersWithItems`), loose-file run removed from Repo.
+
+- Side bar feedback round 3 (2026-10-02, uncommitted): connect = capacity
+  only (`ComputeProfile` host optional, both-or-neither; host picked on
+  demand via `ComputeConnection.runWithHost` on `HostLakehouseNeededError`;
+  Change Host Lakehouse…); `selectedCapacityId` removed; Lakehouses shows
+  only the connected capacity's workspaces; notebook tenant falls back to
+  the sign-in (`signedInTenant`); `.platform` → JSON language; notebook tab
+  label via `configurationDefaults` customLabels (`${dirname}`). SJD
+  default Lakehouse uses the folder target's workspace (its settings name
+  none) — fixes a round-2 regression.
+
+- Side bar feedback round 4 (2026-10-02, uncommitted): Capacities view
+  removed (Explorer root `"capacities"` gone); capacity names from Fabric
+  - Power BI `GET /v1.0/myorg/capacities` (`mergeCapacities`), listing
+    failure surfaced as `listError`, user `capacityLabel` + Name This
+    Capacity…, placeholder refreshed on sign-in; Repo Lakehouse rows
+    read-only; Livy start errors keep the service message and name the host,
+    notebooks add `diagnoseLivyHost` (via `probeLivyHost`, two GETs).
+
+- Round 5 (2026-10-02, uncommitted): placeholder Lakehouse IDs
+  (`isUnboundId`/`boundId` in the codec) read as `unboundDefault`;
+  `attachLakehouse` binds over them and drops placeholder known entries;
+  `resolveLivyHost` refuses an unbound default and never sends a nil or
+  malformed ID (`checkedHost`); warning rows in Lakehouses/Repo; status
+  bar. Livy endpoint/body checked against the official docs (match).
+  Open: the docs' user-token scopes (`Lakehouse.Execute.All`,
+  `Code.AccessFabric.All`, …) via an app registration vs. our VS Code
+  `.default` token — follow up only if session start returns 401/403.
+
+- Round 6 (2026-10-02, uncommitted): Fabric Livy session IDs are GUID
+  strings — `livyId` accepts path-safe strings or non-negative integers
+  for session and statement IDs (fixes "returned no session ID"); protocol
+  errors list response keys only. `DefaultLakehouseUnboundError` (with the
+  kept name) + `fabric-connect.bindDefaultLakehouse` binds by name on the
+  connected capacity (`findLakehousesByName`), offered from a
+  notification, the status bar and the unbound row. Repo Lakehouse
+  `logicalId`s count as unbound (`withLogicalIdsUnbound`).
+
+- Round 7 (2026-10-02, uncommitted): Bind Lakehouse… saves a
+  per-notebook binding in `.fabric/local.json` (`lakehouseBindings.ts`,
+  `LakehouseBindingStore`), never the notebook file; the binding wins at
+  run time (label "bound on this machine"); Set as Default / Attach that
+  give the notebook a real default drop its binding; Unbind command.
+  `CachedItemIndex` + `.platform` watcher replace per-call index builds
+  (also used by `%run`). `warnIfLocalFileNotIgnored` shared.
+
 ## Next
 
-- Feedback part 2: **Repo Items** view from `LocalItemIndex` (type → item
-  by `.platform` displayName → content files, `.platform` hidden); click a
-  notebook to open it in the Fabric notebook editor; right-click **Open
-  .platform** and **Edit Item Metadata…** (displayName/description via a
-  pure, round-trip-tested `updatePlatform`, applied as a `WorkspaceEdit`).
-- Feedback part 3: pin Lakehouses from Repo Items (attachments listed
-  under a notebook; Pin… / Set as Default / Unpin through the notebook
-  serializer and `attachLakehouse`/`detachLakehouse`). Never creates a
-  Lakehouse (D3).
+- Commit the side bar feedback when the user asks (planned as five
+  commits, one per step above).
+- Smoke-test the side bar feedback in a running VS Code against a real
+  tenant (`docs/testing.md` sections 1, 4 and 9).
 
 All planned milestones (M0–M5) are implemented, as stacked PRs (one per
 milestone; the user asked for all of them in one run, overriding the
@@ -94,6 +162,17 @@ UI and live Fabric calls could not be exercised in the build environment).
 Remaining milestones M1–M5: see `docs/plan-local-first.md`.
 
 ## Open issues
+
+- `describeWorkspaceCapacity` (core, tested) has no caller since the
+  Workspaces view was replaced; keep or remove deliberately.
+- Repo view hides `files.exclude` entries only for plain / `**/name`
+  patterns, and does not read `.gitignore`.
+- Lakehouses view: an attached Lakehouse whose workspace was never
+  expanded shows by ID prefix until it is; Set as Default looks it up by
+  listing workspaces one by one.
+- Notebooks whose metadata lacks `default_lakehouse_workspace_id` no
+  longer fall back to the folder's target workspace; they fail with a
+  pointer to Set as Default (option B, 2026-10-02).
 
 - Decisions D1–D4 are recorded in `docs/plan-local-first.md`.
 - Power BI and Kusto scopes go through VS Code's Microsoft auth provider;

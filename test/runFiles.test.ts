@@ -15,7 +15,12 @@ import {
   scratchFolder,
   stagedFileName,
 } from "../src/core/moduleStaging";
-import { OneLakeClient, abfssUri } from "../src/core/oneLakeClient";
+import {
+  OneLakeClient,
+  abfssUri,
+  browsableLakehouse,
+  oneLakeChildEntries,
+} from "../src/core/oneLakeClient";
 import {
   buildBatchRequest,
   locateJobFiles,
@@ -275,6 +280,82 @@ const SETTINGS = JSON.stringify({
   ],
   language: "Python",
   environmentArtifactId: null,
+});
+
+test("listed OneLake folders: folders first, tables only under Tables/", () => {
+  const entries = [
+    { path: "Tables/sales", isDirectory: true },
+    { path: "Tables/readme.txt", isDirectory: false },
+    { path: "Tables/_delta_log", isDirectory: true },
+    { path: "Tables/dbo", isDirectory: true },
+  ];
+  assert.deepEqual(
+    oneLakeChildEntries(entries, "Tables").map((e) => [e.path, e.isTable]),
+    [
+      ["Tables/_delta_log", false],
+      ["Tables/dbo", true],
+      ["Tables/sales", true],
+      ["Tables/readme.txt", false],
+    ],
+  );
+  // Schema-enabled: a table below a schema folder; Delta internals are not.
+  assert.deepEqual(
+    oneLakeChildEntries(
+      [
+        { path: "Tables/dbo/orders", isDirectory: true },
+        { path: "Tables/dbo/orders/_delta_log", isDirectory: true },
+      ],
+      "Tables/dbo",
+    ).map((e) => e.isTable),
+    [true, false],
+  );
+  assert.deepEqual(
+    oneLakeChildEntries(
+      [
+        { path: "Files/raw", isDirectory: true },
+        { path: "Files/a.csv", isDirectory: false },
+      ],
+      "Files",
+    ).map((e) => [e.path, e.isTable]),
+    [
+      ["Files/raw", false],
+      ["Files/a.csv", false],
+    ],
+  );
+});
+
+test("a notebook's Lakehouse is browsable once its workspace is known", () => {
+  // The default carries its workspace in the metadata.
+  assert.deepEqual(
+    browsableLakehouse({ id: "lh1", name: "Bronze", workspaceId: "ws1" }),
+    {
+      id: "lh1",
+      displayName: "Bronze",
+      type: "Lakehouse",
+      workspaceId: "ws1",
+      workspaceName: "",
+    },
+  );
+  // known_lakehouses entries name only the ID: not browsable until listed.
+  assert.equal(browsableLakehouse({ id: "lh2" }), undefined);
+  assert.deepEqual(
+    browsableLakehouse({ id: "lh2" }, { name: "Silver", workspaceId: "ws2" }),
+    {
+      id: "lh2",
+      displayName: "Silver",
+      type: "Lakehouse",
+      workspaceId: "ws2",
+      workspaceName: "",
+    },
+  );
+  // The metadata's own workspace wins over a listing.
+  assert.equal(
+    browsableLakehouse(
+      { id: "lh3", workspaceId: "wsA" },
+      { name: "x", workspaceId: "wsB" },
+    )?.workspaceId,
+    "wsA",
+  );
 });
 
 test("job settings parse, with empty values treated as absent", () => {

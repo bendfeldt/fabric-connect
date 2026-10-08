@@ -3,7 +3,11 @@ import * as path from "node:path";
 import { test } from "node:test";
 import { toStatement } from "../src/core/cellCode";
 import { FabricConnectError } from "../src/core/errors";
-import { LocalItemIndex, parsePlatform } from "../src/core/localItemIndex";
+import {
+  CachedItemIndex,
+  LocalItemIndex,
+  parsePlatform,
+} from "../src/core/localItemIndex";
 import {
   RunExpansionError,
   expandRunMagics,
@@ -260,4 +264,30 @@ test("unsupported cell magics are refused with a next step", () => {
     () => toStatement("%%html\n<b/>", "python", "cell 1"),
     FabricConnectError,
   );
+});
+
+test("the item index is scanned once and again only after invalidate()", async () => {
+  let scans = 0;
+  let failNext = false;
+  const cached = new CachedItemIndex({
+    findPlatformFiles: async () => {
+      scans++;
+      if (failNext) {
+        failNext = false;
+        throw new Error("disk busy");
+      }
+      return ["/repo/A.Notebook/.platform"];
+    },
+    readFile: async () =>
+      JSON.stringify({ metadata: { type: "Notebook", displayName: "A" } }),
+  });
+  const first = await cached.get();
+  assert.equal(first, await cached.get());
+  await Promise.all([cached.get(), cached.get()]);
+  assert.equal(scans, 1, "repeated and concurrent reads reuse one scan");
+  cached.invalidate();
+  failNext = true;
+  await assert.rejects(cached.get(), /disk busy/);
+  assert.equal((await cached.get()).items.length, 1, "a failure is not cached");
+  assert.equal(scans, 3);
 });

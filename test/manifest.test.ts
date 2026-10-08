@@ -21,13 +21,15 @@ const manifest = JSON.parse(
   icon?: string;
   contributes: {
     commands: Array<{ command: string }>;
-    notebooks: Array<{ type: string }>;
+    notebooks: Array<{ type: string; priority?: string }>;
     viewsContainers?: {
       activitybar?: Array<{ id: string; icon: string }>;
     };
     views: Record<string, Array<{ id: string }>>;
-    menus: Record<string, Array<{ command: string }>>;
+    menus: Record<string, Array<{ command: string; when?: string }>>;
     configuration: { properties: Record<string, unknown> };
+    languages?: Array<{ id: string; filenames?: string[] }>;
+    configurationDefaults?: Record<string, unknown>;
     walkthroughs?: Array<{
       steps: Array<{
         id: string;
@@ -108,6 +110,11 @@ function vscodeStub(workspaceRoot: string, recorded: Recorded): unknown {
         },
       }),
       onDidChangeNotebookDocument: event,
+      onDidChangeConfiguration: event,
+      onDidSaveTextDocument: event,
+      registerTextDocumentContentProvider: () => disposable,
+      onDidSaveNotebookDocument: event,
+      createFileSystemWatcher: () => anything(),
       findFiles: async () => [],
     },
     notebooks: {
@@ -120,14 +127,22 @@ function vscodeStub(workspaceRoot: string, recorded: Recorded): unknown {
       activeNotebookEditor: undefined,
       activeTextEditor: undefined,
       onDidChangeActiveNotebookEditor: event,
+      onDidChangeActiveTextEditor: event,
       createOutputChannel: () => anything(),
       createStatusBarItem: () => anything(),
       registerTreeDataProvider: (id: string) => {
         recorded.treeViews.push(id);
         return disposable;
       },
+      createTreeView: (id: string) => {
+        recorded.treeViews.push(id);
+        return anything();
+      },
     },
-    languages: { registerHoverProvider: () => disposable },
+    languages: {
+      registerHoverProvider: () => disposable,
+      registerCodeLensProvider: () => disposable,
+    },
     authentication: {
       getSession: async () => undefined,
       getAccounts: async () => [],
@@ -286,9 +301,8 @@ test("a Fabric Activity Bar container holds the views, next to the Explorer's", 
     (manifest.contributes.views["fabric-connect"] ?? []).map((v) => v.id),
     [
       "fabricConnect.configuration",
-      "fabricConnect.tenants",
-      "fabricConnect.capacities",
-      "fabricConnect.workspaces",
+      "fabricConnect.repo",
+      "fabricConnect.lakehouses",
       "fabricConnect.connections",
     ],
   );
@@ -297,6 +311,118 @@ test("a Fabric Activity Bar container holds the views, next to the Explorer's", 
     ["fabricConnect.explorer"],
     "the Explorer side bar keeps its Fabric view",
   );
+});
+
+test("Lakehouse actions are offered only in the Lakehouses view, never in Repo", () => {
+  const entries = (manifest.contributes.menus["view/item/context"] ??
+    []) as Array<{ command: string; when?: string }>;
+  const lakehouseEntries = entries.filter((e) =>
+    e.command.startsWith("fabric-connect.lakehouses."),
+  );
+  assert.ok(lakehouseEntries.length > 0);
+  for (const entry of lakehouseEntries) {
+    assert.match(entry.when ?? "", /^view == fabricConnect\.lakehouses /);
+  }
+});
+
+test("Bind / Unbind Lakehouse are offered on binding rows of the Lakehouses view only", () => {
+  const entries = (manifest.contributes.menus["view/item/context"] ??
+    []) as Array<{ command: string; when?: string }>;
+  for (const command of [
+    "fabric-connect.bindDefaultLakehouse",
+    "fabric-connect.unbindDefaultLakehouse",
+  ]) {
+    const matching = entries.filter((e) => e.command === command);
+    assert.ok(matching.length > 0, command);
+    for (const entry of matching) {
+      assert.match(
+        entry.when ?? "",
+        /^view == fabricConnect\.lakehouses && viewItem == fabric(Unbound|Bound)Lakehouse$/,
+        command,
+      );
+    }
+  }
+  assert.ok(
+    !entries.some(
+      (e) =>
+        e.command === "fabric-connect.unbindDefaultLakehouse" &&
+        /Unbound/.test(e.when ?? ""),
+    ),
+    "nothing to unbind on an unbound row",
+  );
+});
+
+test(".platform opens as JSON and notebook tabs are named after their item folder", () => {
+  const json = (manifest.contributes.languages ?? []).find(
+    (l) => l.id === "json",
+  );
+  assert.deepEqual(json?.filenames, [".platform"]);
+  assert.deepEqual(
+    manifest.contributes.configurationDefaults?.[
+      "workbench.editor.customLabels.patterns"
+    ],
+    { "**/*.Notebook/notebook-content.*": "${dirname}" },
+  );
+});
+
+test("notebooks open in the notebook editor; text diffs come from Open Changes as Text", () => {
+  const priority = (type: string) =>
+    manifest.contributes.notebooks.find((n) => n.type === type)?.priority;
+  // Both stay the default editor: openNotebookDocument(uri) needs one, and
+  // the raw diff is offered on the Source Control row instead.
+  assert.equal(priority("fabric-notebook-source"), undefined);
+  assert.equal(priority("fabric-notebook"), undefined);
+  const scm = (
+    manifest.contributes.menus["scm/resourceState/context"] ?? []
+  ).map((entry) => entry.command);
+  assert.ok(scm.includes("fabric-connect.openChangesAsText"));
+});
+
+test("Lakehouses view rows browse OneLake with the explorer's table and file actions", () => {
+  const inView = manifest.contributes.menus["view/item/context"].filter((e) =>
+    (e.when ?? "").includes("view == fabricConnect.lakehouses"),
+  );
+  // A minimal evaluator for the `when` clauses used here: the view, plus
+  // `viewItem == X` or `viewItem =~ /re/`.
+  const shownFor = (when: string, viewItem: string) => {
+    const eq = /viewItem == (\S+)/.exec(when);
+    const re = /viewItem =~ \/(.+?)\/(?:\s|$)/.exec(when);
+    return eq !== null
+      ? eq[1] === viewItem
+      : re !== null
+        ? new RegExp(re[1]).test(viewItem)
+        : true;
+  };
+  const offered = (command: string, viewItem: string, group?: string) =>
+    inView.some(
+      (e) =>
+        e.command === command &&
+        shownFor(e.when ?? "", viewItem) &&
+        (group === undefined || (e as { group?: string }).group === group),
+    );
+  const preview = "fabric-connect.explorer.previewTable";
+  assert.ok(offered(preview, "fabricTable", "inline"));
+  assert.ok(offered(preview, "fabricTable", "0_preview"));
+  assert.ok(!offered(preview, "fabricFile"));
+  assert.ok(offered("fabric-connect.explorer.previewFile", "fabricFile"));
+  assert.ok(!offered("fabric-connect.explorer.previewFile", "fabricFolder"));
+  for (const viewItem of ["fabricTable", "fabricFolder", "fabricFile"]) {
+    assert.ok(offered("fabric-connect.explorer.copyOneLakePath", viewItem));
+  }
+  // None of them land on the view's own Lakehouse rows.
+  for (const row of [
+    "fabricLakehouse",
+    "fabricLakehouse attached default",
+    "fabricBoundLakehouse",
+  ]) {
+    for (const command of [
+      preview,
+      "fabric-connect.explorer.previewFile",
+      "fabric-connect.explorer.copyOneLakePath",
+    ]) {
+      assert.ok(!offered(command, row), `${command} on ${row}`);
+    }
+  }
 });
 
 test("the icon and entry point referenced by the manifest exist", () => {

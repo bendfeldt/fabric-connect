@@ -6,27 +6,103 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+- **Browse Lakehouses in the Lakehouses view** — a Lakehouse row expands
+  into its OneLake Tables and Files, with Preview Table, Preview File and
+  Copy OneLake Path, as in the Fabric explorer.
+- **Open as Text and Open Changes as Text** — notebooks still open in the
+  notebook editor. **Open as Text** (notebook toolbar) reopens the file as
+  editable text with **Run Cell | Run All Above** above each cell (output
+  in the _Fabric Connect: Run_ channel, tables in Fabric Results); **Open
+  as Notebook** switches back. **Open Changes as Text** (right-click a
+  notebook in Source Control) shows the raw diff, HEAD against the working
+  tree, metadata included — the cell diff hides those changes.
+- **Python modules: Local or Remote** — the **Python modules** row in
+  the Configuration view, a status bar item (always in sync) and
+  **Fabric: Python Modules** pick whether `import` uses your working tree
+  (staged to the session) or what the Fabric environment has installed,
+  such as your wheel. Local finds the source folders from
+  `pyproject.toml` when `fabric-connect.sourceRoots` is not set. An
+  import error on Remote for a package that is also in your repo now
+  says so and how to switch.
+- **Fix: `display(df)` shows a table** — the raw
+  `FABRIC_CONNECT_DISPLAY{…}` text was printed instead. Fabric's Livy
+  drops the trailing control character that framed the table data; the
+  framing is no longer required.
+- **Fix: Spark sessions started on Fabric** — Fabric's Livy returns
+  session IDs as GUID strings; a numeric ID was required, so every
+  accepted session failed with "returned no session ID".
+- **Bind Lakehouse…** — a notebook from git whose default Lakehouse is not
+  bound (placeholder or logical IDs) is bound in one click to the
+  Lakehouse with the name it keeps, found on the connected capacity. The
+  binding is per notebook and saved only on this machine
+  (`.fabric/local.json`): the notebook file does not change, so no git
+  diff. **Unbind** removes it.
+- **Fewer repo scans** — `.platform` files are read once and again only
+  when one changes.
+
 - **Fix: notebooks from git with placeholder Lakehouse IDs** — Fabric
   stores logical/placeholder IDs (`00000000-…`) for attached Lakehouses in
   git. Those were sent to Livy (HTTP 400). Now such a default shows as
   _not bound_, running says to attach one, and attaching (or Set as
   Default) writes the real IDs over the placeholders, as in the portal.
 
-- **Fix: `display(df)` shows a table** — the raw
-  `FABRIC_CONNECT_DISPLAY{…}` text was printed instead. Fabric's Livy
-  drops the trailing control character that framed the table data; the
-  framing is no longer required.
+- **No Capacities view** — the capacity is shown and changed in
+  Configuration → Compute (or **Connect to This Capacity** in the Explorer
+  side bar's Fabric view).
+- **Real capacity names** — taken from Fabric's or Power BI's capacity
+  list; when neither shows it (no rights on the capacity), the tooltip
+  says why and **Name This Capacity…** sets your own name.
+- **Repo's Lakehouse rows are read-only** — attach, set default and
+  detach only in the Lakehouses view.
+- **Clearer Spark session errors** — a failed session start names the
+  Lakehouse and workspace, the HTTP status and Fabric's message; for
+  notebooks it adds the likely cause (inaccessible or missing workspace,
+  no capacity, missing Lakehouse).
 
-- **Fix: Spark sessions started on Fabric** — Fabric's Livy returns
-  session IDs as GUID strings; a numeric ID was required, so every
-  accepted session failed with "returned no session ID".
+- **Connect = pick a capacity** — Connect to Compute (and the plug button
+  in Capacities) only picks the capacity. Code without a Lakehouse of its
+  own asks once for a host Lakehouse on that capacity; **Change Host
+  Lakehouse…** changes it. Lakehouses lists only the connected capacity's
+  workspaces.
+- **Fix: notebooks use the signed-in tenant** — a notebook with a default
+  Lakehouse no longer fails with "not which tenant" when the repo is
+  signed in but no compute is connected.
+- **`.platform` opens as JSON**, and notebook tabs show the item folder
+  (`publish_metadata.Notebook`) instead of `notebook-content.py`.
+
+- **Repo shows only Fabric items** — folders without items and loose
+  files are gone; item folders keep your repo's folder structure. The
+  play button runs notebooks and Spark Job Definitions (run loose files
+  from the editor or the file Explorer).
+
+- **Notebooks run in their default Lakehouse's own workspace** — a folder
+  mapped in `targets.json` no longer changes the workspace a notebook with
+  a default Lakehouse runs in; the workspace saved in the notebook's
+  metadata is used (the target still decides the tenant).
+
+- **Lakehouses view** — attach Lakehouses to a notebook like the Fabric
+  portal: the active (or Repo-selected) notebook's attachments with the
+  default starred, and the Lakehouses of every workspace you can access
+  with Attach / Set as Default / Detach. Each action writes and
+  saves the notebook's metadata; many Lakehouses can be attached.
+
+- **Repo view** — replaces the side bar's remote Workspaces view: your
+  Fabric items in your repo's folder structure, shown by display name
+  (click a notebook to open it), and a play button that runs notebooks
+  and Spark Job Definitions. Right-click an item for **Open .platform** or **Edit Item
+  Metadata…** (display name and description).
+
+- **Capacities from your workspaces** — Connect to Compute lists every
+  capacity your workspaces run on, even when you cannot list capacities
+  yourself (usual for workspace members).
+- **No Tenants view** — the tenant is switched from Configuration (or the
+  status bar); **Switch Tenant** still finds every tenant on your account.
 
 - **Fabric side bar** — a **Fabric** icon in the Activity Bar, like the
   Databricks extension: **Configuration** (account, tenant and compute,
-  with sign in/out, switch tenant, connect/disconnect buttons), **Tenants**
-  (click one to switch; finds every tenant on your account on request),
-  **Capacities**, **Workspaces** (each shows the SKU and capacity it runs
-  on) and **Connections**. The Explorer side bar's **Fabric** view stays.
+  with sign in/out, switch tenant, connect/disconnect buttons; **Switch
+  Tenant** also finds every tenant on your account), **Repo**,
+  **Lakehouses** and **Connections**. The Explorer side bar's **Fabric** view stays.
 - **Sign In asks for the tenant** — after picking the account, you pick
   the tenant: your account's own tenant is listed first (Enter keeps it),
   alongside recent tenants, **Find tenants on my account…** and **Enter a
