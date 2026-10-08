@@ -146,10 +146,36 @@ Source of truth for scope: `docs/plan-local-first.md` (local-first, no deploymen
   `CachedItemIndex` + `.platform` watcher replace per-call index builds
   (also used by `%run`). `warnIfLocalFileNotIgnored` shared.
 
+- Execution-feedback diagnostics (approved session plan):
+  opt-in client phase timings share the existing debug logger across
+  notebook cells and text/file/selection runs; Variable Library
+  notebook-state failures retain their traceback and get static
+  context guidance. Deterministic core and real-consumer tests use
+  scripted HTTP / a VS Code API stand-in. Live portal/Livy comparison
+  remains required to establish the latency cause and failure owner.
+  No analytics repository access, optimization or compatibility shim.
+
+## Current commit sequence
+
+The approved extension changes are grouped into four dependency-ordered
+commits, replacing the earlier five-sidebar-commit proposal:
+
+1. `fix(livy): handle Fabric IDs and display payload framing` (`a73441a`).
+2. `fix(notebooks): preserve fidelity and identify unbound lakehouses`
+   (`9e41435`).
+3. `feat(workspace): add repo-centric compute and lakehouse workflows`
+   (`e3b222d`).
+4. `feat(diagnostics): trace execution phases and library failures`.
+
+This sequence does not authorize a push, extension installation or live
+Fabric calls. Diagnostics are not a latency remedy or working Variable
+Library compensation.
+
 ## Next
 
-- Commit the side bar feedback when the user asks (planned as five
-  commits, one per step above).
+- Keep latency and Variable Library remedies blocked until authorized
+  live evidence establishes the cause and owner; that evidence is not
+  currently available.
 - Smoke-test the side bar feedback in a running VS Code against a real
   tenant (`docs/testing.md` sections 1, 4 and 9).
 
@@ -162,6 +188,11 @@ UI and live Fabric calls could not be exercised in the build environment).
 Remaining milestones M1–M5: see `docs/plan-local-first.md`.
 
 ## Open issues
+
+- Execution feedback: neither the two-minute delay nor Variable Library
+  notebook-state failure has a confirmed live root cause. Follow
+  `docs/testing.md`'s read-only comparison before assigning ownership or
+  planning performance/compatibility changes.
 
 - `describeWorkspaceCapacity` (core, tested) has no caller since the
   Workspaces view was replaced; keep or remove deliberately.

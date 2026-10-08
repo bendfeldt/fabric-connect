@@ -17,6 +17,7 @@ import {
   hostOf,
 } from "./core/computeProfile";
 import { FabricApiClient } from "./core/fabricApiClient";
+import { ExecutionDiagnostics } from "./core/executionDiagnostics";
 import { probeLivyHost } from "./core/livyHost";
 import { DISPLAY_BOOTSTRAP_CODE } from "./core/displayProtocol";
 import {
@@ -114,7 +115,7 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     },
     // Defines display() in every session so DataFrames render as tables.
-    { bootstrap: { code: DISPLAY_BOOTSTRAP_CODE, kind: "pyspark" } },
+    { bootstrap: { code: DISPLAY_BOOTSTRAP_CODE, kind: "pyspark" }, logger },
   );
 
   const readFile = async (filePath: string): Promise<string | undefined> => {
@@ -173,6 +174,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const oneLake = new OneLakeClient(auth);
   const stager = new ModuleStager(oneLake, workspaceRoot);
   const runContext = {
+    diagnostics: () => new ExecutionDiagnostics(logger),
     index: localIndex,
     fs: { readFile },
     prepare: (target: Parameters<ModuleStager["prepare"]>[0]) =>

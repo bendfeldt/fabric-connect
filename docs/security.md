@@ -116,6 +116,20 @@ contents are never logged. Error messages are shown only to you, in VS
 Code; some include the tenant ID (for example a failed sign-in) so you can
 tell which tenant is involved.
 
+Execution phase diagnostics use local sequence numbers, fixed phase names,
+durations and `ok` / `error` / `cancelled` outcomes only. They do not log
+Fabric session or statement IDs, local paths, code, library values or
+returned data. They use the same opt-in debug setting and stay local to
+VS Code; no telemetry endpoint is added. If writing a diagnostic fails,
+a static warning is sent to the extension host console without error
+details, and execution results are preserved.
+
+Original runtime errors and tracebacks are still shown unchanged and can
+contain resource IDs, paths or sensitive values. The static Variable
+Library hint does not sanitize that original output. Review and redact
+errors manually before sharing a support packet or public issue; never
+include library contents or secret values.
+
 ## Webviews
 
 The Lakehouse panel and the Results panel use a strict Content Security
