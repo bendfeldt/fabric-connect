@@ -107,13 +107,24 @@ export interface SessionStore {
   set(key: string, value: string | undefined): void;
 }
 
+/**
+ * Fabric's Livy returns session IDs as GUID strings (open-source Livy uses
+ * numbers); statement IDs are numbers. Both are only ever used in paths,
+ * so they are normalized to strings with `livyId`.
+ */
+type RawLivyId = string | number;
+
 interface LivySessionInfo {
-  id: number;
+  id?: RawLivyId;
   state: string;
+  /** Livy's own diagnostics; Fabric fills these when a session dies. */
+  log?: unknown;
+  errorInfo?: unknown;
+  livyInfo?: unknown;
 }
 
 interface LivyStatement {
-  id: number;
+  id?: RawLivyId;
   state: string;
   output?: {
     status?: string;
@@ -147,7 +158,7 @@ export interface LivySessionManagerOptions {
 }
 
 export class LivySessionManager implements ILivySessionManager {
-  private readonly sessions = new Map<string, Promise<number>>();
+  private readonly sessions = new Map<string, Promise<string>>();
   /** Per-session promise chain: executions queue instead of racing. */
   private readonly queues = new Map<string, Promise<unknown>>();
   private readonly pollIntervalMs: number;
@@ -259,9 +270,10 @@ export class LivySessionManager implements ILivySessionManager {
     } catch (cause) {
       throw this.classifySessionLoss(cause, target, sessionId);
     }
-    if (typeof statement?.id !== "number") {
+    const statementId = livyId(statement?.id);
+    if (statementId === undefined) {
       throw new LivyError(
-        "The Livy API accepted the statement but returned no statement ID, so its result cannot be polled.",
+        `The Livy API accepted the statement but returned no statement ID, so its result cannot be polled.${responseKeys(statement)}`,
         {
           operation: "execute cell",
           entity: `session ${sessionId}`,
@@ -272,13 +284,13 @@ export class LivySessionManager implements ILivySessionManager {
       );
     }
 
-    return this.pollStatement(target, sessionId, statement.id, token);
+    return this.pollStatement(target, sessionId, statementId, token);
   }
 
   private async pollStatement(
     target: LivyTarget,
-    sessionId: number,
-    statementId: number,
+    sessionId: string,
+    statementId: string,
     token: CancelToken,
   ): Promise<LivyStatementResult> {
     const base = livyBase(target);
@@ -325,8 +337,8 @@ export class LivySessionManager implements ILivySessionManager {
 
   private async cancelStatement(
     target: LivyTarget,
-    sessionId: number,
-    statementId: number,
+    sessionId: string,
+    statementId: string,
   ): Promise<void> {
     try {
       await this.api.request({
@@ -343,7 +355,7 @@ export class LivySessionManager implements ILivySessionManager {
   private async getOrCreateSession(
     target: LivyTarget,
     token: CancelToken,
-  ): Promise<number> {
+  ): Promise<string> {
     const key = sessionKey(target);
     const existing = this.sessions.get(key);
     if (existing !== undefined) {
@@ -364,7 +376,7 @@ export class LivySessionManager implements ILivySessionManager {
 
   private async runBootstrap(
     target: LivyTarget,
-    sessionId: number,
+    sessionId: string,
     token: CancelToken,
   ): Promise<void> {
     if (this.bootstrap === undefined) {
@@ -377,8 +389,9 @@ export class LivySessionManager implements ILivySessionManager {
         tenantId: target.tenantId,
         body: { code: this.bootstrap.code, kind: this.bootstrap.kind },
       });
-      if (typeof response.body?.id === "number") {
-        await this.pollStatement(target, sessionId, response.body.id, token);
+      const statementId = livyId(response.body?.id);
+      if (statementId !== undefined) {
+        await this.pollStatement(target, sessionId, statementId, token);
       }
     } catch {
       // Best effort: without the bootstrap, display() output stays plain
@@ -389,7 +402,7 @@ export class LivySessionManager implements ILivySessionManager {
   private async attachOrStartSession(
     target: LivyTarget,
     token: CancelToken,
-  ): Promise<number> {
+  ): Promise<string> {
     const key = sessionKey(target);
     const base = livyBase(target);
 
@@ -403,10 +416,10 @@ export class LivySessionManager implements ILivySessionManager {
           tenantId: target.tenantId,
         });
         if (SESSION_READY_STATES.has(response.body.state)) {
-          return response.body.id;
+          return persisted;
         }
         if (!SESSION_DEAD_STATES.has(response.body.state)) {
-          return this.waitForSessionReady(target, response.body.id, token);
+          return this.waitForSessionReady(target, persisted, token);
         }
       } catch {
         // Persisted session is gone; fall through and start a fresh one.
@@ -426,27 +439,28 @@ export class LivySessionManager implements ILivySessionManager {
     } catch (cause) {
       throw this.sessionStartError(cause, target);
     }
-    if (typeof session?.id !== "number") {
+    const sessionId = livyId(session?.id);
+    if (sessionId === undefined) {
       throw new LivyError(
-        "The Livy API accepted the session request but returned no session ID.",
+        `The Livy API accepted the session request but returned no session ID.${responseKeys(session)}`,
         {
           operation: "start Livy session",
-          entity: `workspace (target tenant ${target.tenantId})`,
+          entity: hostEntity(target),
           kind: "protocol",
           remediation:
             "Run the cell again; if it persists, check the workspace capacity in the Fabric portal.",
         },
       );
     }
-    this.store.set(key, String(session.id));
-    return this.waitForSessionReady(target, session.id, token);
+    this.store.set(key, sessionId);
+    return this.waitForSessionReady(target, sessionId, token);
   }
 
   private async waitForSessionReady(
     target: LivyTarget,
-    sessionId: number,
+    sessionId: string,
     token: CancelToken,
-  ): Promise<number> {
+  ): Promise<string> {
     const base = livyBase(target);
     const deadline = Date.now() + this.sessionStartTimeoutMs;
     for (;;) {
@@ -463,15 +477,17 @@ export class LivySessionManager implements ILivySessionManager {
         throw this.sessionStartError(cause, target);
       }
       if (SESSION_READY_STATES.has(session.state)) {
-        return session.id;
+        return sessionId;
       }
       if (SESSION_DEAD_STATES.has(session.state)) {
         this.store.set(sessionKey(target), undefined);
+        const reason = sessionDiagnostics(session);
         throw new LivyError(
-          `The Livy session for this notebook entered state '${session.state}' before becoming ready.`,
+          `The Livy session for this notebook entered state '${session.state}' before becoming ready.` +
+            (reason === undefined ? "" : ` Livy said: ${reason}`),
           {
             operation: "start Livy session",
-            entity: `session ${sessionId}`,
+            entity: `session ${sessionId} on ${hostEntity(target)}`,
             kind: "session-start",
             remediation:
               "Check that the workspace capacity is running and its Spark pool exists, then run the cell again.",
@@ -500,9 +516,16 @@ export class LivySessionManager implements ILivySessionManager {
     }
     let why = "the session could not be started";
     let next =
-      "Check the Fabric portal for the workspace state, then run the cell again.";
+      "Check the Fabric portal for the workspace and its capacity, then run the cell again.";
     if (cause instanceof FabricApiError) {
-      if (cause.status === 403) {
+      if (cause.status === 400) {
+        why = "Fabric rejected the session request";
+        next =
+          "Check that the Lakehouse and its workspace exist and the workspace is on a running Fabric capacity, then run the cell again.";
+      } else if (cause.status === 401) {
+        why = "the sign-in was not accepted (expired or wrong tenant)";
+        next = "Sign in again with 'Fabric: Sign In', then run the cell again.";
+      } else if (cause.status === 403) {
         why =
           "the signed-in identity lacks permission to run Spark in this workspace";
         next = "Ask a workspace admin for Contributor (or higher) access.";
@@ -510,7 +533,10 @@ export class LivySessionManager implements ILivySessionManager {
         why =
           "the workspace or Lakehouse was not found (wrong workspace ID, or no Spark pool)";
         next =
-          "Verify the workspace ID in .fabric/local.json and the attached Lakehouse.";
+          "Check the notebook's default Lakehouse in the Lakehouses view (or the host Lakehouse in Configuration).";
+      } else if (cause.status === 429) {
+        why = "the capacity is throttling Spark requests";
+        next = "Wait a moment, then run the cell again.";
       } else if (cause.status !== undefined && cause.status >= 500) {
         why =
           "the Fabric service failed to start the session (capacity may be paused)";
@@ -518,9 +544,15 @@ export class LivySessionManager implements ILivySessionManager {
           "Resume the capacity in the Fabric portal, then run the cell again.";
       }
     }
-    return new LivyError(`Failed to start a Livy session: ${why}.`, {
+    // The service's own words (status, message, correlation ID) are kept in
+    // the surfaced text, not only in `cause`.
+    const detail =
+      cause instanceof Error
+        ? ` Details: ${cause.message.split(" Next step:")[0]}`
+        : "";
+    return new LivyError(`Failed to start a Livy session: ${why}.${detail}`, {
       operation: "start Livy session",
-      entity: `workspace (target tenant ${target.tenantId})`,
+      entity: hostEntity(target),
       kind: "session-start",
       remediation: next,
       cause,
@@ -530,7 +562,7 @@ export class LivySessionManager implements ILivySessionManager {
   private classifySessionLoss(
     cause: unknown,
     target: LivyTarget,
-    sessionId: number,
+    sessionId: string,
   ): LivyError | unknown {
     if (cause instanceof FabricApiError && cause.status === 404) {
       // Session vanished mid-execution: expired or was stopped upstream.
@@ -555,7 +587,7 @@ export class LivySessionManager implements ILivySessionManager {
     if (token.isCancellationRequested) {
       throw new LivyError("Execution was cancelled before it started.", {
         operation: "execute cell",
-        entity: `workspace (target tenant ${target.tenantId})`,
+        entity: hostEntity(target),
         kind: "cancelled",
       });
     }
@@ -580,6 +612,66 @@ function sessionRequestBody(target: LivyTarget): Record<string, unknown> {
       }),
     },
   };
+}
+
+/**
+ * A Livy session or statement ID as a URL path segment: a non-negative
+ * integer or a GUID-like token (letters, digits, dashes, as for batch IDs).
+ * Undefined when absent or unsafe to put in a path.
+ */
+export function livyId(value: unknown): string | undefined {
+  const text =
+    typeof value === "number" && Number.isInteger(value) && value >= 0
+      ? String(value)
+      : typeof value === "string"
+        ? value.trim()
+        : "";
+  return /^[0-9A-Za-z-]+$/.test(text) ? text : undefined;
+}
+
+/** " Response fields: a, b." — names only, never values (they may hold IDs). */
+function responseKeys(body: unknown): string {
+  if (typeof body !== "object" || body === null) {
+    return " The response had no JSON body.";
+  }
+  const keys = Object.keys(body);
+  return keys.length === 0
+    ? " The response body was empty."
+    : ` Response fields: ${keys.slice(0, 20).join(", ")}.`;
+}
+
+/** Which Lakehouse a session runs on, for error messages (never logs). */
+function hostEntity(target: LivyTarget): string {
+  return `Lakehouse ${target.lakehouseId} in workspace ${target.workspaceId}`;
+}
+
+/** Livy's own reason a session died, from whichever field carries it. */
+export function sessionDiagnostics(session: {
+  log?: unknown;
+  errorInfo?: unknown;
+  livyInfo?: unknown;
+}): string | undefined {
+  const texts: string[] = [];
+  const collect = (value: unknown): void => {
+    if (typeof value === "string" && value.trim().length > 0) {
+      texts.push(value.trim());
+    } else if (Array.isArray(value)) {
+      value.forEach(collect);
+    } else if (typeof value === "object" && value !== null) {
+      const record = value as Record<string, unknown>;
+      for (const key of ["message", "errorMessage", "currentState", "source"]) {
+        collect(record[key]);
+      }
+    }
+  };
+  collect(session.errorInfo);
+  collect(session.livyInfo);
+  if (texts.length === 0 && Array.isArray(session.log)) {
+    // The last log lines usually hold the failure.
+    collect(session.log.slice(-3));
+  }
+  const text = [...new Set(texts)].join(" | ");
+  return text.length === 0 ? undefined : text.slice(0, 500);
 }
 
 function livyBase(target: LivyTarget): string {
