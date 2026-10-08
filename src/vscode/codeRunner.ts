@@ -19,6 +19,11 @@ import {
   renderTableText,
 } from "../core/displayProtocol";
 import { FabricConnectError, LivyError } from "../core/errors";
+import {
+  ExecutionDiagnostics,
+  executionFailureOutcome,
+  type ExecutionOutcome,
+} from "../core/executionDiagnostics";
 import { type LivyHost, resolveLivyHost } from "../core/livyHost";
 import { boundId } from "../core/notebookCodec";
 import type {
@@ -116,37 +121,58 @@ export class CodeRunner implements vscode.Disposable {
     document: vscode.TextDocument,
     entity: string,
   ): Promise<void> {
-    if (!RUNNABLE_LANGUAGES.has(document.languageId)) {
-      throw new FabricConnectError(
-        `Cannot run ${entity}: files in '${document.languageId}' cannot run on a Spark session.`,
-        {
-          operation: "run file",
-          entity,
-          remediation: "Run a Python, SQL, Scala or R file.",
+    const diagnostics = this.run.diagnostics?.() ?? new ExecutionDiagnostics();
+    let outcome: ExecutionOutcome = "error";
+    try {
+      if (!RUNNABLE_LANGUAGES.has(document.languageId)) {
+        throw new FabricConnectError(
+          `Cannot run ${entity}: files in '${document.languageId}' cannot run on a Spark session.`,
+          {
+            operation: "run file",
+            entity,
+            remediation: "Run a Python, SQL, Scala or R file.",
+          },
+        );
+      }
+      const host = await diagnostics.measure("host.resolve", () =>
+        this.runWithHost(() => this.hostFor(document.uri.fsPath, entity)),
+      );
+      const { kind, code } = await diagnostics.measure(
+        "code.prepare",
+        async () => {
+          let { kind, code } = toStatement(text, document.languageId, entity);
+          if (kind === "pyspark" && hasRunMagic(code)) {
+            code = await expandRunMagics(
+              code,
+              await this.run.index(),
+              this.run.fs,
+            );
+          }
+          return { kind, code };
         },
       );
+      this.output.show(true);
+      this.output.appendLine(`▶ ${entity} on ${host.label}`);
+      const started = Date.now();
+      const ran = await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Running ${entity} on Fabric…`,
+          cancellable: true,
+        },
+        (_progress, token) =>
+          this.execute(host, kind, code, entity, token, diagnostics),
+      );
+      outcome = ran.status;
+      this.output.appendLine(
+        `■ done in ${((Date.now() - started) / 1000).toFixed(1)}s\n`,
+      );
+    } catch (error) {
+      outcome = executionFailureOutcome(error);
+      throw error;
+    } finally {
+      diagnostics.finish(outcome);
     }
-    const host = await this.runWithHost(() =>
-      this.hostFor(document.uri.fsPath, entity),
-    );
-    let { kind, code } = toStatement(text, document.languageId, entity);
-    if (kind === "pyspark" && hasRunMagic(code)) {
-      code = await expandRunMagics(code, await this.run.index(), this.run.fs);
-    }
-    this.output.show(true);
-    this.output.appendLine(`▶ ${entity} on ${host.label}`);
-    const started = Date.now();
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: `Running ${entity} on Fabric…`,
-        cancellable: true,
-      },
-      (_progress, token) => this.execute(host, kind, code, entity, token),
-    );
-    this.output.appendLine(
-      `■ done in ${((Date.now() - started) / 1000).toFixed(1)}s\n`,
-    );
   }
 
   /**
@@ -159,86 +185,115 @@ export class CodeRunner implements vscode.Disposable {
     uri: vscode.Uri,
     which: { cell: number; above?: boolean } | "all",
   ): Promise<void> {
-    const document = await vscode.workspace.openTextDocument(uri);
-    const name = path
-      .basename(path.dirname(uri.fsPath))
-      .replace(/\.Notebook$/, "");
-    const cells = sourceCellRanges(
-      document.getText(),
-      path.basename(uri.fsPath),
-    ).filter(
-      (cell) =>
-        cell.kind !== "markdown" &&
-        (which === "all" ||
-          cell.index === which.cell ||
-          (which.above === true && cell.index < which.cell)),
-    );
-    if (cells.length === 0) {
-      throw new FabricConnectError(
-        `Cannot run notebook ${name}: there is no code cell to run.`,
+    const diagnostics = this.run.diagnostics?.() ?? new ExecutionDiagnostics();
+    let outcome: ExecutionOutcome = "error";
+    try {
+      const document = await vscode.workspace.openTextDocument(uri);
+      const name = path
+        .basename(path.dirname(uri.fsPath))
+        .replace(/\.Notebook$/, "");
+      const cells = sourceCellRanges(
+        document.getText(),
+        path.basename(uri.fsPath),
+      ).filter(
+        (cell) =>
+          cell.kind !== "markdown" &&
+          (which === "all" ||
+            cell.index === which.cell ||
+            (which.above === true && cell.index < which.cell)),
+      );
+      if (cells.length === 0) {
+        throw new FabricConnectError(
+          `Cannot run notebook ${name}: there is no code cell to run.`,
+          {
+            operation: "run notebook cells",
+            entity: `notebook ${name}`,
+            remediation:
+              "Add a '# CELL ********************' block, or click Run Cell on a code cell.",
+          },
+        );
+      }
+      const host = await diagnostics.measure("host.resolve", () =>
+        this.runWithHost(() => this.notebookHost(uri)),
+      );
+      outcome = "ok";
+      this.output.show(true);
+      this.output.appendLine(`▶ notebook ${name} on ${host.label}`);
+      const started = Date.now();
+      const tables: DisplayTable[] = [];
+      await vscode.window.withProgress(
         {
-          operation: "run notebook cells",
-          entity: `notebook ${name}`,
-          remediation:
-            "Add a '# CELL ********************' block, or click Run Cell on a code cell.",
+          location: vscode.ProgressLocation.Notification,
+          title: `Running ${name} on Fabric…`,
+          cancellable: true,
+        },
+        async (progress, token) => {
+          for (const cell of cells) {
+            const entity = `cell ${cell.index + 1} of ${name}`;
+            progress.report({ message: entity });
+            this.output.appendLine(`▶ ${entity}`);
+            try {
+              const { kind, code } = await diagnostics.measure(
+                "code.prepare",
+                async () => {
+                  let { kind, code } = toStatement(
+                    cell.source,
+                    cell.language,
+                    entity,
+                  );
+                  if (kind === "pyspark" && hasRunMagic(code)) {
+                    code = await expandRunMagics(
+                      code,
+                      await this.run.index(),
+                      this.run.fs,
+                    );
+                  }
+                  return { kind, code };
+                },
+              );
+              const ran = await this.execute(
+                host,
+                kind,
+                code,
+                entity,
+                token,
+                diagnostics,
+              );
+              tables.push(...ran.tables);
+              if (!ran.ok) {
+                outcome = ran.status;
+                return; // stop at the first failing (or cancelled) cell
+              }
+            } catch (error) {
+              outcome = executionFailureOutcome(error);
+              // Cancelled while queued or while the session started: as clean
+              // as a cancel while running. Anything else (an unsupported
+              // magic, a %run that cannot be expanded) stops here too, and
+              // the cells that ran keep their output.
+              this.output.appendLine(
+                error instanceof LivyError && error.kind === "cancelled"
+                  ? "  (cancelled)"
+                  : `✗ ${entity}: ${error instanceof Error ? error.message : String(error)}`,
+              );
+              return;
+            }
+          }
         },
       );
+      if (tables.length > 0) {
+        await diagnostics.measure("output.render", async () => {
+          this.results.show(name, host.label, tables);
+        });
+      }
+      this.output.appendLine(
+        `■ done in ${((Date.now() - started) / 1000).toFixed(1)}s\n`,
+      );
+    } catch (error) {
+      outcome = executionFailureOutcome(error);
+      throw error;
+    } finally {
+      diagnostics.finish(outcome);
     }
-    const host = await this.runWithHost(() => this.notebookHost(uri));
-    this.output.show(true);
-    this.output.appendLine(`▶ notebook ${name} on ${host.label}`);
-    const started = Date.now();
-    const tables: DisplayTable[] = [];
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: `Running ${name} on Fabric…`,
-        cancellable: true,
-      },
-      async (progress, token) => {
-        for (const cell of cells) {
-          const entity = `cell ${cell.index + 1} of ${name}`;
-          progress.report({ message: entity });
-          this.output.appendLine(`▶ ${entity}`);
-          try {
-            let { kind, code } = toStatement(
-              cell.source,
-              cell.language,
-              entity,
-            );
-            if (kind === "pyspark" && hasRunMagic(code)) {
-              code = await expandRunMagics(
-                code,
-                await this.run.index(),
-                this.run.fs,
-              );
-            }
-            const ran = await this.execute(host, kind, code, entity, token);
-            tables.push(...ran.tables);
-            if (!ran.ok) {
-              return; // stop at the first failing (or cancelled) cell
-            }
-          } catch (error) {
-            // Cancelled while queued or while the session started: as clean
-            // as a cancel while running. Anything else (an unsupported
-            // magic, a %run that cannot be expanded) stops here too, and
-            // the cells that ran keep their output.
-            this.output.appendLine(
-              error instanceof LivyError && error.kind === "cancelled"
-                ? "  (cancelled)"
-                : `✗ ${entity}: ${error instanceof Error ? error.message : String(error)}`,
-            );
-            return;
-          }
-        }
-      },
-    );
-    if (tables.length > 0) {
-      this.results.show(name, host.label, tables);
-    }
-    this.output.appendLine(
-      `■ done in ${((Date.now() - started) / 1000).toFixed(1)}s\n`,
-    );
   }
 
   /**
@@ -251,34 +306,54 @@ export class CodeRunner implements vscode.Disposable {
     code: string,
     entity: string,
     token: vscode.CancellationToken,
-  ): Promise<{ ok: boolean; tables: DisplayTable[] }> {
+    diagnostics: ExecutionDiagnostics,
+  ): Promise<{
+    ok: boolean;
+    status: ExecutionOutcome;
+    tables: DisplayTable[];
+  }> {
     if (kind === "pyspark") {
-      const prelude = await this.run.prepare?.(host.target);
+      const prelude = await diagnostics.measure("modules.prepare", async () =>
+        this.run.prepare?.(host.target),
+      );
       if (prelude !== undefined) {
         const staged = await this.livy.execute(
           host.target,
           prelude,
           "pyspark",
           token,
+          diagnostics,
+          "module-setup",
         );
         if (staged.status !== "ok") {
-          this.print(staged, "staging local modules");
-          return { ok: false, tables: [] };
+          await diagnostics.measure("output.render", async () => {
+            this.print(staged, "staging local modules");
+          });
+          return { ok: false, status: staged.status, tables: [] };
         }
       }
     }
-    const result = await this.livy.execute(host.target, code, kind, token);
-    const tables = this.print(result, entity);
-    if (result.status === "error") {
-      const hint = await this.run.importHint?.(
-        result.errorName,
-        result.errorValue,
-      );
-      if (hint !== undefined) {
-        this.output.appendLine(`  ${hint}`);
+    const result = await this.livy.execute(
+      host.target,
+      code,
+      kind,
+      token,
+      diagnostics,
+    );
+    const tables = await diagnostics.measure("output.render", async () => {
+      const tables = this.print(result, entity);
+      if (result.status === "error") {
+        const hint = await this.run.importHint?.(
+          result.errorName,
+          result.errorValue,
+        );
+        if (hint !== undefined) {
+          this.output.appendLine(`  ${hint}`);
+        }
       }
-    }
-    return { ok: result.status === "ok", tables };
+      return tables;
+    });
+    return { ok: result.status === "ok", status: result.status, tables };
   }
 
   async runSparkJob(uri?: vscode.Uri): Promise<void> {
@@ -418,6 +493,9 @@ export class CodeRunner implements vscode.Disposable {
       );
       for (const line of result.traceback ?? []) {
         this.output.append(line.endsWith("\n") ? line : `${line}\n`);
+      }
+      if (result.hint !== undefined) {
+        this.output.appendLine(`  [fabric-connect] ${result.hint}`);
       }
       return [];
     }

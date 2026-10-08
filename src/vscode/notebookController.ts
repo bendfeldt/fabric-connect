@@ -26,6 +26,11 @@ import {
   LivyError,
 } from "../core/errors";
 import {
+  ExecutionDiagnostics,
+  executionFailureOutcome,
+  type ExecutionOutcome,
+} from "../core/executionDiagnostics";
+import {
   type HostProbe,
   type LivyHost,
   diagnoseLivyHost,
@@ -67,6 +72,7 @@ const RENDERABLE_MIME_TYPES = new Set([
 
 /** Where local `%run` finds other notebooks, and how local modules are staged. */
 export interface RunContext {
+  readonly diagnostics?: () => ExecutionDiagnostics;
   readonly index: () => Promise<LocalItemIndex>;
   readonly fs: RunExpansionFileSystem;
   /**
@@ -140,14 +146,24 @@ export function toCellOutputs(
     // The cell's own exception: shown as the notebook's traceback,
     // exactly as the portal would show it — not an extension error.
     const error = new Error(
-      `${result.errorName ?? "Error"}: ${result.errorValue ?? ""}` +
-        (hint === undefined ? "" : `\n\n[fabric-connect] ${hint}`),
+      `${result.errorName ?? "Error"}: ${result.errorValue ?? ""}`,
     );
     error.stack = (result.traceback ?? []).join("\n");
+    const hints = [result.hint, hint].filter((value) => value !== undefined);
     return [
       new vscode.NotebookCellOutput([
         vscode.NotebookCellOutputItem.error(error),
       ]),
+      ...(hints.length === 0
+        ? []
+        : [
+            new vscode.NotebookCellOutput([
+              vscode.NotebookCellOutputItem.text(
+                hints.map((value) => `[fabric-connect] ${value}`).join("\n\n"),
+                "text/plain",
+              ),
+            ]),
+          ]),
     ];
   }
   const data = { ...(result.data ?? {}) };
@@ -363,25 +379,33 @@ export class FabricNotebookController implements vscode.Disposable {
     notebook: vscode.NotebookDocument,
   ): Promise<void> {
     this.noticePurePython(notebook);
+    const diagnostics = this.run.diagnostics?.() ?? new ExecutionDiagnostics();
+    let outcome: ExecutionOutcome = "error";
     // Ask for a host Lakehouse once, up front, when the notebook needs one;
     // a failure here is reported by each cell below, without asking again.
     try {
-      await this.runWithHost(() =>
-        resolveNotebookHost(
-          notebook,
-          this.targets,
-          this.compute,
-          this.signedInTenant,
-          this.sources,
+      await diagnostics.measure("host.resolve", () =>
+        this.runWithHost(() =>
+          resolveNotebookHost(
+            notebook,
+            this.targets,
+            this.compute,
+            this.signedInTenant,
+            this.sources,
+          ),
         ),
       );
+      outcome = "ok";
       void this.refreshHostStatus();
     } catch (error) {
+      outcome = executionFailureOutcome(error);
       // Reported per cell; an unbound default also gets a one-click fix,
       // offered once per run (cell outputs cannot hold buttons).
       if (error instanceof DefaultLakehouseUnboundError) {
         void this.offerBind(notebook, error);
       }
+    } finally {
+      diagnostics.finish(outcome);
     }
     // The Livy manager queues per session; iterating here keeps cell order.
     for (const cell of cells) {
@@ -416,42 +440,68 @@ export class FabricNotebookController implements vscode.Disposable {
     const execution = controller.createNotebookCellExecution(cell);
     execution.executionOrder = ++this.executionOrder;
     execution.start(Date.now());
+    const diagnostics = this.run.diagnostics?.() ?? new ExecutionDiagnostics();
+    let outcome: ExecutionOutcome = "error";
     let host: LivyHost | undefined;
     try {
-      host = await resolveNotebookHost(
-        notebook,
-        this.targets,
-        this.compute,
-        this.signedInTenant,
-        this.sources,
+      host = await diagnostics.measure("host.resolve", () =>
+        resolveNotebookHost(
+          notebook,
+          this.targets,
+          this.compute,
+          this.signedInTenant,
+          this.sources,
+        ),
       );
       const { target } = host;
       const entity = `cell ${cell.index + 1} of ${path.basename(path.dirname(notebook.uri.fsPath))}`;
-      let { kind, code } = toStatement(
-        cell.document.getText(),
-        cell.document.languageId,
-        entity,
+      const { kind, code } = await diagnostics.measure(
+        "code.prepare",
+        async () => {
+          let statement = toStatement(
+            cell.document.getText(),
+            cell.document.languageId,
+            entity,
+          );
+          if (statement.kind === "pyspark" && hasRunMagic(statement.code)) {
+            statement = {
+              ...statement,
+              code: await expandRunMagics(
+                statement.code,
+                await this.run.index(),
+                this.run.fs,
+              ),
+            };
+          }
+          return statement;
+        },
       );
-      if (kind === "pyspark" && hasRunMagic(code)) {
-        code = await expandRunMagics(code, await this.run.index(), this.run.fs);
-      }
       if (kind === "pyspark") {
-        const prelude = await this.run.prepare?.(target);
+        const prelude = await diagnostics.measure("modules.prepare", async () =>
+          this.run.prepare?.(target),
+        );
         if (prelude !== undefined) {
           const staged = await this.livy.execute(
             target,
             prelude,
             "pyspark",
             execution.token,
+            diagnostics,
+            "module-setup",
           );
           if (staged.status !== "ok") {
+            outcome = staged.status;
             // Staging the working tree's modules failed: show why, don't
             // run the cell against stale or missing code.
             if (staged.status === "cancelled") {
-              await execution.clearOutput();
+              await diagnostics.measure("output.render", () =>
+                execution.clearOutput(),
+              );
               execution.end(undefined, Date.now());
             } else {
-              await execution.replaceOutput(toCellOutputs(staged));
+              await diagnostics.measure("output.render", () =>
+                execution.replaceOutput(toCellOutputs(staged)),
+              );
               execution.end(false, Date.now());
             }
             return;
@@ -463,24 +513,33 @@ export class FabricNotebookController implements vscode.Disposable {
         code,
         kind,
         execution.token,
+        diagnostics,
       );
+      outcome = result.status;
 
       if (result.status === "cancelled") {
-        await execution.clearOutput();
+        await diagnostics.measure("output.render", () =>
+          execution.clearOutput(),
+        );
         execution.end(undefined, Date.now());
         return;
       }
-      const hint =
-        result.status === "error"
-          ? await this.run.importHint?.(result.errorName, result.errorValue)
-          : undefined;
-      await execution.replaceOutput(toCellOutputs(result, hint));
+      await diagnostics.measure("output.render", async () => {
+        const hint =
+          result.status === "error"
+            ? await this.run.importHint?.(result.errorName, result.errorValue)
+            : undefined;
+        await execution.replaceOutput(toCellOutputs(result, hint));
+      });
       execution.end(result.status === "ok", Date.now());
     } catch (error) {
+      outcome = executionFailureOutcome(error);
       if (error instanceof LivyError && error.kind === "cancelled") {
         // Cancelled while still queued: same clean outcome as a running
         // cell that was cancelled, not a red error output.
-        await execution.clearOutput();
+        await diagnostics.measure("output.render", () =>
+          execution.clearOutput(),
+        );
         execution.end(undefined, Date.now());
         return;
       }
@@ -490,12 +549,16 @@ export class FabricNotebookController implements vscode.Disposable {
         host !== undefined
           ? await this.explainSessionStart(error, host)
           : error;
-      await execution.replaceOutput(
-        new vscode.NotebookCellOutput([
-          vscode.NotebookCellOutputItem.error(toDisplayError(explained)),
-        ]),
+      await diagnostics.measure("output.render", () =>
+        execution.replaceOutput(
+          new vscode.NotebookCellOutput([
+            vscode.NotebookCellOutputItem.error(toDisplayError(explained)),
+          ]),
+        ),
       );
       execution.end(false, Date.now());
+    } finally {
+      diagnostics.finish(outcome);
     }
   }
 

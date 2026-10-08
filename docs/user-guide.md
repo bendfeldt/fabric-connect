@@ -362,6 +362,65 @@ render as a table too.
 one-time notice says so, because the runtime can differ slightly from
 Fabric's Python-only runtime.
 
+### Execution diagnostics and notebook runtime context
+
+Turn on `fabric-connect.debugLogging` and open **Output → Fabric Connect**
+to diagnose a slow cell. Alongside redacted HTTP events, execution lines
+use a local sequence number, a phase, milliseconds and an outcome:
+
+```text
+[execution 3] phase=statement.wait.user durationMs=42 outcome=ok
+```
+
+The same diagnostics cover notebook editor cells, source-text Run Cell /
+Run All Above / Run All, files and selections. `host.resolve` includes
+host selection; `code.prepare` includes local `%run` expansion;
+`modules.prepare` includes local source bundling and any upload.
+`queue.user` and `queue.module-setup` measure the extension's session
+queue. `session.start` or `session.reattach` measures acquiring the
+remote session; `bootstrap.submit` / `bootstrap.wait` measure the display
+bootstrap. `statement.submit.*` and `statement.wait.*` separate module
+setup from user code. `output.render` measures output processing, including
+import guidance, and `total` includes the execution's surrounding work.
+Outcomes are `ok`, `error` or `cancelled`.
+
+Phases are **client-observed and nested, not additive**. `session.acquire`
+includes waiting for startup/reattachment and bootstrap when necessary;
+do not add its child durations to it. A notebook-editor host preflight
+gets its own execution number before individual cell runs; a source-text
+multi-cell run shares one number. Statement wait includes remote queueing,
+execution, HTTP latency and polling, not just Spark execution.
+
+The first cell may pay Spark startup and Environment personalization costs;
+later cells reuse the session. In Local module mode, even unchanged
+modules still have local preparation and an idempotent remote setup
+statement. A six-row table does not make those costs disappear.
+`df = spark.sql(...)` creates a DataFrame and can resolve catalog metadata;
+an action such as `df.count()` is a separate measurement. Use the
+read-only comparison in [testing](testing.md#diagnosing-slow-cells-and-variable-library-errors)
+before assigning the delay to the extension, Fabric or the workload.
+
+**Variable Library notebook-state failures.** Local notebook files run
+in a Lakehouse Livy session, not as deployed Fabric notebook items.
+When Variable Library resolution specifically reports that notebook
+state was not found, the extension keeps the failure and original
+traceback and adds guidance in both notebook and text-run output.
+This may be a notebook-runtime-context limitation or stale Fabric state;
+it is not proof that the analytics caller is wrong or that all Variable
+Library calls are unsupported over Livy.
+
+Compare the same call in a deployed notebook in the intended workspace.
+If it only fails over Livy, report the compatibility difference. If it
+also fails in the portal, check notebook state, the library's workspace,
+exact case-sensitive name and active value set before investigating the
+application caller. No configuration fallback, retry or compatibility
+shim is applied. Microsoft documents
+[Variable Library utilities](https://learn.microsoft.com/en-us/fabric/data-engineering/notebookutils/notebookutils-variable-library)
+for notebooks, with same-workspace access and active-value-set constraints;
+the page does not establish support in standalone Livy sessions.
+See also [Livy session behavior](https://learn.microsoft.com/en-us/fabric/data-engineering/api-livy-overview)
+and [Spark startup considerations](https://learn.microsoft.com/en-us/fabric/data-engineering/spark-compute).
+
 ## 7. Run files, selections and Spark jobs
 
 The Databricks Connect workflow: edit locally, run on Fabric.

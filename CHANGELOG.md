@@ -6,6 +6,14 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+- **Execution diagnostics** — opt-in debug logging separates host and
+  module preparation, session startup/reattachment, queueing, bootstrap,
+  module setup, user-statement wait and rendering in notebook and
+  text-run paths. Timings are client-observed, not pure Spark timings.
+- **Variable Library failure guidance** — the specific missing-notebook-state
+  resolution error keeps its traceback and failed status, with visible
+  guidance to compare Livy with deployed notebook execution. No
+  compatibility shim or configuration fallback is applied.
 - **Browse Lakehouses in the Lakehouses view** — a Lakehouse row expands
   into its OneLake Tables and Files, with Preview Table, Preview File and
   Copy OneLake Path, as in the Fabric explorer.

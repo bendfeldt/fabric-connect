@@ -539,6 +539,87 @@ For each item you have:
       the account from VS Code as well, use the **Accounts** menu (bottom
       left) → your Microsoft account → **Sign Out**.
 
+## Diagnosing slow cells and Variable Library errors
+
+Use an existing authorized connection and read-only code. Record the
+extension and VS Code versions, runtime/Environment, execution path,
+Local or Remote modules, and whether the session is new or already warm.
+Do not change capacity, pool, authentication or deployment configuration
+as part of the comparison.
+
+1. Enable `fabric-connect.debugLogging`. Run `print(1)`, then
+   `spark.sql("SELECT 1").collect()`, and repeat on the same session.
+   Compare startup, bootstrap, queue and statement phases in **Fabric
+   Connect** output. Do not add nested phases to `total`.
+2. Run the reported assignment and a separate action in the same warm
+   session. For example, use the following read-only probes in separate
+   cells, and record only duration and row count:
+
+   ```python
+   import time
+
+   _started = time.perf_counter()
+   df = spark.sql("""
+       SELECT AddressTypeID AS address_type_key,
+              Name AS addres_type_name
+       FROM dbo.addresstype
+   """)
+   print(f"DataFrame creation: {time.perf_counter() - _started:.3f}s")
+   ```
+
+   ```python
+   _started = time.perf_counter()
+   _row_count = df.count()
+   print(f"Action: {time.perf_counter() - _started:.3f}s; rows={_row_count}")
+   ```
+
+3. Compare notebook editor cells, source-text Run Cell / Run All Above /
+   Run All, and a file/selection. If comparing Local and Remote modules,
+   use equivalent package versions in separate sessions: switching to
+   Remote does not remove modules already staged in a running session.
+   Starting/stopping sessions is a deliberate user action, not an
+   automatic diagnostic step. Test a queued run as well as an idle one.
+4. Compare Variable Library access over Livy with a deployed Fabric
+   notebook in the intended workspace, using the same identity, runtime
+   and relevant Environment. Assign the result without displaying it:
+
+   ```python
+   _library = notebookutils.variableLibrary.getLibrary("vl_analytics")
+   ```
+
+   Do not print the library, its variables, credential APIs or secret
+   values. Check same-workspace access, case-sensitive library names and
+   the active value set. These checks do not prove the supplied error's
+   cause.
+
+5. For the specific Variable Library / notebook-state-not-found failure,
+   expect the original error and traceback plus separate visible guidance
+   in the notebook editor and guidance after the text-run traceback.
+   Expect the cell to remain failed, no automatic retry, and existing
+   import guidance to remain visible when applicable. Unrelated SQL,
+   permissions and library-not-found errors must not get this hint.
+6. Check that a cancelled execution reports `cancelled`, a failed one
+   reports `error`, and warm runs reuse the session. Turn debug logging
+   off; expect no new execution or HTTP diagnostic lines.
+
+The remote `perf_counter()` measurement excludes client preparation and
+startup but can include catalog and service work. Client statement wait
+includes remote queueing, execution, polling and network latency. Neither
+is a promise about minimum query speed.
+
+| Evidence                                                       | Investigation owner                                                                                          |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Local preparation or extension queue dominates                 | Fabric Connect                                                                                               |
+| Session startup, capacity throttling or service wait dominates | Fabric service / workspace operations; inspect runtime timings before blaming the workload                   |
+| Variable Library fails only over Livy                          | Fabric Connect compatibility report, with Fabric escalation if needed; not automatically an analytics bug    |
+| The same failure occurs in a deployed portal notebook          | Check Fabric state and library configuration, then investigate the analytics caller if evidence points there |
+
+See Microsoft's [Livy overview](https://learn.microsoft.com/en-us/fabric/data-engineering/api-livy-overview),
+[Variable Library constraints](https://learn.microsoft.com/en-us/fabric/data-engineering/notebookutils/notebookutils-variable-library)
+and [Spark startup considerations](https://learn.microsoft.com/en-us/fabric/data-engineering/spark-compute).
+Do not claim a root cause or speed improvement if this live comparison
+has not been performed.
+
 ## Reporting a problem
 
 Open an issue at <https://github.com/bendfeldt/fabric-connect/issues>
@@ -548,6 +629,8 @@ with:
 - the checklist step and what you saw instead of **Expect**;
 - the error text, and the **Fabric Connect** output with
   `fabric-connect.debugLogging` on.
+- for execution feedback, cold/warm status, module mode, execution path,
+  phase timings and the result of the read-only portal/Livy comparison.
 
 Don't paste tenant, workspace or item IDs, tokens or cell contents into a
 public issue — the debug log already redacts them, but check error texts
