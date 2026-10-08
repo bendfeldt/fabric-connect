@@ -19,8 +19,18 @@ import {
   livySqlResultToTable,
   renderTableHtml,
 } from "../core/displayProtocol";
-import { FabricConnectError, LivyError } from "../core/errors";
-import { type LivyHost, resolveLivyHost } from "../core/livyHost";
+import {
+  DefaultLakehouseUnboundError,
+  FabricConnectError,
+  HostLakehouseNeededError,
+  LivyError,
+} from "../core/errors";
+import {
+  type HostProbe,
+  type LivyHost,
+  diagnoseLivyHost,
+  resolveLivyHost,
+} from "../core/livyHost";
 import type {
   ILivySessionManager,
   LivyStatementResult,
@@ -41,8 +51,9 @@ import {
   NOTEBOOK_SOURCE_TYPE,
   NOTEBOOK_TYPE,
   fabricRootOf,
-  isFabricNotebook,
 } from "./notebookSerializer";
+import { type AttachmentSources, withSources } from "./lakehouseAttachments";
+import { activeFabricNotebookUri, fabricNotebookFor } from "./activeNotebook";
 
 const RENDERABLE_MIME_TYPES = new Set([
   "text/plain",
@@ -63,6 +74,14 @@ export interface RunContext {
    * modules (undefined when nothing is configured to stage).
    */
   readonly prepare?: (target: LivyTarget) => Promise<string | undefined>;
+  /**
+   * A hint for a failed import whose package is also in the repo while
+   * Python modules are Remote (undefined when there is nothing to add).
+   */
+  readonly importHint?: (
+    errorName: string | undefined,
+    errorValue: string | undefined,
+  ) => Promise<string | undefined>;
 }
 
 /**
@@ -73,19 +92,38 @@ export async function resolveNotebookHost(
   notebook: vscode.NotebookDocument,
   targets: ITargetResolver,
   compute: () => Promise<ComputeProfile | undefined>,
+  signedInTenant: () => string | undefined,
+  /**
+   * Logical IDs from the repo count as unbound defaults; this machine's
+   * binding (`.fabric/local.json`) is the notebook's Lakehouse when set.
+   */
+  sources?: AttachmentSources,
 ): Promise<LivyHost> {
   const root = fabricRootOf(notebook);
+  const attachments =
+    root === undefined
+      ? undefined
+      : await withSources(notebook.uri, getLakehouseAttachments(root), sources);
+  const bound = attachments?.localBinding;
   return resolveLivyHost({
     entity: `notebook ${path.basename(path.dirname(notebook.uri.fsPath))}`,
     notebookDefault:
-      root === undefined
-        ? undefined
-        : getLakehouseAttachments(root).defaultLakehouse,
+      bound === undefined
+        ? attachments?.defaultLakehouse
+        : {
+            id: bound.lakehouseId,
+            name: bound.lakehouseName,
+            workspaceId: bound.workspaceId,
+          },
+    unboundDefault:
+      bound === undefined ? attachments?.unboundDefault : undefined,
+    boundLocally: bound !== undefined,
     notebookEnvironment:
       root === undefined ? undefined : getEnvironmentAttachment(root),
     target: await targets.resolveTargetIfMapped(
       path.dirname(notebook.uri.fsPath),
     ),
+    signedInTenant: signedInTenant(),
     compute: await compute(),
   });
 }
@@ -96,12 +134,14 @@ export async function resolveNotebookHost(
  */
 export function toCellOutputs(
   result: LivyStatementResult,
+  hint?: string,
 ): vscode.NotebookCellOutput[] {
   if (result.status === "error") {
     // The cell's own exception: shown as the notebook's traceback,
     // exactly as the portal would show it — not an extension error.
     const error = new Error(
-      `${result.errorName ?? "Error"}: ${result.errorValue ?? ""}`,
+      `${result.errorName ?? "Error"}: ${result.errorValue ?? ""}` +
+        (hint === undefined ? "" : `\n\n[fabric-connect] ${hint}`),
     );
     error.stack = (result.traceback ?? []).join("\n");
     return [
@@ -203,6 +243,14 @@ export class FabricNotebookController implements vscode.Disposable {
     private readonly targets: ITargetResolver,
     private readonly compute: () => Promise<ComputeProfile | undefined>,
     private readonly run: RunContext,
+    /** The tenant the repo is signed in to, if any. */
+    private readonly signedInTenant: () => string | undefined,
+    /** Resolves, asking for a host Lakehouse first when one is needed. */
+    private readonly runWithHost: <T>(resolve: () => Promise<T>) => Promise<T>,
+    /** Reads the host's workspace and Lakehouse to explain a failed start. */
+    private readonly probeHost: (target: LivyTarget) => Promise<HostProbe>,
+    /** Logical IDs from the repo and this machine's bindings. */
+    private readonly sources?: AttachmentSources,
   ) {
     this.controllers = [NOTEBOOK_TYPE, NOTEBOOK_SOURCE_TYPE].map((type) => {
       const controller = vscode.notebooks.createNotebookController(
@@ -227,6 +275,10 @@ export class FabricNotebookController implements vscode.Disposable {
       vscode.window.onDidChangeActiveNotebookEditor(() => {
         void this.refreshHostStatus();
       }),
+      // A notebook open as text (Open as Text) too.
+      vscode.window.onDidChangeActiveTextEditor(() => {
+        void this.refreshHostStatus();
+      }),
       vscode.workspace.onDidChangeNotebookDocument((event) => {
         if (event.metadata !== undefined) {
           void this.refreshHostStatus();
@@ -246,28 +298,61 @@ export class FabricNotebookController implements vscode.Disposable {
     }
   }
 
-  /** Shows, for the active Fabric notebook, which Lakehouse its cells run on. */
+  /**
+   * Shows, for the active Fabric notebook (in the notebook editor or as
+   * text), which Lakehouse its cells run on.
+   */
   async refreshHostStatus(): Promise<void> {
-    const notebook = vscode.window.activeNotebookEditor?.notebook;
-    if (notebook === undefined || !isFabricNotebook(notebook)) {
+    const uri = activeFabricNotebookUri();
+    if (uri === undefined) {
       this.hostStatus.hide();
       return;
     }
+    let notebook: vscode.NotebookDocument;
+    try {
+      notebook = await fabricNotebookFor(uri);
+    } catch (error) {
+      this.hostStatus.text = "$(warning) Livy: notebook not readable";
+      this.hostStatus.tooltip =
+        error instanceof Error ? error.message : String(error);
+      this.hostStatus.command = undefined;
+      this.hostStatus.show();
+      return;
+    }
+    this.hostStatus.command = undefined;
     try {
       const host = await resolveNotebookHost(
         notebook,
         this.targets,
         this.compute,
+        this.signedInTenant,
+        this.sources,
       );
       this.hostStatus.text = `$(database) Livy: ${host.label}`;
       this.hostStatus.tooltip =
         host.source === "notebook"
           ? "Cells run on the notebook's default Lakehouse; relative paths (Files/…) and unqualified tables resolve there."
-          : "The notebook has no default Lakehouse, so cells run on the connected compute's Lakehouse; relative paths resolve there.";
+          : "The notebook has no default Lakehouse, so cells run on the connected capacity's host Lakehouse; relative paths resolve there.";
     } catch (error) {
-      this.hostStatus.text = "$(warning) Livy: no host";
-      this.hostStatus.tooltip =
-        error instanceof Error ? error.message : String(error);
+      if (error instanceof DefaultLakehouseUnboundError) {
+        this.hostStatus.text = "$(warning) Livy: default Lakehouse not bound";
+        this.hostStatus.tooltip = `The notebook's default Lakehouse${error.lakehouseName === undefined ? "" : ` '${error.lakehouseName}'`} has placeholder or logical IDs (as Fabric stores them in git). Click to bind it.`;
+        this.hostStatus.command = {
+          title: "Bind Lakehouse",
+          command: "fabric-connect.bindDefaultLakehouse",
+          arguments: [notebook.uri],
+        };
+        this.hostStatus.show();
+        return;
+      } else if (error instanceof HostLakehouseNeededError) {
+        this.hostStatus.text = "$(database) Livy: host picked on first run";
+        this.hostStatus.tooltip =
+          "The notebook has no default Lakehouse and no host Lakehouse is picked for the connected capacity: running a cell asks for one. Or set a default Lakehouse in the Lakehouses view.";
+      } else {
+        this.hostStatus.text = "$(warning) Livy: no host";
+        this.hostStatus.tooltip =
+          error instanceof Error ? error.message : String(error);
+      }
     }
     this.hostStatus.show();
   }
@@ -278,9 +363,48 @@ export class FabricNotebookController implements vscode.Disposable {
     notebook: vscode.NotebookDocument,
   ): Promise<void> {
     this.noticePurePython(notebook);
+    // Ask for a host Lakehouse once, up front, when the notebook needs one;
+    // a failure here is reported by each cell below, without asking again.
+    try {
+      await this.runWithHost(() =>
+        resolveNotebookHost(
+          notebook,
+          this.targets,
+          this.compute,
+          this.signedInTenant,
+          this.sources,
+        ),
+      );
+      void this.refreshHostStatus();
+    } catch (error) {
+      // Reported per cell; an unbound default also gets a one-click fix,
+      // offered once per run (cell outputs cannot hold buttons).
+      if (error instanceof DefaultLakehouseUnboundError) {
+        void this.offerBind(notebook, error);
+      }
+    }
     // The Livy manager queues per session; iterating here keeps cell order.
     for (const cell of cells) {
       await this.executeCell(controller, cell, notebook);
+    }
+  }
+
+  private async offerBind(
+    notebook: vscode.NotebookDocument,
+    error: DefaultLakehouseUnboundError,
+  ): Promise<void> {
+    const bind = "Bind Lakehouse…";
+    const answer = await vscode.window.showWarningMessage(
+      error.lakehouseName === undefined
+        ? "This notebook's default Lakehouse is not bound to a Lakehouse here."
+        : `This notebook's default Lakehouse '${error.lakehouseName}' is not bound to a Lakehouse here.`,
+      bind,
+    );
+    if (answer === bind) {
+      await vscode.commands.executeCommand(
+        "fabric-connect.bindDefaultLakehouse",
+        notebook.uri,
+      );
     }
   }
 
@@ -292,12 +416,16 @@ export class FabricNotebookController implements vscode.Disposable {
     const execution = controller.createNotebookCellExecution(cell);
     execution.executionOrder = ++this.executionOrder;
     execution.start(Date.now());
+    let host: LivyHost | undefined;
     try {
-      const { target } = await resolveNotebookHost(
+      host = await resolveNotebookHost(
         notebook,
         this.targets,
         this.compute,
+        this.signedInTenant,
+        this.sources,
       );
+      const { target } = host;
       const entity = `cell ${cell.index + 1} of ${path.basename(path.dirname(notebook.uri.fsPath))}`;
       let { kind, code } = toStatement(
         cell.document.getText(),
@@ -342,7 +470,11 @@ export class FabricNotebookController implements vscode.Disposable {
         execution.end(undefined, Date.now());
         return;
       }
-      await execution.replaceOutput(toCellOutputs(result));
+      const hint =
+        result.status === "error"
+          ? await this.run.importHint?.(result.errorName, result.errorValue)
+          : undefined;
+      await execution.replaceOutput(toCellOutputs(result, hint));
       execution.end(result.status === "ok", Date.now());
     } catch (error) {
       if (error instanceof LivyError && error.kind === "cancelled") {
@@ -352,13 +484,51 @@ export class FabricNotebookController implements vscode.Disposable {
         execution.end(undefined, Date.now());
         return;
       }
+      const explained =
+        error instanceof LivyError &&
+        error.kind === "session-start" &&
+        host !== undefined
+          ? await this.explainSessionStart(error, host)
+          : error;
       await execution.replaceOutput(
         new vscode.NotebookCellOutput([
-          vscode.NotebookCellOutputItem.error(toDisplayError(error)),
+          vscode.NotebookCellOutputItem.error(toDisplayError(explained)),
         ]),
       );
       execution.end(false, Date.now());
     }
+  }
+
+  /**
+   * Adds the likely cause to a failed session start, from a quick read of
+   * the host's workspace and Lakehouse; the error as-is when nothing
+   * specific is found.
+   */
+  private async explainSessionStart(
+    error: LivyError,
+    host: LivyHost,
+  ): Promise<LivyError> {
+    let diagnosis: ReturnType<typeof diagnoseLivyHost>;
+    try {
+      diagnosis = diagnoseLivyHost(
+        await this.probeHost(host.target),
+        host.source,
+      );
+    } catch {
+      return error;
+    }
+    if (diagnosis === undefined) {
+      return error;
+    }
+    return new LivyError(
+      `${error.message.split(" Next step:")[0]} Likely cause: ${diagnosis.why}.`,
+      {
+        operation: error.operation,
+        kind: error.kind,
+        remediation: diagnosis.next,
+        cause: error,
+      },
+    );
   }
 
   /**

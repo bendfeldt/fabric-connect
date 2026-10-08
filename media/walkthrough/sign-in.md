@@ -9,7 +9,7 @@ tenants on your account or enter a tenant ID or domain.
   and tenant are saved in your gitignored `.fabric/local.json`, and
   reopening the repo signs you in again without a prompt.
 - The **Fabric** icon in the Activity Bar shows the account and tenant
-  under **Configuration**; **Tenants** switches the tenant with a click.
+  under **Configuration**; its Tenant row switches the tenant.
 - The status bar shows who the repo is signed in as. Click it to **switch
   account**, **switch tenant** (guest access to another organization) or
   **sign out**.

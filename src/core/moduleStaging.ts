@@ -165,3 +165,172 @@ export function moduleImportCode(
     `    _fc_staged.add(${JSON.stringify(abfss)})`,
   ].join("\n");
 }
+
+/**
+ * Where `import` finds your packages: `local` stages the working tree,
+ * `remote` uses what the Fabric environment has installed (e.g. a wheel).
+ */
+export type PythonModuleMode = "local" | "remote";
+
+/**
+ * The effective mode. `auto` keeps the behaviour from before the setting
+ * existed: configured source roots mean local, otherwise remote — so
+ * nothing is uploaded to OneLake unless you opted in.
+ */
+export function resolveModuleMode(
+  setting: string | undefined,
+  sourceRoots: readonly string[],
+): PythonModuleMode {
+  if (setting === "local" || setting === "remote") {
+    return setting;
+  }
+  return sourceRoots.length > 0 ? "local" : "remote";
+}
+
+/**
+ * Source roots a `pyproject.toml` names: setuptools `packages.find.where`
+ * or `package-dir` `""`, Hatch wheel `packages`, Poetry `packages.from`.
+ * Only these keys are read (no TOML parser); undefined when none is set.
+ */
+export function sourceRootsFromPyproject(text: string): string[] | undefined {
+  const roots = new Set<string>();
+  let section = "";
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    let line = stripTomlComment(lines[i]).trim();
+    const header = /^\[\s*([^\]]+?)\s*\]$/.exec(line);
+    if (header !== null) {
+      section = header[1];
+      continue;
+    }
+    // Multi-line arrays: read on until the closing bracket.
+    while (/=\s*\[/.test(line) && !balanced(line) && i + 1 < lines.length) {
+      line += " " + stripTomlComment(lines[++i]).trim();
+    }
+    const [key, value] = splitTomlKey(line);
+    if (key === undefined) {
+      continue;
+    }
+    if (section === "tool.setuptools.packages.find" && key === "where") {
+      tomlStrings(value).forEach((r) => roots.add(r));
+    } else if (section === "tool.setuptools" && key === "package-dir") {
+      const root = /["']{2}\s*=\s*["']([^"']+)["']/.exec(value)?.[1];
+      if (root !== undefined) {
+        roots.add(root);
+      }
+    } else if (
+      section === "tool.setuptools.package-dir" &&
+      /^["']{2}$/.test(key)
+    ) {
+      tomlStrings(value).forEach((r) => roots.add(r));
+    } else if (
+      section === "tool.hatch.build.targets.wheel" &&
+      key === "packages"
+    ) {
+      tomlStrings(value).forEach((p) => roots.add(path.posix.dirname(p)));
+    } else if (section === "tool.poetry" && key === "packages") {
+      for (const match of value.matchAll(/from\s*=\s*["']([^"']+)["']/g)) {
+        roots.add(match[1]);
+      }
+    }
+  }
+  return roots.size > 0 ? [...roots] : undefined;
+}
+
+/**
+ * The top-level package an `ImportError`/`ModuleNotFoundError` is about,
+ * e.g. `analytics` for "cannot import name 'entity' from 'analytics' (…)"
+ * or "No module named 'analytics.entity'"; undefined for other errors.
+ */
+export function failedImportPackage(
+  errorName: string | undefined,
+  errorValue: string | undefined,
+): string | undefined {
+  if (errorName !== "ImportError" && errorName !== "ModuleNotFoundError") {
+    return undefined;
+  }
+  const name =
+    /from (?:partially initialized module )?['"]([^'"]+)['"]/.exec(
+      errorValue ?? "",
+    )?.[1] ?? /No module named ['"]([^'"]+)['"]/.exec(errorValue ?? "")?.[1];
+  return name?.split(".")[0];
+}
+
+/** How the mode is shown, the same in the status bar and the side bar. */
+export interface ModulesDescription {
+  readonly mode: PythonModuleMode;
+  /** "Local · analytics", "Remote", "Remote · no local packages". */
+  readonly label: string;
+  readonly icon: "file-code" | "cloud";
+  readonly tooltip: string;
+}
+
+export function describeModules(
+  mode: PythonModuleMode,
+  packages: readonly string[],
+): ModulesDescription {
+  if (mode === "local") {
+    return {
+      mode,
+      label: packages.length > 0 ? `Local · ${packages.join(", ")}` : "Local",
+      icon: "file-code",
+      tooltip:
+        "Python imports use your working tree, staged to the session before Python runs.",
+    };
+  }
+  return {
+    mode,
+    label: packages.length > 0 ? "Remote" : "Remote · no local packages",
+    icon: "cloud",
+    tooltip:
+      "Python imports use what the Fabric environment has installed (e.g. your wheel).",
+  };
+}
+
+/** The hint added to an import error when the package is also local. */
+export function localModuleHint(
+  packageName: string,
+  localPath: string,
+): string {
+  return (
+    `'${packageName}' is also in your repo (${localPath}), but Python modules are set to Remote, ` +
+    "so the Fabric environment's installed copy was imported. " +
+    "Run 'Fabric: Python Modules' and pick Local to import your working tree."
+  );
+}
+
+function stripTomlComment(line: string): string {
+  // Good enough for the keys above: a '#' outside quotes starts a comment.
+  let quote: string | undefined;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote === '"' && c === "\\") {
+      i++; // basic strings escape: skip the escaped character
+    } else if (quote !== undefined) {
+      quote = c === quote ? undefined : quote;
+    } else if (c === '"' || c === "'") {
+      quote = c;
+    } else if (c === "#") {
+      return line.slice(0, i);
+    }
+  }
+  return line;
+}
+
+function balanced(line: string): boolean {
+  return line.split("[").length === line.split("]").length;
+}
+
+function splitTomlKey(line: string): [string | undefined, string] {
+  const eq = line.indexOf("=");
+  return eq <= 0
+    ? [undefined, ""]
+    : [line.slice(0, eq).trim(), line.slice(eq + 1).trim()];
+}
+
+function tomlStrings(value: string): string[] {
+  // Basic strings ("…") may contain \" escapes; literal strings ('…') may not.
+  return [...value.matchAll(/"((?:[^"\\]|\\.)*)"|'([^']*)'/g)].map(
+    (m) => m[2] ?? m[1].replace(/\\(.)/g, "$1"),
+  );
+}

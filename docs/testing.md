@@ -30,7 +30,7 @@ You need:
   - optional, for the query tests: an **Eventhouse/KQL database**, a
     **semantic model**, a **GraphQL API**, and a **Warehouse** (for the SQL
     connection string).
-- A **second workspace with no Lakehouse** (for a negative test in §3).
+- Optional: a **capacity whose workspaces have no Lakehouse** (for a negative test in §3).
 
 ### Test repo
 
@@ -166,8 +166,8 @@ can check with `git diff` that saving changes nothing unexpected.
       it shows _Sign in to browse Fabric_; clicking it starts the sign-in.
 - [ ] A **Fabric** icon is in the Activity Bar, next to Explorer and
       Source Control. Click it. **Expect:** the views **Configuration**,
-      **Tenants**, **Capacities**, **Workspaces** and **Connections**
-      (collapsed). Before you sign in, Configuration and Tenants show a
+      **Repo**, **Lakehouses** and **Connections** (collapsed); no
+      **Tenants** or **Capacities** view. Before you sign in, Configuration shows a
       **Sign In** button.
 - [ ] The status bar shows **Fabric: sign in**.
 - [ ] **View → Output → Fabric Connect** exists.
@@ -228,13 +228,22 @@ ask you to type a tenant GUID instead.
 
 - [ ] Run **Fabric: Connect to Compute**. **Expect:** no tenant prompt
       (the repo's sign-in is used); capacities with SKU, region and state.
-- [ ] Pick the capacity, then the **workspace without a Lakehouse**.
+- [ ] Pick the capacity. **Expect:** no workspace or Lakehouse prompt; the
+      status bar shows the capacity; `.fabric/local.json` has a `"compute"`
+      section with only tenant and capacity; Configuration → Compute →
+      Host Lakehouse says _picked when needed_.
+- [ ] Run a plain `.py` file (**Run File on Fabric**). **Expect:** a pick
+      of the capacity's Lakehouses grouped by workspace (and an Environment
+      when the workspace has any); pick `fc_validation`. The file runs; the
+      status bar and Configuration show the host. Run it again. **Expect:**
+      no prompt.
+- [ ] Configuration → Host Lakehouse → pencil (**Change Host
+      Lakehouse…**). **Expect:** the same pick; the new host is saved.
+- [ ] Connect another capacity. **Expect:** a message that the old host was
+      dropped; Host Lakehouse is _picked when needed_ again.
+- [ ] On a capacity whose workspaces have no Lakehouse, run a `.py` file.
       **Expect:** an error saying to create a Lakehouse in the Fabric
-      portal — _Fabric Connect never creates items_. Nothing is created
-      (check the workspace in the portal).
-- [ ] Connect again and pick the test workspace, Lakehouse `fc_validation`
-      and (optionally) an Environment. **Expect:** the status bar shows the
-      connection; `.fabric/local.json` exists with a `"compute"` section.
+      portal — _Fabric Connect never creates items_. Nothing is created.
 - [ ] `git status`. **Expect:** `.fabric/local.json` is **not** listed
       (it is gitignored).
 - [ ] Remove the `.gitignore` line, run **Connect to Compute** again.
@@ -244,13 +253,36 @@ ask you to type a tenant GUID instead.
 ## 4. Notebooks
 
 - [ ] Open `notebooks/Validate.Notebook/notebook-content.py`. **Expect:**
-      the notebook editor (if it opens as text: tab → **Reopen Editor
-      With… → Fabric Notebook (git source format)**).
+      the notebook editor.
 - [ ] Select the **Fabric Livy** kernel and run the cell. **Expect:** after
       30–90 s (session start), a table with `n` = 0…4. The second status
       bar item names the Lakehouse the notebook runs on.
 - [ ] Run it again. **Expect:** a result in seconds (session reused).
+- [ ] Add a cell: `df = spark.sql("SELECT 1 AS A")`, then `print(df)` and
+      `display(df)`. **Expect:** `DataFrame[A: int]`, then a table with
+      column `A` and one row — no `FABRIC_CONNECT_DISPLAY` text.
 - [ ] Save without editing, then `git diff`. **Expect:** no changes.
+- [ ] **Open as Text** (code icon in the notebook toolbar). **Expect:**
+      the plain file with **▷ Run Cell | Run All Above** above each cell
+      and **Run All** on the first line; the status bar still names the
+      Lakehouse.
+- [ ] **Run Cell** on the `display(df)` cell. **Expect:** the cell's
+      header and rows as text in _Fabric Connect: Run_, and a table in
+      _Fabric Results_ — no _Missing viewType_ error.
+- [ ] Add a failing cell (`1/0`) between two cells, then **Run All**.
+      **Expect:** it stops at the failing cell; the next cell does not run.
+- [ ] Edit a cell without saving; Lakehouses view → **+** on a Lakehouse.
+      **Expect:** _…has unsaved changes in the text editor… Save the file_.
+      Save and retry. **Expect:** attached; the text shows the new `# META`
+      lines.
+- [ ] **Fabric: Open as Notebook** (editor title). **Expect:** back in the
+      notebook editor.
+- [ ] Edit a cell, save, Source Control → right-click the notebook →
+      **Open Changes as Text**. **Expect:** a read-only text diff, _(HEAD ↔
+      working tree, text)_, with exactly the changed lines. Save another
+      edit. **Expect:** the diff updates.
+- [ ] Add a new notebook folder (not committed) and do the same.
+      **Expect:** an empty left side, no error.
 - [ ] Edit the cell (e.g. `spark.range(7)`), save, `git diff`. **Expect:**
       only that line changed.
 - [ ] Add a cell: `%run Helper {"region": "EMEA"}`. **Expect:**
@@ -267,6 +299,71 @@ ask you to type a tenant GUID instead.
       `fc_validation`, make it the default, save. **Expect:** the status bar
       shows that Lakehouse; `git diff` shows only the notebook's metadata
       changing, as the portal writes it.
+- [ ] Connect a capacity, then click a notebook in **Repo**. **Expect:**
+      the **Lakehouses** view title names it; _Attached to this notebook_
+      lists its Lakehouses (default starred); each workspace on the
+      connected capacity — and only those — is a group. Disconnect.
+      **Expect:** _Connect to a capacity to see its Lakehouses_.
+- [ ] Lakehouses → expand `fc_validation` → **Tables**. **Expect:** its
+      tables (`fc_validation_t`), or schemas then tables. The inline
+      preview on a table shows its rows in _Fabric Results_.
+- [ ] Expand **Files**, then a folder. **Expect:** its files; **Preview
+      File** on one shows its first bytes; **Copy OneLake Path** copies an
+      `abfss://…` path. The Fabric explorer's Lakehouse tree is unchanged.
+- [ ] Lakehouses → expand a workspace → **+** on `fc_validation` on a
+      notebook with none attached. **Expect:** the Lakehouse is attached
+      and default and the file is saved (no editor opens when the notebook
+      is not open), and `git diff`
+      shows `known_lakehouses`, `default_lakehouse`,
+      `default_lakehouse_name` and `default_lakehouse_workspace_id` only.
+- [ ] Attach a second Lakehouse (from another workspace on the capacity),
+      then **star** it. **Expect:** it becomes the default with its own
+      workspace ID; the first stays attached. Run `%%sql SELECT 1` and an
+      unqualified table name. **Expect:** they resolve against the new
+      default.
+- [ ] In a folder mapped in `.fabric/targets.json` to another workspace,
+      give a notebook a default Lakehouse from a different workspace and
+      run a cell. **Expect:** the status bar names that Lakehouse
+      (_notebook's default Lakehouse_) and the session runs in its
+      workspace, not the target's.
+- [ ] Repo → a notebook's Lakehouse rows → right-click. **Expect:** no
+      Attach / Set as Default / Detach (tooltip: manage in the Lakehouses
+      view).
+- [ ] Give a notebook a default Lakehouse in a workspace you can't access
+      (or edit `default_lakehouse_workspace_id` to a random GUID) and run a
+      cell. **Expect:** the error names the Lakehouse and workspace, the
+      HTTP status and service message, and _Likely cause: … workspace that
+      does not exist or that you cannot access_.
+- [ ] Open a git-synced notebook whose `default_lakehouse` is
+      `00000000-0000-0000-0000-000000000000`. **Expect:** Lakehouses and
+      Repo show the default as _not bound_; the status bar says _Livy:
+      default Lakehouse not bound_; running a cell gives the "not bound"
+      error (no HTTP 400). Attach a Lakehouse. **Expect:** `git diff` shows
+      only `default_lakehouse`, `default_lakehouse_name`,
+      `default_lakehouse_workspace_id` (and `known_lakehouses`) changing
+      from zeros to real IDs; the cell then runs on that Lakehouse.
+- [ ] Run a cell of a notebook whose default is not bound (e.g.
+      `lh_analytics`). **Expect:** a notification **Bind Lakehouse…**;
+      click it. **Expect:** "Bind … to Lakehouse 'lh*analytics' in
+      workspace …?" (or a pick when several workspaces have one); after
+      **Bind**, the three default keys hold real IDs and the cell runs. The
+      status bar item \_Livy: default Lakehouse not bound* does the same
+      when clicked.
+- [ ] After **Bind Lakehouse…**, `git status`. **Expect:** the notebook is
+      unchanged; `.fabric/local.json` has `"lakehouseBindings"` with the
+      notebook's folder. The Lakehouses view shows the default with a green
+      link (_bound on this machine_); a second notebook with the same
+      placeholder default is still _not bound_. **Unbind** brings back
+      _not bound_. **Set as Default** on a Lakehouse instead writes the
+      notebook and removes its local binding.
+- [ ] Open and refresh Lakehouses and Repo several times. **Expect:** no
+      repeated repo-wide scans (no lag); adding a `.platform` file shows up.
+- [ ] After binding, run `SELECT 1`. **Expect:** the session starts (1–3
+      minutes on a cold capacity) and the result shows as a table — no
+      "returned no session ID" error.
+- [ ] **×** on the default. **Expect:** it is detached, no default is left,
+      and a message says so. Repo shows the notebook's attachments under
+      it and follows each change.
 - [ ] **Fabric: Show Livy Sessions**. **Expect:** your active session.
 - [ ] **Fabric: Restart Livy Session**, then run a cell. **Expect:** a new
       session starts.
@@ -278,6 +375,26 @@ ask you to type a tenant GUID instead.
 
 ## 5. Your own Python modules
 
+- [ ] In a repo with a `pyproject.toml` (`where = ["src"]`) whose package
+      is also installed, older, in the Fabric environment, and
+      `fabric-connect.sourceRoots` unset: **Expect:** the status bar shows
+      _Modules: Remote_. Import a name only the local copy has.
+      **Expect:** the ImportError plus _'pkg' is also in your repo
+      (src/pkg) … pick Local_.
+- [ ] Configuration view. **Expect:** a **Python modules** row,
+      _Remote_, next to Compute.
+- [ ] Click the row (or its pencil) → **Local**. **Expect:** the row shows
+      _Local · pkg_ and the status bar _Modules: Local · pkg_ at the same
+      time; `.vscode/settings.json` has
+      `"fabric-connect.pythonModules": "local"`. Run the import again.
+      **Expect:** it succeeds; `print(pkg.__file__)` points into a
+      `modules-….zip`.
+- [ ] Click the status bar item → **Remote**. **Expect:** the row
+      follows. Set `"fabric-connect.pythonModules": "local"` by hand in
+      `.vscode/settings.json`. **Expect:** both follow.
+- [ ] Switch back to **Remote**, run **Fabric: Restart Livy Session**,
+      and run it again. **Expect:** the ImportError again (installed copy;
+      a running session keeps already-staged code until it restarts).
 - [ ] Settings → `fabric-connect.sourceRoots` → add `src`.
 - [ ] In a notebook cell:
       `from fcvalidate import greet; print(greet("fabric"))`.
@@ -326,6 +443,23 @@ For each item you have:
 
 - [ ] Expand **Capacities → your capacity → workspace → items**.
       **Expect:** items grouped by type.
+- [ ] Configuration → Compute → Capacity. **Expect:** the capacity's real
+      name. _(As a workspace member without capacity rights)_ if it reads
+      `Capacity <id prefix>`, the tooltip says why; the pencil (**Name
+      This Capacity…**) sets a name that shows in Configuration and the
+      status bar, and `.fabric/local.json` gains `"capacityLabel"`.
+- [ ] Explorer side bar → Fabric → Capacities → right-click a capacity →
+      **Connect to This Capacity**. **Expect:** no further prompts;
+      Configuration and the status bar show it.
+- [ ] **Fabric: Connect to Compute**. **Expect:** the connected capacity is
+      first in the list, marked _connected_.
+- [ ] Repo → right-click a notebook → **Open .platform**. **Expect:** JSON
+      highlighting (language mode _JSON_), same text as in the repo.
+- [ ] Open a notebook from Repo. **Expect:** the tab reads
+      `<name>.Notebook`, not `notebook-content.py`.
+- [ ] Signed in, with no compute connected, run a cell of a notebook that
+      has a default Lakehouse. **Expect:** it runs (no "which tenant"
+      error).
 - [ ] Expand the Lakehouse → **Tables** → right-click `fc_validation_t` →
       **Preview Table**. **Expect:** its rows in the Results panel.
 - [ ] Upload a small `.csv` to the Lakehouse **Files** in the portal, then
@@ -346,15 +480,29 @@ For each item you have:
       Lakehouse and, when set, Environment. The inline buttons sign in,
       sign out, switch tenant, connect and disconnect; each change shows
       up in the view straight away.
-- [ ] **Tenants**. **Expect:** the current tenant with a check; click
-      **Find tenants on my account…**. **Expect:** every tenant on your
-      account. Click another tenant. **Expect:** it gets the check, the
-      status bar and Configuration show it, and Capacities and Workspaces
-      reload for it.
-- [ ] **Workspaces**. **Expect:** every workspace, each with the SKU and
-      name of its capacity, _no capacity_ for ones without, and the state
-      when the capacity is paused. Right-click actions work as in the
-      Explorer's Fabric view.
+- [ ] Configuration → Tenant → **Switch Tenant** → **Find tenants on my
+      account…**. **Expect:** every tenant on your account. Pick another
+      tenant. **Expect:** the status bar and Configuration show it, and
+      Capacities reloads for it.
+- [ ] **Repo**. **Expect:** only folders that contain Fabric items, in
+      your repo's structure; no loose files and no folders without items
+      (e.g. `docs/`); `<name>.Notebook` folders show as the notebook's
+      display name with _Notebook_, their own files under them and no
+      `.platform` child; the title shows the connected compute. Click a notebook. **Expect:** it opens in the
+      Fabric notebook editor.
+- [ ] Repo → play button on a notebook. **Expect:** it opens and all cells
+      run on Fabric. Play on a `.SparkJobDefinition` item. **Expect:** the
+      job runs. No play button on files.
+- [ ] Open a folder with no `.platform` files. **Expect:** Repo says _No
+      Fabric items in this folder_.
+- [ ] Create, rename and delete a file in the repo. **Expect:** Repo
+      follows within a second.
+- [ ] Repo → right-click a notebook → **Open .platform**. **Expect:** the
+      file opens as text. **Edit Item Metadata…** → new name, empty
+      description. **Expect:** the item shows the new name, `.platform`
+      has the new `displayName` and no `description`, every other line is
+      unchanged (`git diff`), and the folder keeps its name. Ctrl+Z in the
+      open `.platform` undoes it.
 
 ## 10. API notebooks
 

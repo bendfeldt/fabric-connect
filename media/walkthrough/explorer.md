@@ -1,9 +1,10 @@
 # Browse Fabric
 
 Click the **Fabric** icon in the Activity Bar: **Configuration** (account,
-tenant, compute), **Tenants** (click one to switch), **Capacities**,
-**Workspaces** (with the SKU each runs on) and **Connections**. The same
-tree is the **Fabric** view in the Explorer side bar. Browsing is
+tenant, compute), **Repo** (your working tree, runnable on Fabric),
+**Lakehouses** (attach them to a notebook) and **Connections**. The
+**Fabric** view in the Explorer side bar browses capacities, workspaces
+and items. Browsing is
 read-only:
 
 - **Capacities** → workspaces → items by type

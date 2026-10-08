@@ -54,7 +54,7 @@ Two optional variations:
 - **Use a different version** without editing `package.json`:
 
   ```sh
-  npx --yes @vscode/vsce@3.9.2 package 1.2.1-dev.1 --no-git-tag-version --no-update-package-json
+  npx --yes @vscode/vsce@4.0.0 package 1.2.1-dev.1 --no-git-tag-version --no-update-package-json
   ```
 
   This is handy to see at a glance which build is installed

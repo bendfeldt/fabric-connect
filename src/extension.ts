@@ -9,14 +9,21 @@
  */
 
 import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import * as vscode from "vscode";
+import {
+  type ComputeProfile,
+  describeCompute,
+  hostOf,
+} from "./core/computeProfile";
 import { FabricApiClient } from "./core/fabricApiClient";
+import { probeLivyHost } from "./core/livyHost";
 import { DISPLAY_BOOTSTRAP_CODE } from "./core/displayProtocol";
 import {
   LivySessionManager,
   listLivySessions,
 } from "./core/livySessionManager";
-import { LocalItemIndex } from "./core/localItemIndex";
+import { CachedItemIndex } from "./core/localItemIndex";
 import { NameCache, guidAt } from "./core/nameCache";
 import { OneLakeClient } from "./core/oneLakeClient";
 import { TargetResolver } from "./core/targetResolver";
@@ -29,15 +36,28 @@ import {
 } from "./vscode/apiNotebookController";
 import { CodeRunner } from "./vscode/codeRunner";
 import { ConfigurationView } from "./vscode/configurationView";
+import {
+  type AttachmentSources,
+  notebookTypeOf,
+} from "./vscode/lakehouseAttachments";
+import { LakehouseBindingStore } from "./vscode/lakehouseBindingStore";
+import { type LakehouseNode, LakehousesView } from "./vscode/lakehousesView";
+import { type RepoNode, RepoView } from "./vscode/repoView";
 import { type ExplorerRoot, FabricExplorer } from "./vscode/explorer";
 import { ComputeConnection } from "./vscode/computeConnection";
 import { LakehousePanel } from "./vscode/lakehousePanel";
+import {
+  activeFabricNotebookUri,
+  fabricNotebookFor,
+} from "./vscode/activeNotebook";
 import { ModuleStager } from "./vscode/moduleStager";
+import { NotebookCellLensProvider } from "./vscode/notebookCellLens";
+import { NotebookTextDiff, openAsText } from "./vscode/notebookTextDiff";
+import { TEXT_VIEW_SCHEME } from "./core/notebookTextDiff";
 import { QueryRunner } from "./vscode/queryRunner";
 import { ResultsPanel } from "./vscode/resultsPanel";
 import { SignInManager } from "./vscode/signIn";
 import { TenantPicker } from "./vscode/tenantPicker";
-import { TenantsView } from "./vscode/tenantsView";
 import {
   FabricNotebookController,
   resolveNotebookHost,
@@ -104,16 +124,25 @@ export function activate(context: vscode.ExtensionContext): void {
       return undefined;
     }
   };
-  // Items in this working tree, from their .platform files (rebuilt on use,
-  // so newly pulled or renamed notebooks are always seen).
-  const localIndex = () =>
-    LocalItemIndex.build({
-      findPlatformFiles: async () =>
-        (
-          await vscode.workspace.findFiles("**/.platform", "**/node_modules/**")
-        ).map((uri) => uri.fsPath),
-      readFile,
-    });
+  // Items in this working tree, from their .platform files: scanned once,
+  // rescanned only after a .platform file is created, changed or deleted.
+  const itemIndex = new CachedItemIndex({
+    findPlatformFiles: async () =>
+      (
+        await vscode.workspace.findFiles("**/.platform", "**/node_modules/**")
+      ).map((uri) => uri.fsPath),
+    readFile,
+  });
+  const localIndex = () => itemIndex.get();
+  const platformWatcher =
+    vscode.workspace.createFileSystemWatcher("**/.platform");
+  const invalidateIndex = () => itemIndex.invalidate();
+  context.subscriptions.push(
+    platformWatcher,
+    platformWatcher.onDidCreate(invalidateIndex),
+    platformWatcher.onDidChange(invalidateIndex),
+    platformWatcher.onDidDelete(invalidateIndex),
+  );
 
   // The repo's sign-in (account + tenant, saved in .fabric/local.json) is
   // the tenant everything uses; signing in is asked for when it is missing.
@@ -148,14 +177,37 @@ export function activate(context: vscode.ExtensionContext): void {
     fs: { readFile },
     prepare: (target: Parameters<ModuleStager["prepare"]>[0]) =>
       stager.prepare(target),
+    importHint: (
+      errorName: string | undefined,
+      errorValue: string | undefined,
+    ) => stager.importHint(errorName, errorValue),
   };
 
   const serializer = new FabricNotebookSerializer();
+  // Where a notebook's Lakehouses come from besides its metadata: repo
+  // Lakehouse items by logicalId (a default with such an ID, as Fabric
+  // writes in git, is not a deployed Lakehouse) and this machine's
+  // per-notebook bindings in .fabric/local.json.
+  const bindingStore = new LakehouseBindingStore(workspaceRoot);
+  const attachmentSources: AttachmentSources = {
+    logicalNames: async () => {
+      const index = await localIndex();
+      return (id: string) => {
+        const item = index.findByLogicalId(id);
+        return item?.type === "Lakehouse" ? item.displayName : undefined;
+      };
+    },
+    localBinding: (notebook) => bindingStore.get(notebook),
+  };
   const controller = new FabricNotebookController(
     livyManager,
     targetResolver,
     compute,
     runContext,
+    () => signIn.tenant(),
+    (resolve) => computeConnection.runWithHost(resolve),
+    (target) => probeLivyHost(apiClient, target),
+    attachmentSources,
   );
   const resultsPanel = new ResultsPanel();
   const queryRunner = new QueryRunner(
@@ -176,6 +228,8 @@ export function activate(context: vscode.ExtensionContext): void {
       names,
       resultsPanel,
       workspaceRoot,
+      () => computeConnection.connectedCapacityId(),
+      () => computeConnection.requireHost(),
       root,
     );
   // The Explorer side bar's "Fabric" tree, and its parts as the views of
@@ -183,8 +237,6 @@ export function activate(context: vscode.ExtensionContext): void {
   const explorer = newExplorer("all");
   const explorerViews: Array<[string, FabricExplorer]> = [
     ["fabricConnect.explorer", explorer],
-    ["fabricConnect.capacities", newExplorer("capacities")],
-    ["fabricConnect.workspaces", newExplorer("workspaces")],
     ["fabricConnect.connections", newExplorer("connections")],
   ];
   const explorers = explorerViews.map(([, view]) => view);
@@ -193,8 +245,53 @@ export function activate(context: vscode.ExtensionContext): void {
       view.refresh();
     }
   };
-  const configurationView = new ConfigurationView(signIn, compute);
-  const tenantsView = new TenantsView(apiClient, signIn, tenants);
+  const configurationView = new ConfigurationView(
+    signIn,
+    compute,
+    (profile) => computeConnection.nameHiddenReason(profile),
+    () => stager.describe(),
+  );
+  // Lakehouses attached to the active (or Repo-selected) notebook, offered
+  // from the workspaces on the connected capacity.
+  const lakehousesView = new LakehousesView(
+    apiClient,
+    async () => signIn.tenant() ?? (await compute())?.tenantId,
+    () => computeConnection.connectedCapacityId(),
+    bindingStore,
+    attachmentSources,
+    oneLake,
+  );
+  const lakehousesTree = vscode.window.createTreeView(
+    "fabricConnect.lakehouses",
+    { treeDataProvider: lakehousesView },
+  );
+  const describeLakehousesTarget = (notebook: vscode.Uri | undefined) => {
+    lakehousesTree.description =
+      notebook === undefined
+        ? undefined
+        : path.basename(path.dirname(notebook.fsPath));
+  };
+  describeLakehousesTarget(lakehousesView.currentTarget());
+  // The working tree, run on the connected compute (named in the title).
+  const repoView = new RepoView(
+    workspaceRoot,
+    (id) => lakehousesView.nameOf(id),
+    attachmentSources,
+  );
+  const repoTree = vscode.window.createTreeView("fabricConnect.repo", {
+    treeDataProvider: repoView,
+  });
+  const describeRepoTarget = async () => {
+    let profile: ComputeProfile | undefined;
+    try {
+      profile = await compute();
+    } catch {
+      // The status bar and Configuration view report an invalid file.
+    }
+    repoTree.description =
+      profile === undefined ? "no compute" : describeCompute(profile);
+  };
+  void describeRepoTarget();
   const codeRunner = new CodeRunner(
     apiClient,
     livyManager,
@@ -202,11 +299,31 @@ export function activate(context: vscode.ExtensionContext): void {
     compute,
     runContext,
     stager,
+    () => signIn.tenant(),
+    (resolve) => computeConnection.runWithHost(resolve),
+    async (uri) =>
+      resolveNotebookHost(
+        await fabricNotebookFor(uri),
+        targetResolver,
+        compute,
+        () => signIn.tenant(),
+        attachmentSources,
+      ),
+    resultsPanel,
   );
-  const lakehousePanel = new LakehousePanel(apiClient, targetResolver, compute);
+  const lakehousePanel = new LakehousePanel(
+    apiClient,
+    targetResolver,
+    compute,
+    bindingStore,
+  );
 
   void computeConnection.refreshStatus();
-  void signIn.restore();
+  void stager.refreshStatus();
+  const textDiff = new NotebookTextDiff();
+  void signIn
+    .restore()
+    .then(() => computeConnection.refreshCapacityName(signIn.tenant()));
 
   context.subscriptions.push(
     output,
@@ -216,6 +333,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     controller,
     codeRunner,
+    stager,
     resultsPanel,
     vscode.workspace.registerNotebookSerializer(
       API_NOTEBOOK_TYPE,
@@ -238,20 +356,96 @@ export function activate(context: vscode.ExtensionContext): void {
       "fabricConnect.configuration",
       configurationView,
     ),
-    tenantsView,
-    vscode.window.registerTreeDataProvider(
-      "fabricConnect.tenants",
-      tenantsView,
-    ),
+    stager.onDidChange(() => configurationView.refresh()),
     computeConnection.onDidChange(() => {
       refreshExplorers();
       configurationView.refresh();
+      void describeRepoTarget();
+      lakehousesView.refresh();
     }),
+    repoView,
+    repoTree,
+    lakehousesView,
+    lakehousesTree,
+    lakehousesView.onDidChangeTarget(describeLakehousesTarget),
+    // Selecting a notebook in Repo makes it the Lakehouses view's target.
+    repoTree.onDidChangeSelection((e) => {
+      const node = e.selection[0];
+      if (node?.kind === "item" && node.content !== undefined) {
+        lakehousesView.setTarget(node.content);
+      } else if (
+        node?.kind === "lakehouse" ||
+        node?.kind === "unboundDefault"
+      ) {
+        lakehousesView.setTarget(node.notebook);
+      }
+    }),
+    vscode.commands.registerCommand("fabric-connect.lakehouses.refresh", () =>
+      lakehousesView.refresh(),
+    ),
+    vscode.commands.registerCommand(
+      "fabric-connect.lakehouses.attach",
+      (node: LakehouseNode) =>
+        runReportingErrors(() => lakehousesView.attach(node)),
+    ),
+    vscode.commands.registerCommand(
+      "fabric-connect.lakehouses.setDefault",
+      (node: LakehouseNode) =>
+        runReportingErrors(() => lakehousesView.setDefault(node)),
+    ),
+    // From the status bar or a notification (a notebook URI), or the
+    // unbound row (a tree node with `notebook`).
+    vscode.commands.registerCommand(
+      "fabric-connect.bindDefaultLakehouse",
+      (arg?: vscode.Uri | { notebook?: vscode.Uri }) =>
+        runReportingErrors(() =>
+          lakehousesView.bindDefault(
+            arg instanceof vscode.Uri ? arg : arg?.notebook,
+          ),
+        ),
+    ),
+    vscode.commands.registerCommand(
+      "fabric-connect.unbindDefaultLakehouse",
+      (arg?: vscode.Uri | { notebook?: vscode.Uri }) =>
+        runReportingErrors(() =>
+          lakehousesView.unbindDefault(
+            arg instanceof vscode.Uri ? arg : arg?.notebook,
+          ),
+        ),
+    ),
+    bindingStore,
+    bindingStore.onDidChange(() => {
+      lakehousesView.refresh();
+      repoView.refresh();
+      void controller.refreshHostStatus();
+    }),
+    vscode.commands.registerCommand(
+      "fabric-connect.lakehouses.detach",
+      (node: LakehouseNode) =>
+        runReportingErrors(() => lakehousesView.detach(node)),
+    ),
+    vscode.commands.registerCommand("fabric-connect.repo.refresh", () =>
+      repoView.refresh(),
+    ),
+    vscode.commands.registerCommand(
+      "fabric-connect.repo.run",
+      (node: RepoNode) => runReportingErrors(() => repoView.run(node)),
+    ),
+    vscode.commands.registerCommand(
+      "fabric-connect.repo.openPlatform",
+      (node: RepoNode) => runReportingErrors(() => repoView.openPlatform(node)),
+    ),
+    vscode.commands.registerCommand(
+      "fabric-connect.repo.editItemMetadata",
+      (node: RepoNode) =>
+        runReportingErrors(() => repoView.editItemMetadata(node)),
+    ),
     signIn,
     signIn.onDidChange(() => {
+      void computeConnection.refreshCapacityName(signIn.tenant());
       refreshExplorers();
       configurationView.refresh();
-      tenantsView.refresh();
+      lakehousesView.refresh();
     }),
     // Hovering a GUID anywhere names the Fabric item, workspace or capacity
     // behind it (from the explorer's listings and local .platform files).
@@ -300,18 +494,6 @@ export function activate(context: vscode.ExtensionContext): void {
         await signIn.switchTenant();
       }),
     ),
-    vscode.commands.registerCommand(
-      "fabric-connect.useTenant",
-      (tenant?: TenantInfo) =>
-        runReportingErrors(async () => {
-          await (tenant === undefined
-            ? signIn.switchTenant()
-            : signIn.switchTo(tenant));
-        }),
-    ),
-    vscode.commands.registerCommand("fabric-connect.findTenants", () =>
-      runReportingErrors(() => tenantsView.find()),
-    ),
     vscode.commands.registerCommand("fabric-connect.signOut", () =>
       runReportingErrors(() => signIn.signOut()),
     ),
@@ -337,7 +519,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("fabric-connect.manageLakehouses", () =>
       runReportingErrors(async () => {
-        const notebook = vscode.window.activeNotebookEditor?.notebook;
+        const uri = activeFabricNotebookUri();
+        const notebook =
+          uri === undefined ? undefined : await fabricNotebookFor(uri);
         if (notebook === undefined || !isFabricNotebook(notebook)) {
           void vscode.window.showWarningMessage(
             "Open a Fabric notebook first, then run this command to manage its lakehouses.",
@@ -350,7 +534,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("fabric-connect.stopLivySession", () =>
       runReportingErrors(async () => {
-        const notebook = vscode.window.activeNotebookEditor?.notebook;
+        const uri = activeFabricNotebookUri();
+        const notebook =
+          uri === undefined ? undefined : await fabricNotebookFor(uri);
         if (notebook === undefined || !isFabricNotebook(notebook)) {
           void vscode.window.showWarningMessage(
             "Open a Fabric notebook first, then run this command to stop its Livy session.",
@@ -361,6 +547,8 @@ export function activate(context: vscode.ExtensionContext): void {
           notebook,
           targetResolver,
           compute,
+          () => signIn.tenant(),
+          attachmentSources,
         );
         await livyManager.stopSession(host.target);
         await stager.cleanup(host.target);
@@ -372,17 +560,23 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("fabric-connect.restartLivySession", () =>
       runReportingErrors(async () => {
-        const notebook = vscode.window.activeNotebookEditor?.notebook;
+        const uri = activeFabricNotebookUri();
+        const notebook =
+          uri === undefined ? undefined : await fabricNotebookFor(uri);
         if (notebook === undefined || !isFabricNotebook(notebook)) {
           void vscode.window.showWarningMessage(
             "Open a Fabric notebook first, then run this command to restart its Livy session.",
           );
           return;
         }
-        const host = await resolveNotebookHost(
-          notebook,
-          targetResolver,
-          compute,
+        const host = await computeConnection.runWithHost(() =>
+          resolveNotebookHost(
+            notebook,
+            targetResolver,
+            compute,
+            () => signIn.tenant(),
+            attachmentSources,
+          ),
         );
         await livyManager.stopSession(host.target);
         await stager.cleanup(host.target);
@@ -402,22 +596,34 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("fabric-connect.showLivySessions", () =>
       runReportingErrors(async () => {
-        const notebook = vscode.window.activeNotebookEditor?.notebook;
+        const activeUri = activeFabricNotebookUri();
+        const notebook =
+          activeUri === undefined
+            ? undefined
+            : await fabricNotebookFor(activeUri);
         const current = await compute();
+        const hosted = current === undefined ? undefined : hostOf(current);
         const host =
           notebook !== undefined && isFabricNotebook(notebook)
-            ? (await resolveNotebookHost(notebook, targetResolver, compute))
-                .target
-            : current === undefined
+            ? (
+                await resolveNotebookHost(
+                  notebook,
+                  targetResolver,
+                  compute,
+                  () => signIn.tenant(),
+                  attachmentSources,
+                )
+              ).target
+            : hosted === undefined
               ? undefined
               : {
-                  tenantId: current.tenantId,
-                  workspaceId: current.workspaceId,
-                  lakehouseId: current.lakehouseId,
+                  tenantId: hosted.tenantId,
+                  workspaceId: hosted.workspaceId,
+                  lakehouseId: hosted.lakehouseId,
                 };
         if (host === undefined) {
           void vscode.window.showWarningMessage(
-            "Open a Fabric notebook or run 'Fabric: Connect to Compute' first, so there is a Lakehouse to list sessions for.",
+            "Open a Fabric notebook, or pick a host Lakehouse ('Change Host Lakehouse…' in Configuration), so there is a Lakehouse to list sessions for.",
           );
           return;
         }
@@ -459,6 +665,77 @@ export function activate(context: vscode.ExtensionContext): void {
       }),
     ),
 
+    vscode.commands.registerCommand("fabric-connect.pythonModules", () =>
+      runReportingErrors(() => stager.pickMode()),
+    ),
+
+    vscode.languages.registerCodeLensProvider(
+      [
+        { scheme: "file", pattern: "**/*.Notebook/notebook-content.py" },
+        { scheme: "file", pattern: "**/*.Notebook/notebook-content.sql" },
+        { scheme: "file", pattern: "**/*.Notebook/notebook-content.scala" },
+        { scheme: "file", pattern: "**/*.Notebook/notebook-content.r" },
+      ],
+      new NotebookCellLensProvider(),
+    ),
+    vscode.commands.registerCommand(
+      "fabric-connect.runNotebookCell",
+      (uri: vscode.Uri, cell: number) =>
+        runReportingErrors(() => codeRunner.runNotebookCells(uri, { cell })),
+    ),
+    vscode.commands.registerCommand(
+      "fabric-connect.runNotebookCellsAbove",
+      (uri: vscode.Uri, cell: number) =>
+        runReportingErrors(() =>
+          codeRunner.runNotebookCells(uri, { cell, above: true }),
+        ),
+    ),
+    vscode.commands.registerCommand(
+      "fabric-connect.runNotebookAll",
+      (uri?: vscode.Uri) =>
+        runReportingErrors(async () => {
+          const target = uri ?? activeFabricNotebookUri();
+          if (target === undefined) {
+            void vscode.window.showWarningMessage(
+              "Open a Fabric notebook first, then run this command to run all its cells.",
+            );
+            return;
+          }
+          await codeRunner.runNotebookCells(target, "all");
+        }),
+    ),
+    vscode.commands.registerCommand(
+      "fabric-connect.openAsNotebook",
+      (uri?: vscode.Uri) =>
+        runReportingErrors(async () => {
+          const target = uri ?? activeFabricNotebookUri();
+          if (target === undefined) {
+            void vscode.window.showWarningMessage(
+              "Open a Fabric notebook's notebook-content file first, then run this command.",
+            );
+            return;
+          }
+          await vscode.commands.executeCommand(
+            "vscode.openWith",
+            target,
+            notebookTypeOf(target),
+          );
+        }),
+    ),
+    vscode.commands.registerCommand(
+      "fabric-connect.openAsText",
+      (arg?: unknown) => runReportingErrors(() => openAsText(arg)),
+    ),
+    textDiff,
+    vscode.workspace.registerTextDocumentContentProvider(
+      TEXT_VIEW_SCHEME,
+      textDiff,
+    ),
+    vscode.commands.registerCommand(
+      "fabric-connect.openChangesAsText",
+      (arg?: unknown) => runReportingErrors(() => textDiff.openChanges(arg)),
+    ),
+
     vscode.commands.registerCommand(
       "fabric-connect.runFile",
       (uri?: vscode.Uri) => runReportingErrors(() => codeRunner.runFile(uri)),
@@ -482,7 +759,7 @@ export function activate(context: vscode.ExtensionContext): void {
       runReportingErrors(() => queryRunner.changeTarget()),
     ),
 
-    ...explorerCommands(explorer, refreshExplorers),
+    ...explorerCommands(explorer, computeConnection, refreshExplorers),
 
     vscode.commands.registerCommand("fabric-connect.newApiNotebook", () =>
       runReportingErrors(async () => {
@@ -515,6 +792,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("fabric-connect.disconnectCompute", () =>
       runReportingErrors(() => computeConnection.disconnect()),
+    ),
+    vscode.commands.registerCommand("fabric-connect.changeHost", () =>
+      runReportingErrors(() => computeConnection.changeHost()),
+    ),
+    vscode.commands.registerCommand("fabric-connect.nameCapacity", () =>
+      runReportingErrors(() => computeConnection.nameCapacity()),
     ),
   );
 }
@@ -552,6 +835,7 @@ async function runReportingErrors(action: () => Promise<void>): Promise<void> {
  */
 function explorerCommands(
   explorer: FabricExplorer,
+  computeConnection: ComputeConnection,
   refresh: () => void,
 ): vscode.Disposable[] {
   type Node = Parameters<FabricExplorer["copyId"]>[0];
@@ -569,6 +853,16 @@ function explorerCommands(
   return [
     vscode.commands.registerCommand("fabric-connect.explorer.refresh", () =>
       refresh(),
+    ),
+    // From a capacity or workspace node; from the palette, pick one.
+    vscode.commands.registerCommand(
+      "fabric-connect.selectCapacity",
+      (node?: Node) =>
+        runReportingErrors(async () => {
+          await computeConnection.selectCapacity(
+            node === undefined ? undefined : await explorer.capacityOf(node),
+          );
+        }),
     ),
     ...Object.entries(actions).map(([id, action]) =>
       vscode.commands.registerCommand(`fabric-connect.${id}`, (node: Node) =>

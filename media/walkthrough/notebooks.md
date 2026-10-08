@@ -9,6 +9,9 @@ Pick the **Fabric Livy** kernel and run cells. They run on the notebook's
 default Lakehouse, or on the connected compute when it has none — the
 status bar shows which.
 
+- **Open as Text** (notebook toolbar) shows the raw file, with **Run Cell**
+  above each cell; **Open Changes as Text** (right-click in Source
+  Control) shows the raw diff, metadata included.
 - `%run OtherNotebook {"param": 1}` runs a notebook **from this repo**.
 - `%%sql`, `%%pyspark`, `%%spark`, `%%sparkr` switch the cell language.
 - `display(df)` renders a table.

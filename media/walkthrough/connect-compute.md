@@ -1,16 +1,18 @@
 # Connect to compute
 
 **Fabric: Connect to Compute** is the Databricks Connect moment: you pick,
-once per repo,
+once per repo, the **capacity** your code runs on — shown with its SKU and
+region (paused ones are refused). Nothing else is asked.
 
-1. a **capacity** — shown with its SKU and region (paused ones are refused),
-2. a **workspace** on that capacity,
-3. an existing **host Lakehouse** — Spark sessions run here, and relative
-   paths like `Files/…` resolve here,
-4. optionally an **Environment** (libraries, Spark settings).
+Notebooks with a default Lakehouse run on it. Code without a Lakehouse of
+its own (a plain `.py` file, a notebook with no default) asks once for a
+**host Lakehouse** on that capacity — Spark sessions run there, and
+relative paths like `Files/…` resolve there — and optionally an
+**Environment**.
 
 The choice is saved under `"compute"` in `.fabric/local.json`. Keep that
 file out of git — it names client capacities and workspaces.
 
-Fabric Connect **never creates items**, Lakehouses included. If the
-workspace has no Lakehouse, create one in the Fabric portal first.
+Fabric Connect **never creates items**, Lakehouses included. If no
+workspace on the capacity has a Lakehouse, create one in the Fabric portal
+first.

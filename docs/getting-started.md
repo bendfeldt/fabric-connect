@@ -83,7 +83,7 @@ Add this line to the repo's **root `.gitignore`** before anything else:
 .fabric/local.json
 ```
 
-`.fabric/local.json` holds the capacity, workspace and Lakehouse IDs you
+`.fabric/local.json` holds the capacity (and host Lakehouse) IDs you
 connect to. They identify your (or your client's) environment and must not
 be committed. Fabric Connect warns you if the line is missing.
 
@@ -120,16 +120,19 @@ runs.
 2. Sign in if the repo isn't signed in yet; compute is connected in the
    repo's tenant.
 3. Pick the **capacity**. Each entry shows its SKU (e.g. `F8`), region and
-   state; a paused capacity is refused — resume it in Azure first.
-4. Pick a **workspace** assigned to that capacity.
-5. Pick the **host Lakehouse**. Spark sessions run here, and relative paths
-   such as `Files/raw/sales.csv` and unqualified table names resolve against
-   it.
-6. Pick an **Environment** if the workspace has any (libraries, Spark
-   settings), or **No Environment** for the starter pool.
+   state; a paused capacity is refused — resume it in Azure first. That is
+   all you pick here.
+
+The first time you run code without a Lakehouse of its own (a plain `.py`
+file, or a notebook with no default Lakehouse), you also pick a **host
+Lakehouse** on that capacity — Spark sessions run there, and relative
+paths such as `Files/raw/sales.csv` resolve against it — and optionally an
+**Environment**. It is saved and reused; **Fabric: Change Host
+Lakehouse…** changes it.
 
 The status bar now shows something like
-`Fabric: dev-capacity F8 · Sandbox / scratch`. The choice is saved under
+`Fabric: dev-capacity F8` (plus `· Sandbox / scratch` once a host
+Lakehouse is picked). The choice is saved under
 `"compute"` in `.fabric/local.json`; run **Fabric: Disconnect from
 Compute** to remove it.
 
@@ -284,10 +287,11 @@ Connection String**.
 ## 10. Explore Fabric and pull items into the repo
 
 Click the **Fabric** icon in the Activity Bar. Its **Configuration** view
-shows what the repo signs in as and its compute, **Tenants** switches the
-tenant, and **Capacities**, **Workspaces** (each with the SKU it runs on)
-and **Connections** browse it. The same tree is also the **Fabric** view in
-the Explorer side bar:
+shows what the repo signs in as and its compute (switch the tenant from
+its Tenant row), **Repo** shows your working tree and runs it on the
+connected compute, **Lakehouses** attaches Lakehouses to a notebook, and
+**Connections** lists connections. The **Fabric** view in the Explorer
+side bar browses everything:
 
 - **Capacities** → workspaces → items grouped by type;
 - **Workspaces without a capacity**;

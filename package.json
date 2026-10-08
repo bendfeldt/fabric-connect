@@ -96,17 +96,6 @@
         "icon": "$(organization)"
       },
       {
-        "command": "fabric-connect.useTenant",
-        "title": "Use Tenant",
-        "category": "Fabric"
-      },
-      {
-        "command": "fabric-connect.findTenants",
-        "title": "Find Tenants on My Account",
-        "category": "Fabric",
-        "icon": "$(search)"
-      },
-      {
         "command": "fabric-connect.signOut",
         "title": "Fabric: Sign Out",
         "icon": "$(sign-out)"
@@ -138,12 +127,116 @@
         "icon": "$(debug-disconnect)"
       },
       {
+        "command": "fabric-connect.changeHost",
+        "title": "Fabric: Change Host Lakehouse…",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "fabric-connect.nameCapacity",
+        "title": "Fabric: Name This Capacity…",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "fabric-connect.selectCapacity",
+        "title": "Fabric: Connect to This Capacity",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "fabric-connect.repo.refresh",
+        "title": "Refresh",
+        "category": "Fabric",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "fabric-connect.repo.run",
+        "title": "Run on Fabric",
+        "category": "Fabric",
+        "icon": "$(play)"
+      },
+      {
+        "command": "fabric-connect.repo.openPlatform",
+        "title": "Open .platform",
+        "category": "Fabric"
+      },
+      {
+        "command": "fabric-connect.repo.editItemMetadata",
+        "title": "Edit Item Metadata…",
+        "category": "Fabric"
+      },
+      {
+        "command": "fabric-connect.lakehouses.refresh",
+        "title": "Refresh",
+        "category": "Fabric",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "fabric-connect.lakehouses.attach",
+        "title": "Attach to Notebook",
+        "category": "Fabric",
+        "icon": "$(add)"
+      },
+      {
+        "command": "fabric-connect.lakehouses.setDefault",
+        "title": "Set as Default Lakehouse",
+        "category": "Fabric",
+        "icon": "$(star-empty)"
+      },
+      {
+        "command": "fabric-connect.lakehouses.detach",
+        "title": "Detach from Notebook",
+        "category": "Fabric",
+        "icon": "$(close)"
+      },
+      {
+        "command": "fabric-connect.bindDefaultLakehouse",
+        "title": "Fabric: Bind Notebook's Default Lakehouse…",
+        "icon": "$(link)"
+      },
+      {
+        "command": "fabric-connect.unbindDefaultLakehouse",
+        "title": "Fabric: Unbind Notebook's Default Lakehouse",
+        "icon": "$(debug-disconnect)"
+      },
+      {
         "command": "fabric-connect.restartLivySession",
         "title": "Fabric: Restart Livy Session"
       },
       {
         "command": "fabric-connect.showLivySessions",
         "title": "Fabric: Show Livy Sessions"
+      },
+      {
+        "command": "fabric-connect.pythonModules",
+        "title": "Fabric: Python Modules (Local or Remote)",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "fabric-connect.openAsNotebook",
+        "title": "Fabric: Open as Notebook",
+        "icon": "$(notebook)"
+      },
+      {
+        "command": "fabric-connect.openAsText",
+        "title": "Fabric: Open as Text",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "fabric-connect.openChangesAsText",
+        "title": "Fabric: Open Changes as Text",
+        "icon": "$(git-compare)"
+      },
+      {
+        "command": "fabric-connect.runNotebookAll",
+        "title": "Fabric: Run All Cells",
+        "icon": "$(run-all)"
+      },
+      {
+        "command": "fabric-connect.runNotebookCell",
+        "title": "Fabric: Run Cell"
+      },
+      {
+        "command": "fabric-connect.runNotebookCellsAbove",
+        "title": "Fabric: Run All Above"
       },
       {
         "command": "fabric-connect.runFile",
@@ -236,15 +329,36 @@
             "type": "string"
           },
           "default": [],
-          "description": "Workspace-relative folders whose Python modules are staged to the Spark session before Python code runs, so `import` uses your working tree (e.g. [\"src\"])."
+          "description": "Workspace-relative folders whose Python modules are staged to the Spark session before Python code runs, so `import` uses your working tree (e.g. [\"src\"]). When empty, Local mode uses the folders pyproject.toml names, else `src`."
+        },
+        "fabric-connect.pythonModules": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "local",
+            "remote"
+          ],
+          "enumDescriptions": [
+            "Local when 'fabric-connect.sourceRoots' is set, otherwise Remote.",
+            "Import your working tree: its packages are staged to the session before Python code runs.",
+            "Import what the Fabric environment has installed (e.g. your published wheel). Nothing is staged."
+          ],
+          "default": "auto",
+          "scope": "resource",
+          "description": "Where Python `import` finds your packages. Change it with 'Fabric: Python Modules' or the status bar."
         }
       }
     },
     "menus": {
       "editor/title/run": [
         {
+          "command": "fabric-connect.runNotebookAll",
+          "when": "activeEditor == workbench.editors.files.textFileEditor && resourcePath =~ /\\.Notebook[\\\\/]notebook-content\\.(py|sql|scala|r)$/",
+          "group": "fabric"
+        },
+        {
           "command": "fabric-connect.runFile",
-          "when": "resourceLangId == python || resourceLangId == sql || resourceLangId == scala || resourceLangId == r",
+          "when": "(resourceLangId == python || resourceLangId == sql || resourceLangId == scala || resourceLangId == r) && !(resourcePath =~ /\\.Notebook[\\\\/]notebook-content\\.(py|sql|scala|r)$/)",
           "group": "fabric"
         },
         {
@@ -306,75 +420,141 @@
           "when": "false"
         },
         {
-          "command": "fabric-connect.useTenant",
+          "command": "fabric-connect.repo.run",
           "when": "false"
         },
         {
-          "command": "fabric-connect.findTenants",
+          "command": "fabric-connect.repo.refresh",
           "when": "false"
+        },
+        {
+          "command": "fabric-connect.repo.openPlatform",
+          "when": "false"
+        },
+        {
+          "command": "fabric-connect.repo.editItemMetadata",
+          "when": "false"
+        },
+        {
+          "command": "fabric-connect.lakehouses.refresh",
+          "when": "false"
+        },
+        {
+          "command": "fabric-connect.lakehouses.attach",
+          "when": "false"
+        },
+        {
+          "command": "fabric-connect.lakehouses.setDefault",
+          "when": "false"
+        },
+        {
+          "command": "fabric-connect.lakehouses.detach",
+          "when": "false"
+        },
+        {
+          "command": "fabric-connect.bindDefaultLakehouse",
+          "when": "notebookType == fabric-notebook || notebookType == fabric-notebook-source"
+        },
+        {
+          "command": "fabric-connect.unbindDefaultLakehouse",
+          "when": "false"
+        },
+        {
+          "command": "fabric-connect.runNotebookCell",
+          "when": "false"
+        },
+        {
+          "command": "fabric-connect.runNotebookCellsAbove",
+          "when": "false"
+        },
+        {
+          "command": "fabric-connect.runNotebookAll",
+          "when": "activeEditor == workbench.editors.files.textFileEditor && resourcePath =~ /\\.Notebook[\\\\/]notebook-content\\.(py|sql|scala|r)$/"
+        },
+        {
+          "command": "fabric-connect.openAsNotebook",
+          "when": "activeEditor == workbench.editors.files.textFileEditor && resourcePath =~ /\\.Notebook[\\\\/]notebook-content\\.(py|sql|scala|r|ipynb)$/"
+        },
+        {
+          "command": "fabric-connect.openAsText",
+          "when": "activeEditor == workbench.editor.notebook && (notebookType == fabric-notebook-source || notebookType == fabric-notebook)"
+        },
+        {
+          "command": "fabric-connect.openChangesAsText",
+          "when": "resourcePath =~ /\\.Notebook[\\\\/]notebook-content\\.(py|sql|scala|r|ipynb)$/"
         }
       ],
       "view/title": [
         {
           "command": "fabric-connect.explorer.refresh",
-          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/",
+          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/",
           "group": "navigation"
         },
         {
-          "command": "fabric-connect.findTenants",
-          "when": "view == fabricConnect.tenants",
-          "group": "navigation@1"
+          "command": "fabric-connect.repo.refresh",
+          "when": "view == fabricConnect.repo",
+          "group": "navigation"
         },
         {
-          "command": "fabric-connect.switchTenant",
-          "when": "view == fabricConnect.tenants",
-          "group": "navigation@2"
+          "command": "fabric-connect.lakehouses.refresh",
+          "when": "view == fabricConnect.lakehouses",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
         {
+          "command": "fabric-connect.selectCapacity",
+          "when": "view == fabricConnect.explorer && viewItem == fabricCapacity",
+          "group": "inline"
+        },
+        {
+          "command": "fabric-connect.selectCapacity",
+          "when": "view == fabricConnect.explorer && viewItem =~ /fabricCapacity|onCapacity/",
+          "group": "0_select"
+        },
+        {
           "command": "fabric-connect.explorer.pullItem",
-          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/ && viewItem =~ /fabricItem/",
+          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem =~ /fabricItem/",
           "group": "1_pull"
         },
         {
           "command": "fabric-connect.explorer.copySqlConnectionString",
-          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/ && viewItem =~ /\\bsql\\b/",
+          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem =~ /\\bsql\\b/",
           "group": "2_copy"
         },
         {
           "command": "fabric-connect.explorer.copyId",
-          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/ && viewItem =~ /fabric(Item|Workspace|Capacity|Connection)/",
+          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem =~ /fabric(Item|Workspace|Capacity|Connection)/",
           "group": "2_copy"
         },
         {
           "command": "fabric-connect.explorer.copyName",
-          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/ && viewItem =~ /fabric/",
+          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem =~ /fabric/",
           "group": "2_copy"
         },
         {
           "command": "fabric-connect.explorer.copyOneLakePath",
-          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/ && viewItem =~ /fabric(Table|Folder|File|Item)/",
+          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem =~ /fabric(Table|Folder|File|Item)/",
           "group": "2_copy"
         },
         {
           "command": "fabric-connect.explorer.previewTable",
-          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/ && viewItem == fabricTable",
+          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem == fabricTable",
           "group": "inline"
         },
         {
           "command": "fabric-connect.explorer.previewTable",
-          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/ && viewItem == fabricTable",
+          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem == fabricTable",
           "group": "0_preview"
         },
         {
           "command": "fabric-connect.explorer.previewFile",
-          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/ && viewItem == fabricFile",
+          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem == fabricFile",
           "group": "0_preview"
         },
         {
           "command": "fabric-connect.explorer.openInFabric",
-          "when": "view =~ /^fabricConnect\\.(explorer|capacities|workspaces|connections)$/ && viewItem =~ /fabric(Item|Workspace)/",
+          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem =~ /fabric(Item|Workspace)/",
           "group": "3_open"
         },
         {
@@ -401,6 +581,147 @@
           "command": "fabric-connect.disconnectCompute",
           "when": "view == fabricConnect.configuration && viewItem =~ /\\bconnected\\b/",
           "group": "inline@2"
+        },
+        {
+          "command": "fabric-connect.repo.run",
+          "when": "view == fabricConnect.repo && viewItem =~ /\\brunnable\\b/",
+          "group": "inline"
+        },
+        {
+          "command": "fabric-connect.repo.run",
+          "when": "view == fabricConnect.repo && viewItem =~ /\\brunnable\\b/",
+          "group": "0_run"
+        },
+        {
+          "command": "fabric-connect.repo.openPlatform",
+          "when": "view == fabricConnect.repo && viewItem =~ /fabricRepoItem/",
+          "group": "1_platform@1"
+        },
+        {
+          "command": "fabric-connect.repo.editItemMetadata",
+          "when": "view == fabricConnect.repo && viewItem =~ /fabricRepoItem/",
+          "group": "1_platform@2"
+        },
+        {
+          "command": "fabric-connect.lakehouses.attach",
+          "when": "view == fabricConnect.lakehouses && viewItem == fabricLakehouse",
+          "group": "inline@1"
+        },
+        {
+          "command": "fabric-connect.lakehouses.setDefault",
+          "when": "view == fabricConnect.lakehouses && viewItem =~ /^fabricLakehouse\\b/ && viewItem !~ /\\bdefault\\b/",
+          "group": "inline@2"
+        },
+        {
+          "command": "fabric-connect.lakehouses.detach",
+          "when": "view == fabricConnect.lakehouses && viewItem =~ /\\battached\\b/",
+          "group": "inline@3"
+        },
+        {
+          "command": "fabric-connect.lakehouses.attach",
+          "when": "view == fabricConnect.lakehouses && viewItem == fabricLakehouse",
+          "group": "0_attach@1"
+        },
+        {
+          "command": "fabric-connect.lakehouses.setDefault",
+          "when": "view == fabricConnect.lakehouses && viewItem =~ /^fabricLakehouse\\b/ && viewItem !~ /\\bdefault\\b/",
+          "group": "0_attach@2"
+        },
+        {
+          "command": "fabric-connect.lakehouses.detach",
+          "when": "view == fabricConnect.lakehouses && viewItem =~ /\\battached\\b/",
+          "group": "0_attach@3"
+        },
+        {
+          "command": "fabric-connect.changeHost",
+          "when": "view == fabricConnect.configuration && viewItem == fabricConfigHost",
+          "group": "inline"
+        },
+        {
+          "command": "fabric-connect.pythonModules",
+          "when": "view == fabricConnect.configuration && viewItem == fabricConfigModules",
+          "group": "inline"
+        },
+        {
+          "command": "fabric-connect.nameCapacity",
+          "when": "view == fabricConnect.configuration && viewItem == fabricConfigCapacity",
+          "group": "inline"
+        },
+        {
+          "command": "fabric-connect.bindDefaultLakehouse",
+          "when": "view == fabricConnect.lakehouses && viewItem == fabricUnboundLakehouse",
+          "group": "inline"
+        },
+        {
+          "command": "fabric-connect.bindDefaultLakehouse",
+          "when": "view == fabricConnect.lakehouses && viewItem == fabricUnboundLakehouse",
+          "group": "0_bind"
+        },
+        {
+          "command": "fabric-connect.unbindDefaultLakehouse",
+          "when": "view == fabricConnect.lakehouses && viewItem == fabricBoundLakehouse",
+          "group": "inline"
+        },
+        {
+          "command": "fabric-connect.bindDefaultLakehouse",
+          "when": "view == fabricConnect.lakehouses && viewItem == fabricBoundLakehouse",
+          "group": "0_bind@1"
+        },
+        {
+          "command": "fabric-connect.unbindDefaultLakehouse",
+          "when": "view == fabricConnect.lakehouses && viewItem == fabricBoundLakehouse",
+          "group": "0_bind@2"
+        },
+        {
+          "command": "fabric-connect.explorer.previewTable",
+          "when": "view == fabricConnect.lakehouses && viewItem == fabricTable",
+          "group": "inline"
+        },
+        {
+          "command": "fabric-connect.explorer.previewTable",
+          "when": "view == fabricConnect.lakehouses && viewItem == fabricTable",
+          "group": "0_preview"
+        },
+        {
+          "command": "fabric-connect.explorer.previewFile",
+          "when": "view == fabricConnect.lakehouses && viewItem == fabricFile",
+          "group": "0_preview"
+        },
+        {
+          "command": "fabric-connect.explorer.copyOneLakePath",
+          "when": "view == fabricConnect.lakehouses && viewItem =~ /^fabric(Table|Folder|File)$/",
+          "group": "2_copy"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "fabric-connect.openAsNotebook",
+          "when": "activeEditor == workbench.editors.files.textFileEditor && resourcePath =~ /\\.Notebook[\\\\/]notebook-content\\.(py|sql|scala|r|ipynb)$/",
+          "group": "navigation"
+        }
+      ],
+      "notebook/toolbar": [
+        {
+          "command": "fabric-connect.openAsText",
+          "when": "notebookType == fabric-notebook-source || notebookType == fabric-notebook",
+          "group": "navigation/fabric"
+        },
+        {
+          "command": "fabric-connect.openChangesAsText",
+          "when": "notebookType == fabric-notebook-source || notebookType == fabric-notebook",
+          "group": "fabric"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "command": "fabric-connect.openChangesAsText",
+          "when": "scmProvider == git && resourcePath =~ /\\.Notebook[\\\\/]notebook-content\\.(py|sql|scala|r|ipynb)$/",
+          "group": "inline"
+        },
+        {
+          "command": "fabric-connect.openChangesAsText",
+          "when": "scmProvider == git && resourcePath =~ /\\.Notebook[\\\\/]notebook-content\\.(py|sql|scala|r|ipynb)$/",
+          "group": "navigation"
         }
       ]
     },
@@ -440,6 +761,12 @@
         "aliases": [
           "Fabric API"
         ]
+      },
+      {
+        "id": "json",
+        "filenames": [
+          ".platform"
+        ]
       }
     ],
     "viewsContainers": {
@@ -458,16 +785,12 @@
           "name": "Configuration"
         },
         {
-          "id": "fabricConnect.tenants",
-          "name": "Tenants"
+          "id": "fabricConnect.repo",
+          "name": "Repo"
         },
         {
-          "id": "fabricConnect.capacities",
-          "name": "Capacities"
-        },
-        {
-          "id": "fabricConnect.workspaces",
-          "name": "Workspaces"
+          "id": "fabricConnect.lakehouses",
+          "name": "Lakehouses"
         },
         {
           "id": "fabricConnect.connections",
@@ -488,8 +811,14 @@
         "contents": "Sign in with your Microsoft account to connect this repo to Fabric.\n[Sign In](command:fabric-connect.signIn)"
       },
       {
-        "view": "fabricConnect.tenants",
-        "contents": "Sign in to see the tenants your account can use.\n[Sign In](command:fabric-connect.signIn)"
+        "view": "fabricConnect.repo",
+        "contents": "Open your repo folder to see its Fabric items and run them on Fabric compute.\n[Open Folder](command:vscode.openFolder)",
+        "when": "workspaceFolderCount == 0"
+      },
+      {
+        "view": "fabricConnect.repo",
+        "contents": "No Fabric items in this folder. Items are folders with a .platform file, such as Bronze.Notebook/.\n[Show the Fabric view](command:fabricConnect.explorer.focus) to pull one into the repo.",
+        "when": "workspaceFolderCount > 0"
       }
     ],
     "walkthroughs": [
@@ -512,7 +841,7 @@
           {
             "id": "connectCompute",
             "title": "Connect this repo to Fabric compute",
-            "description": "Pick a capacity (SKU), a workspace on it, an existing host Lakehouse and optionally an Environment. Saved in your gitignored .fabric/local.json.\n[Connect to Compute](command:fabric-connect.connectCompute?%5B%22walkthrough%22%5D)",
+            "description": "Pick the capacity (SKU) your code runs on. A host Lakehouse for code without its own is asked when first needed. Saved in your gitignored .fabric/local.json.\n[Connect to Compute](command:fabric-connect.connectCompute?%5B%22walkthrough%22%5D)",
             "media": {
               "markdown": "media/walkthrough/connect-compute.md"
             },
@@ -567,7 +896,12 @@
           }
         ]
       }
-    ]
+    ],
+    "configurationDefaults": {
+      "workbench.editor.customLabels.patterns": {
+        "**/*.Notebook/notebook-content.*": "${dirname}"
+      }
+    }
   },
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\"",

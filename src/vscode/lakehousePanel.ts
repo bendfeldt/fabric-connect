@@ -24,13 +24,15 @@ import {
   detachLakehouse,
   getLakehouseAttachments,
 } from "../core/notebookCodec";
-import type { ComputeProfile } from "../core/computeProfile";
+import { type ComputeProfile, hostOf } from "../core/computeProfile";
 import type { IFabricApiClient, ITargetResolver } from "../core/types";
 import {
-  fabricRootOf,
-  isFabricNotebook,
-  withFabricRoot,
-} from "./notebookSerializer";
+  applyAttachmentEdit,
+  editAndSaveAttachments,
+  requireFabricNotebook,
+} from "./lakehouseAttachments";
+import { fabricRootOf } from "./notebookSerializer";
+import type { LakehouseBindingStore } from "./lakehouseBindingStore";
 
 interface LakehouseListResponse {
   value?: Array<{ id?: string; displayName?: string }>;
@@ -50,15 +52,19 @@ export class LakehousePanel {
     private readonly api: IFabricApiClient,
     private readonly targets: ITargetResolver,
     private readonly compute: () => Promise<ComputeProfile | undefined>,
+    private readonly bindings: LakehouseBindingStore,
   ) {}
 
   async show(notebookUri: vscode.Uri): Promise<void> {
     const folder = path.dirname(notebookUri.fsPath);
     // The folder's target workspace; for an unmapped folder, the connected
-    // compute's workspace. Neither → the target resolver's specific error.
+    // capacity's host workspace. Neither → the target resolver's specific
+    // error.
+    const compute = await this.compute();
+    const hosted = compute === undefined ? undefined : hostOf(compute);
     const resolved =
       (await this.targets.resolveTargetIfMapped(folder)) ??
-      (await this.compute()) ??
+      hosted ??
       (await this.targets.resolveTarget(folder));
     this.findNotebook(notebookUri); // fail before opening a panel
     const context: PanelContext = {
@@ -93,21 +99,7 @@ export class LakehousePanel {
 
   /** The open Fabric notebook for this URI, or a loud, actionable error. */
   private findNotebook(uri: vscode.Uri): vscode.NotebookDocument {
-    const notebook = vscode.workspace.notebookDocuments.find(
-      (doc) => doc.uri.toString() === uri.toString() && isFabricNotebook(doc),
-    );
-    if (notebook === undefined || fabricRootOf(notebook) === undefined) {
-      throw new LakehouseError(
-        `Cannot manage lakehouses: notebook '${path.basename(uri.fsPath)}' is not open as a Fabric notebook.`,
-        {
-          operation: "open Lakehouse panel",
-          entity: `notebook ${path.basename(uri.fsPath)}`,
-          remediation:
-            "Open the file with 'Fabric: Open File as Fabric Notebook', then retry from the panel.",
-        },
-      );
-    }
-    return notebook;
+    return requireFabricNotebook(uri, "open Lakehouse panel");
   }
 
   private async handleMessage(
@@ -141,6 +133,9 @@ export class LakehousePanel {
             true,
           ),
         );
+        if ((await this.bindings.get(context.notebookUri)) !== undefined) {
+          await this.bindings.set(context.notebookUri, undefined);
+        }
       } else if (command === "detach" && typeof id === "string") {
         await this.applyAttachmentEdit(context, (root) =>
           detachLakehouse(root, id),
@@ -156,32 +151,23 @@ export class LakehousePanel {
     }
   }
 
-  /** Applies a metadata edit to the live document, marking it dirty. */
+  /**
+   * Applies a metadata edit: to the live document (marking it dirty) when
+   * the notebook editor shows it, else — the notebook is open as text —
+   * straight to the file, since nothing would show the unsaved change.
+   */
   private async applyAttachmentEdit(
     context: PanelContext,
     update: (root: Record<string, unknown>) => Record<string, unknown>,
   ): Promise<void> {
-    const notebook = this.findNotebook(context.notebookUri);
-    const root = fabricRootOf(notebook);
-    if (root === undefined) {
-      return; // findNotebook already guarantees this; keep the type narrow
-    }
-    const edit = new vscode.WorkspaceEdit();
-    edit.set(notebook.uri, [
-      vscode.NotebookEdit.updateNotebookMetadata(
-        withFabricRoot(notebook.metadata, update(root)),
-      ),
-    ]);
-    const applied = await vscode.workspace.applyEdit(edit);
-    if (!applied) {
-      throw new LakehouseError(
-        `Failed to update lakehouse attachments: VS Code rejected the metadata edit on '${path.basename(context.notebookUri.fsPath)}'.`,
-        {
-          operation: "update lakehouse attachment",
-          entity: `notebook ${path.basename(context.notebookUri.fsPath)}`,
-          remediation: "Retry; if it persists, reopen the notebook first.",
-        },
-      );
+    const uri = context.notebookUri.toString();
+    const shown = vscode.window.visibleNotebookEditors.some(
+      (editor) => editor.notebook.uri.toString() === uri,
+    );
+    if (shown) {
+      await applyAttachmentEdit(this.findNotebook(context.notebookUri), update);
+    } else {
+      await editAndSaveAttachments(context.notebookUri, update);
     }
   }
 
