@@ -219,8 +219,8 @@ can check with `git diff` that saving changes nothing unexpected.
 
 ## 2. Sign in (remembered per repo)
 
-The per-repo sign-in needs a version newer than 1.1.7; 1.1.7 and earlier
-ask you to type a tenant GUID instead.
+The per-repo sign-in needs a version newer than 1.1.7; older
+versions ask you to type a tenant GUID instead.
 
 - [ ] Run **Fabric: Sign In**. **Expect:** a list titled _Sign in to
       Fabric_ with the Microsoft accounts already signed in to VS Code and

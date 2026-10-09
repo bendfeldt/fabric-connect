@@ -2,9 +2,11 @@
 
 Current scope and enduring decisions are in [Architecture](docs/architecture.md).
 Use git history for the authoritative record of commits and
-[CHANGELOG.md](CHANGELOG.md) for release history. The manifest release version
-is `1.2.0`; committed features listed under Unreleased are not a claim that the
-latest released VSIX already includes them.
+[CHANGELOG.md](CHANGELOG.md) for release history. The released version is the
+one in `package.json`, changed by convention only by the Release workflow's bump
+PR (`test/versionConsistency.test.ts` fails CI if it drifts); committed features
+listed under Unreleased are not a claim that the latest released VSIX already
+includes them.
 
 ## Implemented
 
@@ -40,6 +42,12 @@ latest released VSIX already includes them.
   and narrow HTTP 404/recognized terminal-dead HTTP 400 invalidation. Stale
   replies cannot clear a newer generation; original errors remain visible;
   the next explicit run starts fresh without automatic code replay.
+- **Version consistency:** the Release workflow's bump PR now carries the
+  changelog with the version (`scripts/syncChangelog.cjs` files Unreleased under
+  the new version and opens a fresh Unreleased section) and auto-merges by
+  rebase. Guides no longer hard-code a release or development version, and
+  `test/versionConsistency.test.ts` fails CI when the manifest, lockfile and
+  changelog disagree or a guide names a released version.
 - **Documentation alignment:** current architecture/development references,
   consolidated onboarding/build instructions, complete manual fixtures,
   accurate command/settings/security references and installed contributor
@@ -84,8 +92,8 @@ documentation correction.
 The packaging script now pins vsce 4.0.0, with Node 22 in Build and
 release-packaging CI. Node 22+ is required only for packaging; extension
 runtime requirements and the Node 18/20/22 test matrix are unchanged.
-Local packaging verified normal `1.2.0` and development `1.2.1-dev.16`
-versions in both packaged manifests and VSIX metadata, with 68 allowlisted
+Local packaging verified a normal release version and a development version
+override in both packaged manifests and VSIX metadata, with 68 allowlisted
 files each. Checkout manifest/lockfile bytes and git commit/tag references
 were unchanged by packaging. The two session-only verification VSIX files
 were removed. Compilation, all 13 manifest regressions, formatting,

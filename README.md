@@ -123,7 +123,8 @@ API is used.
 Releases are initiated manually: an ordinary merge to `main` never releases.
 A maintainer runs
 **Actions → Release → Run workflow** (bump `auto`, `patch`, `minor` or
-`major`), which opens a version-bump PR; merging that publishes a GitHub
+`major`), which opens a version-bump PR that also files the changelog's
+Unreleased entries under the new version; merging that publishes a GitHub
 Release with the `.vsix`. CI packages the
 extension on every PR and checks that the `.vsix` contains only the
 compiled extension, manifest, README, changelog, license and media.

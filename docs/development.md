@@ -124,8 +124,9 @@ npm run package -- --out fabric-connect-local.vsix
 ```
 
 Changing the filename alone does not change the installed version. For the
-primary local development workflow, use a concrete version override such as
-`1.2.1-dev.16` with `--no-update-package-json` and `--no-git-tag-version`.
+primary local development workflow, use a concrete version override (the next
+patch version plus a `-dev.N` suffix) with `--no-update-package-json` and
+`--no-git-tag-version`.
 The [versioned local-build recipe](local-build.md#1-build-a-versioned-development-vsix)
 changes the version inside the VSIX without editing the checkout's manifest
 or lockfile, and includes matching install/reload/repeat instructions.
@@ -143,12 +144,41 @@ There is no formatting workflow; run the relevant check locally.
 A normal merge to main does **not** release. A maintainer manually dispatches
 the Release workflow with `auto`, `patch`, `minor` or `major`. `auto` infers
 the bump from Conventional Commits since the last `v*` tag. The workflow opens
-or refreshes a `bot/version-bump` PR and enables squash auto-merge. Its merge
-commit starts `chore(release):`, which triggers tests, packaging and a GitHub
-Release/tag for the manifest version.
+or refreshes a `bot/version-bump` PR and enables **rebase** auto-merge. The one
+commit in that PR changes `package.json`, `package-lock.json` and
+`CHANGELOG.md` together: `scripts/syncChangelog.cjs` files the changelog's
+`## Unreleased` entries under `## <version> — <date>` and leaves a fresh empty
+`## Unreleased`. After the rebase merge, the commit on `main` starts
+`chore(release):`, which triggers tests, packaging and a GitHub Release/tag for
+the manifest version.
+
+## Keeping versions consistent
+
+The Release workflow is the only thing that writes the version. Everything else
+either follows from it or must not name it:
+
+- **Contributors never edit `package.json`'s version or the changelog's
+  version headings.** Add entries under `## Unreleased` in `CHANGELOG.md`.
+- **Guides use placeholders or commands that read `package.json`**, not a
+  literal release or `-dev` version (see the
+  [local build](local-build.md#1-build-a-versioned-development-vsix) recipe).
+  A fact about a past release ("added in the first release with feature X") is allowed only when listed in
+  `HISTORICAL` in `test/versionConsistency.test.ts`.
+- `test/versionConsistency.test.ts` fails CI when the manifest, lockfile and
+  the changelog's newest release disagree, when `## Unreleased` is missing, or
+  when a guide names a released or development version.
+- Merge pull requests by **rebase** (the Release workflow's bump PR does so
+  automatically). Each commit's Conventional Commit subject then reaches
+  `main`, and the `auto` bump reads every one of them: any `feat:` anywhere in a
+  merged branch gives a minor bump, `!:`/`BREAKING CHANGE` a major one. The
+  repository also allows squash and merge-commit merges; those are chosen per
+  merge, not enforced.
+- If `main` changes after a bump PR is opened (for example a new changelog
+  entry), run the Release workflow again: it rebuilds `bot/version-bump` from
+  the tip of `main` and rolls the changelog afresh, rather than rebasing.
 
 Repository setup requires `RELEASE_PAT` through GitHub's secret store, the
-workflow's Contents/Pull requests permissions, allowed squash/auto-merge and
+workflow's Contents/Pull requests permissions, allowed rebase/auto-merge and
 passing required checks. If human approval is required, a maintainer must also
 approve the bump PR. The [workflow](../.github/workflows/release.yml) is the
 authoritative operational configuration. Do not embed credential values or
