@@ -909,7 +909,7 @@
     "watch": "tsc -watch -p ./",
     "test": "npm run clean && tsc -p ./ && node --test out/test/*.test.js",
     "vscode:prepublish": "npm run clean && npm run compile",
-    "package": "npx --yes @vscode/vsce@3.9.2 package",
+    "package": "npx --yes @vscode/vsce@4.0.0 package",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

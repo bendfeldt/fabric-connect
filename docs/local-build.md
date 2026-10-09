@@ -12,7 +12,8 @@ source instead (see [Development](development.md#run-and-debug-the-extension)).
 
 ## Prerequisites
 
-- Node.js 18 or later.
+- **Node.js 22 or later** and npm for packaging with vsce 4.0.0.
+  Compilation/native tests still support Node 18+, but creating a VSIX does not.
 - VS Code 1.93 or later, with the `code` command on your `PATH`. In VS Code:
   Command Palette → **Shell Command: Install 'code' command in PATH**.
 
@@ -43,8 +44,8 @@ remain unchanged; no version commit, git tag or release is created.
 
 Use the existing `npm run package` script so the recipe stays on the pinned
 vsce version. These flags and the packaged-version override are supported by
-the official vsce 3.9.2 [CLI](https://github.com/microsoft/vscode-vsce/blob/v3.9.2/src/main.ts)
-and [packaging implementation](https://github.com/microsoft/vscode-vsce/blob/v3.9.2/src/package.ts).
+the official vsce 4.0.0 [CLI](https://github.com/microsoft/vscode-vsce/blob/v4.0.0/src/main.ts)
+and [packaging implementation](https://github.com/microsoft/vscode-vsce/blob/v4.0.0/src/package.ts).
 
 Choose a new development suffix for each distinguishable build, such as
 `1.2.1-dev.17` next. Semver orders `1.2.1-dev.16` above `1.2.0` but below
