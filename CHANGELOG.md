@@ -4,6 +4,11 @@ All notable changes to Fabric Connect. Changes merged since the last
 release are listed under "Unreleased" until a maintainer runs the release
 workflow; each GitHub Release carries the matching `.vsix`.
 
+## 1.4.0
+
+- Changelog: the entries that shipped in 1.3.0 are filed under 1.3.0
+  instead of "Unreleased". No extension changes.
+
 ## 1.3.0 — Fabric side bar and repo-centric workflows
 
 - **Packaging toolchain** — pin vsce 4.0.0 and use Node 22 for Build and
