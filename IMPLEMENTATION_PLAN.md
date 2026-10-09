@@ -73,6 +73,14 @@ approved documentation text. Independent review passed after correcting
 compute-fallback tenant checks, attachment/default semantics, Run All Above
 and session-sharing descriptions.
 
+The local-build guide again makes versioned development VSIX packages the
+primary workflow, using the pinned packaging script with
+`--no-update-package-json` and `--no-git-tag-version`. The fixed-name build
+remains an alternative. The recipe was checked against the pinned vsce
+implementation; local link/formatting checks and independent review passed.
+No package build or extension installation was performed as part of this
+documentation correction.
+
 ## Next authorized work
 
 - After explicit approval, smoke-test current source in a running VS Code host

@@ -115,13 +115,18 @@ No tag, commit or release is created. The package script uses
 `@vscode/vsce@3.9.2`; if unavailable locally, `npx` may download that tooling.
 Do not run it in a no-install/offline task unless the tool is already available.
 
-To name a package unambiguously without changing the version:
+To name a package unambiguously while keeping the manifest's version:
 
 ```sh
 npm run package -- --out fabric-connect-local.vsix
 ```
 
-For the install/reload/test loop, see [Local builds](local-build.md).
+Changing the filename alone does not change the installed version. For the
+primary local development workflow, use a concrete version override such as
+`1.2.1-dev.16` with `--no-update-package-json` and `--no-git-tag-version`.
+The [versioned local-build recipe](local-build.md#1-build-a-versioned-development-vsix)
+changes the version inside the VSIX without editing the checkout's manifest
+or lockfile, and includes matching install/reload/repeat instructions.
 `.vscodeignore` allowlists the manifest, compiled `out/src/**/*.js`, README,
 changelog, license and media. Sources, tests, `docs/` and agent tooling do not
 ship. README documentation links therefore point to the repository.
