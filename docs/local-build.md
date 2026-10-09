@@ -8,7 +8,7 @@ tags or GitHub Releases: those only happen when a maintainer runs
 Use a local `.vsix` when you need to test exactly what ships: the packaged
 file list, the walkthrough, the minimum VS Code version, or a clean
 install. For a quick debug loop with breakpoints, run the extension from
-source instead (see [Installation guide](installation.md), option 3).
+source instead (see [Development](development.md#run-and-debug-the-extension)).
 
 ## Prerequisites
 
@@ -16,57 +16,25 @@ source instead (see [Installation guide](installation.md), option 3).
 - VS Code 1.93 or later, with the `code` command on your `PATH`. In VS Code:
   Command Palette → **Shell Command: Install 'code' command in PATH**.
 
-## 1. Install dependencies
+## 1. Build one explicitly named artifact
 
-First time, and whenever `package-lock.json` changes:
+Follow [Development](development.md#toolchain-and-first-setup) for initial
+setup and tests, then use its
+[packaging recipe](development.md#package-from-source) with a fixed local name:
 
 ```sh
-npm ci
+npm run package -- --out fabric-connect-local.vsix
 ```
 
-## 2. Run the tests (optional)
+This recompiles and packages the working tree without bumping the version,
+tagging or releasing. The manifest version remains the installed version
+label even if this artifact contains newer source; record the git commit
+alongside it when comparing builds.
+
+## 2. Install it
 
 ```sh
-npm test
-```
-
-This does a clean build and runs the unit tests. No Fabric workspace is
-needed.
-
-## 3. Build the package
-
-```sh
-npm run package
-```
-
-This deletes `out/`, recompiles, and writes `fabric-connect-<version>.vsix`
-in the repo root. The version comes from `package.json`. The `.vsix` is
-gitignored, and no tag, release or commit is created.
-
-Two optional variations:
-
-- **Name the file** so you can tell a local build from a released one:
-
-  ```sh
-  npm run package -- --out fabric-connect-local.vsix
-  ```
-
-- **Use a different version** without editing `package.json`:
-
-  ```sh
-  npx --yes @vscode/vsce@4.0.0 package 1.2.1-dev.1 --no-git-tag-version --no-update-package-json
-  ```
-
-  This is handy to see at a glance which build is installed
-  (Extensions view → Fabric Connect shows the version). Pick a version
-  above the installed one: in semver a pre-release sorts _below_ its
-  release (`1.2.0-dev.1` < `1.2.0`), and `code --install-extension`
-  refuses a lower version unless you pass `--force`.
-
-## 4. Install it
-
-```sh
-code --install-extension fabric-connect-1.2.0.vsix --force
+code --install-extension fabric-connect-local.vsix --force
 ```
 
 Use the file name you built. `--force` reinstalls over the same version,
@@ -74,26 +42,30 @@ so you don't have to bump the version for every test.
 
 Or use the UI: Extensions view → `…` menu → **Install from VSIX…**.
 
-## 5. Reload VS Code
+## 3. Reload VS Code
 
 Command Palette → **Developer: Reload Window**. Then check the Extensions
-view shows the version you installed.
+view shows the version you installed. Do not identify builds solely by the
+version if you reused the same version number.
 
-## 6. Test it
+## 4. Test it
 
 Work through the relevant part of the [test checklist](testing.md), or
 just the steps that cover your change.
 
-## 7. Repeat
+## 5. Repeat
 
-Change the code, then run steps 3–5 again. Steps 3 and 4 are one line:
+Change the code, run relevant local checks, then rebuild, install and reload.
+For the first two actions:
 
 ```sh
-npm run package && code --install-extension fabric-connect-*.vsix --force
+npm run package -- --out fabric-connect-local.vsix &&
+  code --install-extension fabric-connect-local.vsix --force
 ```
 
-(If old `.vsix` files pile up in the repo root, delete them first so the
-`*` matches only the new one.)
+Use an exact filename. Older packages can coexist without making the install
+ambiguous. Packaging may download vsce; installation/reload and live Fabric
+validation are deliberate manual actions, not part of a no-install docs check.
 
 ## Going back to the released version
 

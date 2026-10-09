@@ -102,8 +102,7 @@ export function activate(context: vscode.ExtensionContext): void {
     },
     workspaceRoot ?? "",
   );
-  // Part 1 registers only 'notebook'; Part 2 adds 'pipeline' here without
-  // touching the Target Config Module.
+  // Only notebook-shaped folder targets are currently registered.
   targetResolver.registerItemType("notebook", { itemType: "notebook" });
 
   const livyManager = new LivySessionManager(

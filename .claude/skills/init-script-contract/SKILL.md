@@ -6,9 +6,15 @@ when_to_use: scaffolding a new project the initializer agent will hand to future
 
 # Init Script Contract
 
+This optional contract is for bootstrapping a web/service project. Fabric
+Connect is a VS Code extension with npm commands and an Extension Development
+Host; it has none of these five scripts and no local application database.
+Use [Development](../../../docs/development.md) here. Do not add a server
+lifecycle just to satisfy this generic example.
+
 Every coding session in a multi-session project starts by bringing the dev server up. If the entry point is named differently each time, or takes four minutes, or prompts for input, you burn tokens and wall-clock on every single session. The fix is a fixed set of script names at the project root with a hard contract. The initializer agent writes them once; every downstream session relies on them.
 
-The names are load-bearing — [[shift-notes]] and [[broken-window-check]] both refer to them by name. Do not invent your own.
+The names are load-bearing — [shift-notes](../shift-notes/SKILL.md) and [broken-window-check](../broken-window-check/SKILL.md) both refer to them by name. Do not invent your own.
 
 ## When to apply
 
@@ -18,13 +24,13 @@ The names are load-bearing — [[shift-notes]] and [[broken-window-check]] both 
 
 ## The five scripts
 
-| Script     | Contract                                                                                  |
-| ---------- | ----------------------------------------------------------------------------------------- |
-| `init.sh`  | Clean clone → dev server up on `localhost`. Idempotent. Under 120s. Zero prompts.         |
-| `serve.sh` | Start the dev server only. Written when `init.sh` cannot fit under 120s.                  |
-| `test.sh`  | Run the full test suite. Exit non-zero on any failure.                                    |
-| `stop.sh`  | Cleanly kill the dev server. Sessions run this before exiting.                            |
-| `reset.sh` | Wipe local DB and ephemeral state. Leave code untouched. Used by [[broken-window-check]]. |
+| Script     | Contract                                                                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `init.sh`  | Clean clone → dev server up on `localhost`. Idempotent. Under 120s. Zero prompts.                                        |
+| `serve.sh` | Start the dev server only. Written when `init.sh` cannot fit under 120s.                                                 |
+| `test.sh`  | Run the full test suite. Exit non-zero on any failure.                                                                   |
+| `stop.sh`  | Cleanly kill the dev server. Sessions run this before exiting.                                                           |
+| `reset.sh` | Wipe local DB and ephemeral state. Leave code untouched. Used by [broken-window-check](../broken-window-check/SKILL.md). |
 
 ## Procedure
 
@@ -34,8 +40,12 @@ The names are load-bearing — [[shift-notes]] and [[broken-window-check]] both 
 4. **Make it idempotent.** Run `./init.sh` twice back-to-back. If the second run errors or duplicates state, guard each step with existence checks (`if [ ! -d node_modules ]`, `createdb --if-not-exists`, etc.).
 5. **Write `stop.sh`** to kill by PID file or port, not by process name grep. Grep kills sibling agents on shared sandboxes.
 6. **Write `test.sh`** with a single end-to-end smoke test that proves `init.sh` produced a serving app. No feature tests — those belong to future sessions.
-7. **Write `reset.sh`** to drop and recreate the DB, clear caches, wipe `/tmp` artifacts. Never touch tracked files.
-8. **Verify from empty state.** `git clean -fdx && ./init.sh && ./test.sh && ./stop.sh`. Every script exits 0.
+7. **Write `reset.sh`** only for an explicitly disposable test database
+   and named project-owned ephemeral artifacts. Require approval for
+   destructive resets; never wipe shared temporary directories or user files.
+8. **Verify from an empty disposable clone**, not by cleaning a user's
+   working tree. Run `./init.sh && ./test.sh && ./stop.sh`; every script
+   must exit 0. No broad `git clean -fdx` is required.
 
 ## Anti-patterns
 
@@ -44,7 +54,7 @@ The names are load-bearing — [[shift-notes]] and [[broken-window-check]] both 
 - **Unpinned deps.** `npm install foo` without a lockfile means the next session gets a different transitive graph. See the Feb 2026 incident where an agent ran `npm update --save` and broke twelve sessions.
 - **Killing the server with `pkill node`.** Kills every node process in the sandbox. Use a PID file written by `serve.sh`.
 - **Letting `init.sh` create files outside the project directory.** Sandbox will reject it and the failure mode is opaque.
-- **Skipping `reset.sh` because "the DB is fine".** [[broken-window-check]] needs it to isolate a bad commit from stale state.
+- **Skipping `reset.sh` because "the DB is fine".** [broken-window-check](../broken-window-check/SKILL.md) needs it to isolate a bad commit from stale state.
 
 ## Red flags
 
@@ -59,8 +69,8 @@ Single-session scripts and one-shot demos. The contract exists to amortize setup
 
 ## Related
 
-- [[shift-notes]] — the notes downstream sessions read after `init.sh` succeeds.
-- [[broken-window-check]] — runs `init.sh` then `reset.sh` when reverting a bad feature.
-- [[single-feature-per-session]] — the discipline this contract enables by keeping session startup cheap.
+- [shift-notes](../shift-notes/SKILL.md) — the notes downstream sessions read after `init.sh` succeeds.
+- [broken-window-check](../broken-window-check/SKILL.md) — runs `init.sh` then `reset.sh` when reverting a bad feature.
+- [single-feature-per-session](../../../AGENTS.md#single-feature-rule) — the discipline this contract enables by keeping session startup cheap.
 
 Inspiration: Prithvi's March 2026 planner/generator/evaluator write-up, where the fixed harness entry points let the evaluator persona re-verify any generator session from scratch without re-learning the launch procedure.

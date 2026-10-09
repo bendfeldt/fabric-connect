@@ -11,12 +11,15 @@ Assume the diff is broken. Prove it isn't.
 ## Steps
 
 1. Load the goal spec:
-   - Read `PROMPT.md` if it exists. If it does not, read `IMPLEMENTATION_PLAN.md`.
+   - Read the approved task/session goal or `PROMPT.md` if present.
+     Use `IMPLEMENTATION_PLAN.md` for current state and constraints.
    - If neither exists, stop and tell the user to run `/spec` first. Do not verify against an absent contract.
 2. Load the current diff:
    - `git diff HEAD` — uncommitted changes.
    - `git log --oneline -5` — recent context.
-3. Invoke the `adversarial-verify` skill by reading `skills/adversarial-verify/SKILL.md` (repo layout) or `.claude/skills/adversarial-verify/SKILL.md` (installed layout). Walk the 11 shortcut checklist verbatim against the diff, plus the 4 environmental tells in `docs/checklists/red-flags.md`.
+3. Read `.claude/skills/adversarial-verify/SKILL.md` and walk its
+   11-shortcut checklist against the diff. No separate red-flags checklist
+   is installed; do not depend on an absent upstream file.
 4. Dispatch the `verifier` subagent (`.claude/agents/verifier.md`) for a second, cold-context pass on the same diff.
 5. Return a single JSON verdict, and nothing else:
 
@@ -24,7 +27,8 @@ Assume the diff is broken. Prove it isn't.
    {"passes": bool, "failures": [{"file": str, "line": int, "shortcut": str, "why": str}]}
    ```
 
-6. If `passes` is false: do NOT commit, do NOT mark the task done, print the failure list, and stop.
+6. If `passes` is false: do NOT commit or mark the task done. The JSON
+   failure list is the output; stop without adding prose after it.
 
 ## Never
 
@@ -35,4 +39,9 @@ Assume the diff is broken. Prove it isn't.
 
 ## Exit contract
 
-Non-zero exit on any failure. The `run.sh` loop treats non-zero as "not done" and re-runs the next turn.
+This command file defines a verdict, not a shell program. A CLI can exit 0
+while printing `{"passes": false, ...}`. A machine caller must validate the
+JSON and map a failed/invalid verdict to failure explicitly. The installed
+`run.sh` does not parse this JSON and only echoes a non-zero judge exit before
+continuing. It is not an enforced commit gate. A client must also expose a
+subagent dispatcher to perform the separate verifier step.

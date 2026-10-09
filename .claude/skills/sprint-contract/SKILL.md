@@ -24,7 +24,10 @@ Inspired by the planner/generator/evaluator split in Prithvi's March 2026 post o
 2. **Write the acceptance predicates.** 3-7 bullets, each one a check that either passes or fails. No "clean code", no "good UX" — write predicates a script or a browser click can decide.
 3. **Name the runtime path.** How is this exercised end-to-end? Which URL, which CLI invocation, which button click? The evaluator will drive this exact path — no substitutes.
 4. **List the out-of-scope items.** Two or three things the generator will be tempted to also fix. Written down = evaluator will reject them as scope creep, generator has an anchor when tempted.
-5. **Sign it in the shift notes.** Paste the contract into `claude-progress.txt` (or equivalent) under a `## Sprint contract` header, with the sprint start timestamp. Both personas reference this exact text for the rest of the sprint.
+5. **Record the approved contract.** Use the client's approved session
+   goal/plan and reference it from the existing handoff when appropriate
+   (`IMPLEMENTATION_PLAN.md` here). `claude-progress.txt` is not required.
+   Both personas use the same acceptance criteria.
 6. **Then, and only then, write code.**
 
 ## Contract shape
@@ -51,7 +54,7 @@ Out of scope this sprint:
 - **Predicates that are prose, not checks.** "Handles errors gracefully" is not a predicate. "Returns 400 with `{error: "missing_field"}` when `name` is absent" is.
 - **Renegotiating mid-sprint.** If the generator hits a wall, it does not edit the contract to route around it. It surfaces the wall, the _planner_ revises scope, a new contract gets signed. Evaluator leniency comes from mid-flight edits — block them structurally.
 - **Contract written by the generator alone.** The generator will write predicates its planned code happens to satisfy. Have the evaluator draft or at least sign off before code starts.
-- **No runtime path.** Without it, the evaluator falls back to reading unit tests — see [[broken-window-check]] for how that fails.
+- **No runtime path.** Without it, the evaluator falls back to reading unit tests — see [broken-window-check](../broken-window-check/SKILL.md) for how that fails.
 - **Skipping the out-of-scope list.** This is the cheapest anti-drift device you have. Skip it and you'll ship a "small refactor" that broke two other features.
 
 ## Rehydration case
@@ -64,9 +67,9 @@ Two to five minutes of prose before code. In return: the evaluator has something
 
 ## Related
 
-- [[shift-notes]] — where the contract lives across sessions.
-- [[broken-window-check]] — what the evaluator runs _against_ the contract at session start.
-- [[adversarial-verify]] — the end-of-sprint pass that decides whether every predicate actually holds.
+- [shift-notes](../shift-notes/SKILL.md) — where the contract lives across sessions.
+- [broken-window-check](../broken-window-check/SKILL.md) — what the evaluator runs _against_ the contract at session start.
+- [adversarial-verify](../adversarial-verify/SKILL.md) — the end-of-sprint pass that decides whether every predicate actually holds.
 
 ## When NOT to apply
 

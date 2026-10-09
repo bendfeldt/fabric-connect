@@ -2,7 +2,8 @@
 
 What Fabric Connect talks to, what it is allowed to change, and what it
 keeps on your machine. Written for developers and for whoever reviews an
-extension before it is allowed near client tenants.
+extension before it is allowed near client tenants. This describes the current
+source, including [Unreleased](../CHANGELOG.md#unreleased) changes.
 
 ## The short version
 
@@ -17,8 +18,9 @@ extension before it is allowed near client tenants.
   changing it is a visible, reviewed change.
 - **Tokens stay in VS Code.** Sign-in uses VS Code's built-in Microsoft
   account provider; the extension never writes tokens to disk or logs.
-- **No telemetry.** The extension sends nothing anywhere except the
-  Microsoft endpoints below, and only when you run a command.
+- **No telemetry.** The extension uses the Microsoft endpoints below.
+  Activation, sign-in restoration, view expansion/refresh and execution
+  can cause requests; a separate command is not required for every call.
 
 ## Sign-in and permissions
 
@@ -34,7 +36,7 @@ only when a feature needs them:
 | ---------------------------- | --------------------------------------------------- | ------------------------------------------- |
 | Fabric REST API (incl. Livy) | `https://api.fabric.microsoft.com/.default`         | everything below except the next three rows |
 | OneLake (ADLS Gen2 API)      | `https://storage.azure.com/.default`                | browsing files, previews, scratch staging   |
-| Power BI REST API            | `https://analysis.windows.net/powerbi/api/.default` | `.dax` queries                              |
+| Power BI REST API            | `https://analysis.windows.net/powerbi/api/.default` | `.dax` queries and capacity name lookup     |
 | Kusto (Eventhouse / KQL DB)  | `https://kusto.kusto.windows.net/.default`          | `.kql` queries                              |
 | Azure Resource Manager       | `https://management.azure.com/.default`             | listing your tenants (see below)            |
 
@@ -54,7 +56,7 @@ a token is requested.
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `api.fabric.microsoft.com`                | listing capacities/workspaces/items, Livy sessions and batches, GraphQL queries, item definition reads, API notebooks |
 | `onelake.dfs.fabric.microsoft.com`        | explorer file listings and previews; uploading/deleting the scratch folder                                            |
-| `api.powerbi.com`                         | `.dax` queries                                                                                                        |
+| `api.powerbi.com`                         | `.dax` queries and read-only capacity name lookup                                                                     |
 | `*.kusto.fabric.microsoft.com`            | `.kql` queries — the origin is validated before a token is attached; any other host is refused, even for reads        |
 | `management.azure.com`                    | `GET /tenants` only, when you ask to find your tenants while switching tenant                                         |
 | `login.microsoftonline.com` (via VS Code) | sign-in                                                                                                               |
@@ -85,8 +87,12 @@ encoded separators and extra query strings cannot satisfy them.
 
 **OneLake writes** (upload, delete) are allowed only below
 `Files/.fabric-connect/` in a Lakehouse, with plain path segments. This
-scratch folder holds your zipped Python modules and Spark job files while
-a session runs; it is deleted when you stop or restart the session.
+scratch prefix holds zipped Python modules and Spark job files. Each window
+uses its own directory below the prefix. Explicit stop/restart attempts
+to remove that window's directory on the host; job completion attempts
+cleanup of its staged subfolder. Deletion is **best effort**, so failures
+can leave files behind. Service-side expiry or closing VS Code does not
+guarantee cleanup.
 
 Note what the allowlist cannot constrain: code you run in a Spark session,
 and GraphQL mutations you write, act on **data** with your permissions,
@@ -95,13 +101,14 @@ workspace **items** — the extension itself never changes them.
 
 ## What is stored on your machine
 
-| Where                                | What                                                                                                                                                                                                                                                                                                                      | Shared?                                                                      |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `.fabric/local.json` (in the repo)   | `"signIn"`: the account name, VS Code's account ID, tenant ID and name (no token); `"compute"`: capacity, workspace, Lakehouse, Environment IDs and names; `"targets"`: workspace ID per target; `"queryBindings"`: item per query file; `"lakehouseBindings"`: Lakehouse and workspace IDs and names per notebook folder | **Never commit** — add it to `.gitignore` (the extension warns if you don't) |
-| `.fabric/targets.json` (in the repo) | folder → target mapping and tenant IDs                                                                                                                                                                                                                                                                                    | Committed by design                                                          |
-| VS Code workspace state              | Livy session IDs per host (to reattach after a reload)                                                                                                                                                                                                                                                                    | Local to VS Code                                                             |
-| VS Code global state                 | up to 10 recently used tenants (ID, name, domain), offered when switching tenant                                                                                                                                                                                                                                          | Local to VS Code                                                             |
-| VS Code secret storage               | sign-in sessions (managed by VS Code, not by the extension)                                                                                                                                                                                                                                                               | Local to VS Code                                                             |
+| Where                                                                    | What                                                                                                                                                                                                                                                                                                                      | Shared?                                                                      |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `.fabric/local.json` (in the repo)                                       | `"signIn"`: account/tenant metadata (no token); `"compute"`: tenant and capacity, optional host workspace/Lakehouse/Environment, names and optional capacity label; `"targets"`: workspace ID per target; `"queryBindings"`: item per query file; `"lakehouseBindings"`: physical Lakehouse/workspace per notebook folder | **Never commit** — add it to `.gitignore` (the extension warns if you don't) |
+| `.fabric/targets.json` (in the repo)                                     | folder → target mapping and tenant IDs                                                                                                                                                                                                                                                                                    | Committed by design                                                          |
+| VS Code workspace state                                                  | Livy session IDs per host (to reattach after a reload)                                                                                                                                                                                                                                                                    | Local to VS Code                                                             |
+| VS Code global state                                                     | up to 10 recently used tenants (ID, name, domain), offered when switching tenant                                                                                                                                                                                                                                          | Local to VS Code                                                             |
+| VS Code secret storage                                                   | sign-in sessions (managed by VS Code, not by the extension)                                                                                                                                                                                                                                                               | Local to VS Code                                                             |
+| VS Code settings (`.vscode/settings.json` when saved at workspace scope) | module mode and source folders; notebook labels are supplied by manifest defaults                                                                                                                                                                                                                                         | Share deliberately; do not put secrets in settings                           |
 
 Pulled items are written only into the folder you choose, only inside
 their `<name>.<Type>/` folder (definition part paths that would escape it
@@ -140,8 +147,9 @@ every value that comes from Fabric is HTML-escaped before rendering.
 
 The extension has **no runtime dependencies**: it uses VS Code's API and
 Node's built-ins (including `fetch`; the ZIP writer for module staging is
-part of the extension). Development dependencies are TypeScript and type
-definitions only. The packaged `.vsix` contains only the compiled
+part of the extension). development dependencies are TypeScript, Node/VS Code type definitions and
+pinned Prettier. The package script invokes a pinned vsce version through
+`npx`, which may download packaging tooling when it is not already available. The packaged `.vsix` contains only the compiled
 extension, its manifest, README, changelog, license, icon and walkthrough
 pages; CI checks this on every pull request.
 

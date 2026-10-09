@@ -11,7 +11,7 @@
  * always edits the live document — or fails loudly if it is gone.
  *
  * Webview safety: strict CSP, no remote script loading, plain vanilla JS
- * (no UI framework — Part 1's panel doesn't need one), and every value
+ * (no UI framework), and every value
  * from the API is HTML-escaped before rendering.
  */
 

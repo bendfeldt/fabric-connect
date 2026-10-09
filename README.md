@@ -5,7 +5,9 @@
 **Local-first Microsoft Fabric development in VS Code** — a "Databricks
 Connect for Fabric". Your notebooks, Python modules, Spark jobs and queries
 live in your git repo. Connect the repo once to a Fabric capacity and run
-everything from the editor.
+everything from the editor. This README describes the **current source**;
+features under [Unreleased](https://github.com/bendfeldt/fabric-connect/blob/main/CHANGELOG.md#unreleased)
+may not be in the latest released `.vsix`.
 
 **Nothing is ever deployed.** Fabric Connect never creates, updates or
 deletes workspace items — Lakehouses included — and refuses, in code,
@@ -15,25 +17,27 @@ deployment pipelines, CI).
 
 ## Features
 
-- **Connect to compute** — pick capacity (SKU) → workspace → existing host
-  Lakehouse (→ Environment) once per repo; the status bar shows the
-  connection and which Lakehouse the active notebook runs on.
+- **Connect to compute** — pick a capacity once per repo. A host Lakehouse
+  and optional Environment are picked when code without its own Lakehouse
+  first needs them; the status bar shows the actual execution host.
 - **Notebooks** — Fabric's git format (`notebook-content.py`, `.scala`,
   `.sql`, `.r`) and `.ipynb`, saved byte-for-byte compatible with the
-  portal; Lakehouse attach/detach; local `%run`; `%%sql` and other cell
-  magics; `display()` tables; restart, list and stop Livy sessions.
-- **Your own modules** — set `fabric-connect.sourceRoots` and
-  `import mypkg` on Fabric uses the code in your working tree. No wheels,
-  no uploads to manage.
+  portal; notebook/text editing and text diffs; local `%run`, cell magics
+  and `display()` tables; restart, list and stop Livy sessions. Bind a
+  git-synced default Lakehouse locally without changing notebook metadata.
+- **Python modules: Local or Remote** — choose working-tree packages
+  staged to the session, or packages already installed in Fabric. Local
+  source folders come from `sourceRoots`, supported `pyproject.toml`
+  layouts, or `src`.
 - **Run files and jobs** — run a `.py`/`.sql`/`.scala`/`.r` file or a
   selection on Fabric; run a Spark Job Definition as a Livy batch from its
   local files.
 - **Query files** — `.kql`, `.dax` and `.graphql` against a KQL database,
   semantic model or GraphQL API; results as tables. (T-SQL: use the
   `mssql` extension with the connection string from the explorer.)
-- **Fabric explorer** — read-only view of capacities, workspaces, items,
-  OneLake files and tables and connections; table and file previews; pull
-  an item into the repo; hover a GUID to see what it is.
+- **Fabric views** — Configuration, local Repo, Lakehouses and Connections
+  in the Activity Bar, plus a remote Explorer tree. Browse OneLake, preview
+  tables/files, pull an item into the repo or hover a GUID to identify it.
 - **API notebooks** — `.fabnb` notebooks with `%api` / `%cmd` cells for
   exploring the Fabric REST API.
 
@@ -47,56 +51,43 @@ deployment pipelines, CI).
    repo, like a Tabular Editor `.tmuo` file.
 4. **Fabric: Connect to Compute** → pick the capacity.
 5. Open a `*.Notebook/notebook-content.py` (or `.ipynb`), pick the
-   **Fabric Livy** kernel and run a cell.
+   **Fabric Livy** kernel and run a cell. If its default Lakehouse is
+   _not bound_, use **Fabric: Bind Notebook's Default Lakehouse…**. Without
+   a default, pick the compute host when prompted.
 
 The full walkthrough — modules, files, jobs, queries, explorer, API
-notebooks — is in **[Getting started](docs/getting-started.md)**, and in
+notebooks — is in **[Getting started](https://github.com/bendfeldt/fabric-connect/blob/main/docs/getting-started.md)**, and in
 VS Code under **Help → Welcome → Walkthroughs → Get started with Fabric
 Connect**.
 
 ## Documentation
 
-- **[Getting started](docs/getting-started.md)** — the end-to-end how-to.
-- **[User guide](docs/user-guide.md)** — reference for every feature,
+- **[Getting started](https://github.com/bendfeldt/fabric-connect/blob/main/docs/getting-started.md)** — the end-to-end how-to.
+- **[User guide](https://github.com/bendfeldt/fabric-connect/blob/main/docs/user-guide.md)** — reference for every feature,
   command, setting and error.
-- **[Installation guide](docs/installation.md)** — install a released
+- **[Installation guide](https://github.com/bendfeldt/fabric-connect/blob/main/docs/installation.md)** — install a released
   `.vsix`, build one from source, or run from source.
-- **[Build a `.vsix` locally](docs/local-build.md)** — package and install
+- **[Build a `.vsix` locally](https://github.com/bendfeldt/fabric-connect/blob/main/docs/local-build.md)** — package and install
   your working tree to test a fix, without a release.
-- **[Test and validate](docs/testing.md)** — a checklist for validating an
+- **[Test and validate](https://github.com/bendfeldt/fabric-connect/blob/main/docs/testing.md)** — a checklist for validating an
   installed build, feature by feature.
-- **[Security and data](docs/security.md)** — what the extension talks to,
+- **[Security and data](https://github.com/bendfeldt/fabric-connect/blob/main/docs/security.md)** — what the extension talks to,
   what it may change, and what it stores.
-- **[Plan](docs/plan-local-first.md)** and
-  **[Part 1 design](docs/design-part1-notebooks.md)** — architecture and
-  decisions.
-- **[Changelog](CHANGELOG.md)**.
+- **[Architecture](https://github.com/bendfeldt/fabric-connect/blob/main/docs/architecture.md)** — implemented boundaries, execution flows and design decisions.
+- **[Development](https://github.com/bendfeldt/fabric-connect/blob/main/docs/development.md)** — repository structure, builds, tests, debugging and releases.
+- **[Changelog](https://github.com/bendfeldt/fabric-connect/blob/main/CHANGELOG.md)**.
 
-## Commands
+## Commands and settings
 
-| Command                                         | What it does                                                   |
-| ----------------------------------------------- | -------------------------------------------------------------- |
-| `Fabric: Sign In`                               | Sign this repo in with a Microsoft account (remembered)        |
-| `Fabric: Switch Tenant` / `Fabric: Sign Out`    | Use another tenant with the same account / forget the sign-in  |
-| `Fabric: Connect to Compute`                    | Pick the capacity to run on                                    |
-| `Fabric: Change Host Lakehouse…`                | Pick the host Lakehouse (→ Environment) on that capacity       |
-| `Fabric: Disconnect from Compute`               | Remove the saved compute connection                            |
-| `Fabric: Open File as Fabric Notebook`          | Open any `.ipynb` with the Fabric notebook editor              |
-| `Fabric: Manage Lakehouses for Active Notebook` | Attach/detach Lakehouses, set the default                      |
-| `Fabric: Restart Livy Session`                  | Stop and start a fresh Spark session                           |
-| `Fabric: Stop Livy Session`                     | Stop the active notebook's Spark session                       |
-| `Fabric: Show Livy Sessions`                    | List active sessions on the host Lakehouse; stop selected ones |
-| `Fabric: Run File on Fabric`                    | Run a Python/SQL/Scala/R file                                  |
-| `Fabric: Run Selection on Fabric`               | Run the selection or current line                              |
-| `Fabric: Run Spark Job Definition`              | Run a local `*.SparkJobDefinition` folder as a Livy batch      |
-| `Fabric: Run Query File`                        | Run a `.kql` / `.dax` / `.graphql` file                        |
-| `Fabric: Change Query Target`                   | Re-pick the item a query file runs against                     |
-| `Fabric: New API Notebook`                      | Open a `.fabnb` REST API notebook                              |
+Use the Command Palette's **Fabric:** actions or the Fabric views. The
+[user guide](https://github.com/bendfeldt/fabric-connect/blob/main/docs/user-guide.md#command-reference)
+owns the full command reference.
 
-Settings: `fabric-connect.sourceRoots` (folders whose Python modules are
-staged to the session) and `fabric-connect.debugLogging` (redacted API
-trace in the **Fabric Connect** output channel; tokens, IDs and cell
-contents never appear in logs).
+Settings are `fabric-connect.pythonModules` (`auto`, `local`, `remote`),
+`fabric-connect.sourceRoots` (local Python source folders) and
+`fabric-connect.debugLogging` (opt-in redacted HTTP and execution-phase
+diagnostics). Runtime errors/output can contain sensitive values; review
+them before sharing.
 
 ## Requirements
 
@@ -113,7 +104,8 @@ npm test          # clean build + unit tests (node --test, no live workspace nee
 npm run package   # build fabric-connect-<version>.vsix
 ```
 
-Press `F5` in VS Code to launch an Extension Development Host.
+For the clean-clone debugging configuration and installed-build loop, see
+[Development](https://github.com/bendfeldt/fabric-connect/blob/main/docs/development.md).
 
 The core modules (`src/core/`) have no dependency on the `vscode` module —
 they run and test in plain Node. The VS Code adapters (`src/vscode/`) and
@@ -128,7 +120,8 @@ generic, observable API traffic, and compatibility first — the Fabric REST
 API version is an explicit constant, and only VS Code's stable extension
 API is used.
 
-Releases are manual: merging to `main` never releases. A maintainer runs
+Releases are initiated manually: an ordinary merge to `main` never releases.
+A maintainer runs
 **Actions → Release → Run workflow** (bump `auto`, `patch`, `minor` or
 `major`), which opens a version-bump PR; merging that publishes a GitHub
 Release with the `.vsix`. CI packages the

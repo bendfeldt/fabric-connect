@@ -44,8 +44,8 @@ export class TargetResolver implements ITargetResolver {
   ) {}
 
   /**
-   * Item types are added via this registry, not hardcoded: Part 2 registers
-   * `pipeline` here instead of modifying this module.
+   * Accepted target item types are registered by the composition root.
+   * The current extension registers only `notebook`.
    */
   registerItemType(itemType: string, handler: ItemTypeHandler): void {
     this.handlers.set(itemType, handler);

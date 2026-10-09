@@ -6,6 +6,10 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+- **Documentation refreshed** — current architecture and developer guides
+  replace superseded design plans; setup, commands/settings, local bindings,
+  module modes, validation fixtures and installed contributor guidance now
+  match the source tree. Build/install recipes use an explicitly named VSIX.
 - **Dead-session recovery** — the specific HTTP 400 Livy submission
   rejection reporting a matching terminal/dead session now clears its
   local reference, so the next run starts a fresh session without
@@ -32,7 +36,7 @@ workflow; each GitHub Release carries the matching `.vsix`.
   tree, metadata included — the cell diff hides those changes.
 - **Python modules: Local or Remote** — the **Python modules** row in
   the Configuration view, a status bar item (always in sync) and
-  **Fabric: Python Modules** pick whether `import` uses your working tree
+  **Fabric: Python Modules (Local or Remote)** pick whether `import` uses your working tree
   (staged to the session) or what the Fabric environment has installed,
   such as your wheel. Local finds the source folders from
   `pyproject.toml` when `fabric-connect.sourceRoots` is not set. An
@@ -74,7 +78,7 @@ workflow; each GitHub Release carries the matching `.vsix`.
   no capacity, missing Lakehouse).
 
 - **Connect = pick a capacity** — Connect to Compute (and the plug button
-  in Capacities) only picks the capacity. Code without a Lakehouse of its
+  in Configuration) only picks the capacity. Code without a Lakehouse of its
   own asks once for a host Lakehouse on that capacity; **Change Host
   Lakehouse…** changes it. Lakehouses lists only the connected capacity's
   workspaces.

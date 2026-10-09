@@ -61,6 +61,6 @@ Don't strip mid-project on a live long-running run — you'll perturb sessions i
 
 ## Related
 
-- [[shift-notes]] — record which components were stripped and when, so the next audit doesn't re-strip and re-restore the same piece.
-- [[adversarial-verify]] — the evaluator-generator pattern that may itself be a strip candidate on newer models.
-- [[broken-window-check]] — if you strip a component and the eval regresses in a specific way, that's your new broken window to hunt.
+- [shift-notes](../shift-notes/SKILL.md) — record which components were stripped and when, so the next audit doesn't re-strip and re-restore the same piece.
+- [adversarial-verify](../adversarial-verify/SKILL.md) — the evaluator-generator pattern that may itself be a strip candidate on newer models.
+- [broken-window-check](../broken-window-check/SKILL.md) — if you strip a component and the eval regresses in a specific way, that's your new broken window to hunt.

@@ -1,6 +1,6 @@
 ---
 name: using-loopkit
-description: Use when starting any conversation in a loopkit-enabled project - establishes how to find and use loopkit's 49 skills, requiring skill invocation before ANY response including clarifying questions.
+description: Use when starting any conversation in a loopkit-enabled project - establishes how to find and use installed skills, requiring skill invocation before ANY response including clarifying questions.
 ---
 
 # Using Loopkit
@@ -23,7 +23,7 @@ Then announce "Using [skill] to [purpose]" and follow the skill exactly. If it h
 
 Skills are files at `.claude/skills/<name>/SKILL.md`. Each has YAML frontmatter with `name` and `description` (the description is a trigger phrase, not a summary). Load a skill by reading its SKILL.md when its trigger matches your task.
 
-## Skill routing (49 skills, 10 tracks)
+## Skill routing
 
 | Task shape                                           | First skill                                                                          |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------ |
@@ -50,6 +50,14 @@ Skills are files at `.claude/skills/<name>/SKILL.md`. Each has YAML frontmatter 
 
 Full list: `ls .claude/skills/`.
 
+This is an **installed** skill collection, not the upstream loopkit source.
+Fabric Connect's workflow and actual file prerequisites are in
+[AGENTS.md](../../../AGENTS.md) and [Development](../../../docs/development.md).
+Optional examples for web servers, databases, feature ledgers and upstream
+model/evaluation research do not imply those components exist here. Use
+`IMPLEMENTATION_PLAN.md` as the tracked handoff; do not invent missing
+initialization scripts or ledgers merely to follow a generic example.
+
 ## Red Flags — STOP and check for a skill
 
 | Thought                                   | Reality                                                                                    |
@@ -71,30 +79,13 @@ Process skills first (spec-first, systematic-debugging, planner-spec-expand, spr
 - "Fix bug Y" → `systematic-debugging` → `read-the-trace` → fix → `verification-before-completion`.
 - "Session open in existing project" → `progress-reading-protocol` → `sprint-contract` → work.
 
-## Skill release convention
+## Installed skill layout
 
-Every new skill in loopkit ships as a folder with four required files. No exceptions — a skill without these is a draft, not a release.
-
-```
-skills/<skill-name>/
-  SKILL.md            # the skill itself (frontmatter + procedure)
-  POST.md             # ~200-word X-thread-shaped explainer
-  evidence/
-    before.md         # verbatim transcript WITHOUT the skill loaded
-    after.md          # same prompt WITH the skill loaded
-```
-
-- `SKILL.md` — routed on its frontmatter `description`. Body under ~150 lines.
-- `POST.md` — the announcement thread. Copy from `template/POST.md`, fill in every placeholder before publishing.
-- `evidence/before.md` + `evidence/after.md` — one real task, both transcripts. The before/after pair is the receipt that the skill actually changes behaviour. If you cannot produce it, the skill is not ready; land it as a draft and merge once the evidence is real.
-
-Bootstrap a new skill by copying `template/` verbatim:
-
-```
-cp -r template skills/<skill-name>
-```
-
-Then edit SKILL.md, write POST.md, and capture the before/after pair.
+Each installed skill lives at `.claude/skills/<name>/SKILL.md` with YAML
+frontmatter and its procedure. Upstream authoring templates, announcement
+posts and evidence folders are not included or required for this installed
+collection. Do not copy from an absent `template/` or create a second
+top-level `skills/` tree.
 
 ## User instructions win
 

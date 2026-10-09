@@ -3,7 +3,7 @@
  * says why. The host matters beyond billing: relative paths (`Files/...`)
  * and unqualified table names resolve against it.
  *
- * Precedence (docs/plan-local-first.md, M0.4):
+ * Precedence (docs/architecture.md, host and tenant resolution):
  *  1. A notebook's own default Lakehouse wins, in the workspace its
  *     metadata names (`default_lakehouse_workspace_id`, written when it is
  *     set as default). A mapped folder's target does not change that

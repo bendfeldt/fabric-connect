@@ -8,7 +8,9 @@ when_to_use: end of any session in a multi-session project, start of the next on
 
 The hard problem in long-running agents is not doing work in one session — it's bridging the context gap between sessions. Every fresh agent starts with zero memory. If it has to reconstruct project state from the code, it burns 5-10 minutes and a chunk of context before writing a line. If it has a well-shaped handoff file, that drops to 30-60 seconds.
 
-That handoff file is `claude-progress.txt` (or equivalent). Prose, not JSON. The model writes prose more naturally, and the read is cheap.
+For Fabric Connect the tracked handoff is `IMPLEMENTATION_PLAN.md`.
+`claude-progress.txt` is an upstream example, not another required file.
+Use the existing handoff and git history rather than duplicating state.
 
 ## The format — write into this shape
 

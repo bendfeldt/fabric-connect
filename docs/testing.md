@@ -3,10 +3,18 @@
 A checklist for validating a Fabric Connect `.vsix` once it is installed:
 every feature, what to do, and what you should see. Work through it after
 installing a new release, before rolling a build out to a team, or when
-something looks wrong.
+something looks wrong. This checklist describes current source, including
+[Unreleased](../CHANGELOG.md#unreleased) features. Record the source commit for
+same-version local builds. Manual steps are not evidence that they have already
+been executed.
 
-- **Quick smoke test (about 15 minutes):** sections 0–4.
-- **Full validation (about 1–2 hours):** everything.
+- **Quick smoke test:** sections 0–4.
+- **Full validation:** all applicable sections.
+
+These steps deliberately start/stop sessions, change test-repo configuration
+and create/drop test data. Run them only with authorization in a disposable
+test environment. For local native tests with no live service, see
+[Development](development.md#commands).
 
 Tick each box as you go. If a result differs from **Expect**, see
 [Reporting a problem](#reporting-a-problem).
@@ -35,13 +43,50 @@ You need:
 ### Test repo
 
 Create an empty folder, open it in VS Code (**File → Open Folder**), and
-add these files. Folder names matter: `*.Notebook` and
-`*.SparkJobDefinition` are how Fabric's git format marks items.
+add these files. The `.platform` files are required for **Repo** discovery
+and `%run` name resolution, not just the item-folder suffixes. The example
+logical IDs below are synthetic local identifiers, not remote Lakehouse IDs.
 
 `.gitignore`
 
 ```gitignore
 .fabric/local.json
+```
+
+`notebooks/Validate.Notebook/.platform`
+
+```json
+{
+  "metadata": { "type": "Notebook", "displayName": "Validate" },
+  "config": {
+    "version": "2.0",
+    "logicalId": "11111111-1111-4111-8111-111111111111"
+  }
+}
+```
+
+`notebooks/Helper.Notebook/.platform`
+
+```json
+{
+  "metadata": { "type": "Notebook", "displayName": "Helper" },
+  "config": {
+    "version": "2.0",
+    "logicalId": "22222222-2222-4222-8222-222222222222"
+  }
+}
+```
+
+`jobs/Hello.SparkJobDefinition/.platform`
+
+```json
+{
+  "metadata": { "type": "SparkJobDefinition", "displayName": "Hello" },
+  "config": {
+    "version": "2.0",
+    "logicalId": "33333333-3333-4333-8333-333333333333"
+  }
+}
 ```
 
 `notebooks/Validate.Notebook/notebook-content.py`
@@ -148,7 +193,7 @@ Query files (only for the items you have): `queries/test.kql`
 (`print ok = 1`), `queries/test.dax` (`EVALUATE ROW("ok", 1)`), and
 `queries/test.graphql` with a query valid for your GraphQL API.
 
-Commit the repo (`git init && git add -A && git commit -m base`) so you
+Commit the repo (`git init && git add -A && git commit -m "chore(test): initialize validation fixtures"`) so you
 can check with `git diff` that saving changes nothing unexpected.
 
 ## 1. Install and activation
@@ -187,7 +232,7 @@ ask you to type a tenant GUID instead.
       tenant ID or domain…**.
 - [ ] Press Enter on the home tenant. **Expect:** _Signed in as you@… to
       <tenant>…_; the status bar shows **Fabric: you@…**; the Fabric view
-      lists your home tenant's capacities.
+      browses your home tenant's capacities and workspaces.
 - [ ] Sign In again and press Escape on the tenant list. **Expect:**
       nothing changes; the repo keeps its previous sign-in.
 - [ ] Open `.fabric/local.json`. **Expect:** a `"signIn"` section with
@@ -255,13 +300,14 @@ ask you to type a tenant GUID instead.
 - [ ] Open `notebooks/Validate.Notebook/notebook-content.py`. **Expect:**
       the notebook editor.
 - [ ] Select the **Fabric Livy** kernel and run the cell. **Expect:** after
-      30–90 s (session start), a table with `n` = 0…4. The second status
+      session startup, a table with `n` = 0…4. The second status
       bar item names the Lakehouse the notebook runs on.
-- [ ] Run it again. **Expect:** a result in seconds (session reused).
+- [ ] Run it again. **Expect:** the existing session is reused; no
+      new host-selection prompt. This is not a latency threshold.
+- [ ] Save without editing, then `git diff`. **Expect:** no changes.
 - [ ] Add a cell: `df = spark.sql("SELECT 1 AS A")`, then `print(df)` and
       `display(df)`. **Expect:** `DataFrame[A: int]`, then a table with
       column `A` and one row — no `FABRIC_CONNECT_DISPLAY` text.
-- [ ] Save without editing, then `git diff`. **Expect:** no changes.
 - [ ] **Open as Text** (code icon in the notebook toolbar). **Expect:**
       the plain file with **▷ Run Cell | Run All Above** above each cell
       and **Run All** on the first line; the status bar still names the
@@ -271,6 +317,7 @@ ask you to type a tenant GUID instead.
       _Fabric Results_ — no _Missing viewType_ error.
 - [ ] Add a failing cell (`1/0`) between two cells, then **Run All**.
       **Expect:** it stops at the failing cell; the next cell does not run.
+      Remove the failing cell before continuing.
 - [ ] Edit a cell without saving; Lakehouses view → **+** on a Lakehouse.
       **Expect:** _…has unsaved changes in the text editor… Save the file_.
       Save and retry. **Expect:** attached; the text shows the new `# META`
@@ -343,12 +390,13 @@ ask you to type a tenant GUID instead.
       `default_lakehouse_workspace_id` (and `known_lakehouses`) changing
       from zeros to real IDs; the cell then runs on that Lakehouse.
 - [ ] Run a cell of a notebook whose default is not bound (e.g.
-      `lh_analytics`). **Expect:** a notification **Bind Lakehouse…**;
-      click it. **Expect:** "Bind … to Lakehouse 'lh*analytics' in
+      `fc_validation`). **Expect:** a notification **Bind Lakehouse…**;
+      click it. **Expect:** "Bind … to Lakehouse `fc_validation` in
       workspace …?" (or a pick when several workspaces have one); after
-      **Bind**, the three default keys hold real IDs and the cell runs. The
-      status bar item \_Livy: default Lakehouse not bound* does the same
-      when clicked.
+      **Bind**, this notebook has a local binding, its metadata remains
+      unchanged and the next explicit cell run uses the bound Lakehouse.
+      Clicking the status bar's _Livy: default Lakehouse not bound_ does
+      the same.
 - [ ] After **Bind Lakehouse…**, `git status`. **Expect:** the notebook is
       unchanged; `.fabric/local.json` has `"lakehouseBindings"` with the
       notebook's folder. The Lakehouses view shows the default with a green
@@ -358,8 +406,8 @@ ask you to type a tenant GUID instead.
       notebook and removes its local binding.
 - [ ] Open and refresh Lakehouses and Repo several times. **Expect:** no
       repeated repo-wide scans (no lag); adding a `.platform` file shows up.
-- [ ] After binding, run `SELECT 1`. **Expect:** the session starts (1–3
-      minutes on a cold capacity) and the result shows as a table — no
+- [ ] After binding, run a cell `%%sql` followed by `SELECT 1`.
+      **Expect:** the session starts and the result shows as a table — no
       "returned no session ID" error.
 - [ ] **×** on the default. **Expect:** it is detached, no default is left,
       and a message says so. Repo shows the notebook's attachments under
@@ -369,6 +417,15 @@ ask you to type a tenant GUID instead.
       session starts.
 - [ ] **Fabric: Stop Livy Session**. **Expect:** the session stops (also
       gone from **Show Livy Sessions**).
+- [ ] If a real session expires and the service returns HTTP 404 or the
+      recognized matching HTTP 400 terminal/dead-session rejection:
+      **Expect:** the original failure remains visible, no failed code
+      is replayed and the matching local session reference is discarded.
+      Run setup code explicitly, then rerun the failed cell without
+      restarting VS Code. **Expect:** a fresh session; old variables and
+      temporary views are not retained. Record this step as untested if
+      the service condition was not observed; do not manufacture it by
+      changing production capacity or authentication.
 - [ ] Optional: open a portal-exported `.ipynb` renamed to
       `X.Notebook/notebook-content.ipynb`, run a cell, save; `git diff`
       shows only what you changed.
@@ -395,15 +452,19 @@ ask you to type a tenant GUID instead.
 - [ ] Switch back to **Remote**, run **Fabric: Restart Livy Session**,
       and run it again. **Expect:** the ImportError again (installed copy;
       a running session keeps already-staged code until it restarts).
-- [ ] Settings → `fabric-connect.sourceRoots` → add `src`.
+- [ ] Settings → `fabric-connect.sourceRoots` → add `src`, then select
+      **Local** explicitly. **Expect:** a previously selected `remote`
+      mode is not silently overridden by setting source roots.
 - [ ] In a notebook cell:
       `from fcvalidate import greet; print(greet("fabric"))`.
       **Expect:** `hello fabric`.
 - [ ] Change `greet` to return `f"hi {name}"`, save, run the cell again.
       **Expect:** `hi fabric`, with no restart.
 - [ ] In the Fabric view, open the Lakehouse → **Files**. **Expect:** a
-      `.fabric-connect` folder while the session runs, and none after
-      **Fabric: Stop Livy Session** (refresh the view).
+      window-specific directory under `.fabric-connect` while the session
+      runs. After **Fabric: Stop Livy Session**, refresh. **Expect:** this
+      window's directory is removed if cleanup succeeds; other windows'
+      directories may remain. Cleanup failures can leave staged files.
 
 ## 6. Run files and selections
 
@@ -483,7 +544,7 @@ For each item you have:
 - [ ] Configuration → Tenant → **Switch Tenant** → **Find tenants on my
       account…**. **Expect:** every tenant on your account. Pick another
       tenant. **Expect:** the status bar and Configuration show it, and
-      Capacities reloads for it.
+      the Explorer Fabric tree and capacity-dependent listings reload for it.
 - [ ] **Repo**. **Expect:** only folders that contain Fabric items, in
       your repo's structure; no loose files and no folders without items
       (e.g. `docs/`); `<name>.Notebook` folders show as the notebook's
@@ -559,11 +620,7 @@ as part of the comparison.
    import time
 
    _started = time.perf_counter()
-   df = spark.sql("""
-       SELECT AddressTypeID AS address_type_key,
-              Name AS addres_type_name
-       FROM dbo.addresstype
-   """)
+   df = spark.sql("SELECT 1 AS n")  # Replace with the reported read-only query.
    print(f"DataFrame creation: {time.perf_counter() - _started:.3f}s")
    ```
 
@@ -584,10 +641,11 @@ as part of the comparison.
    and relevant Environment. Assign the result without displaying it:
 
    ```python
-   _library = notebookutils.variableLibrary.getLibrary("vl_analytics")
+   _library = notebookutils.variableLibrary.getLibrary("existing_library")
    ```
 
-   Do not print the library, its variables, credential APIs or secret
+   Substitute an existing library's exact name. Do not print the library,
+   its variables, credential APIs or secret
    values. Check same-workspace access, case-sensitive library names and
    the active value set. These checks do not prove the supplied error's
    cause.

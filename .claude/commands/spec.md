@@ -12,14 +12,20 @@ Without an external contract, the agent drifts after ~3 iterations and the failu
 
 1. If `PROMPT.md` exists and `--force` was NOT passed, stop and print:
    > `PROMPT.md` already exists. Re-run with `/spec --force` to overwrite, or edit the file directly.
-2. Load the `spec-first` skill by reading `skills/spec-first/SKILL.md` (repo layout) or `.claude/skills/spec-first/SKILL.md` (installed layout).
-3. Write `PROMPT.md` from `templates/PROMPT.md`, filling in from the user's latest turn:
+2. Load the `spec-first` skill from `.claude/skills/spec-first/SKILL.md`.
+3. Write `PROMPT.md` with these sections from the user's latest turn.
+   No templates directory is installed. If the client already has an
+   approved session goal/plan, use that contract instead of duplicating it:
    - **Goal** — one sentence, user-observable outcome.
    - **Done when** — concrete, testable conditions. Include the exact command that must go green.
    - **Never touch** — files and areas off-limits.
    - **Stop if** — abort conditions (scope creep, passing test starts failing, more than N files change outside scope).
-4. Write `IMPLEMENTATION_PLAN.md` from `templates/IMPLEMENTATION_PLAN.md` with `STATUS: not-started` on line 1 (the exact string `run.sh` greps for).
-5. Print both file paths and STOP. Do not implement in the same turn.
+4. Update `IMPLEMENTATION_PLAN.md` without discarding existing state. If the
+   optional runner is explicitly used, preserve its `STATUS:` marker and
+   set it to `not-started`; the runner stops only on `STATUS: done`.
+5. Print the actual goal/state paths and STOP. Do not implement in the
+   same turn. Do not claim a `PROMPT.md` was created when a session contract
+   was used instead.
 
 ## Refuse if
 
