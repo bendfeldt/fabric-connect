@@ -6,6 +6,8 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+## 1.4.1 — 2026-10-09
+
 - **Releases keep the whole repo in step** — the Release workflow's
   version-bump PR now also files this changelog's Unreleased entries under the
   new version and auto-merges by rebase (it used to squash), so the `auto` bump
