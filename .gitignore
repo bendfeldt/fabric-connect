@@ -13,3 +13,4 @@ node_modules/
 
 .headroom_wrap*
 .vscode
+plan*.md
