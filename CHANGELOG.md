@@ -6,6 +6,12 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+- **Dead-session recovery** — the specific HTTP 400 Livy submission
+  rejection reporting a matching terminal/dead session now clears its
+  local reference, so the next run starts a fresh session without
+  reloading VS Code. Original service errors remain visible; failed code
+  is never replayed automatically. Late failures cannot clear a newer
+  session. Rerun setup code to restore lost in-memory state.
 - **Execution diagnostics** — opt-in debug logging separates host and
   module preparation, session startup/reattachment, queueing, bootstrap,
   module setup, user-statement wait and rendering in notebook and

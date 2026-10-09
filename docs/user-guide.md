@@ -333,6 +333,11 @@ Session behavior mirrors the Fabric portal:
 - **Reattachment** — after a VS Code reload, the extension reconnects to
   the existing session by ID rather than starting a fresh one, so no
   orphaned sessions burn workspace capacity.
+- **Expired sessions** — a missing session (HTTP 404) or the specific
+  HTTP 400 submission rejection reporting a matching terminal/dead session
+  clears that local session reference. The failed code is not replayed.
+  Your next run starts a fresh session; rerun setup code to restore
+  in-memory variables, imports and temporary views.
 
 To end a session explicitly, run **`Fabric: Stop Livy Session`** with the
 notebook active; **`Fabric: Restart Livy Session`** stops it and starts a
@@ -672,6 +677,15 @@ cases:
   capacity in the Azure portal (or pick another), then connect again.
 - **"Workspace '…' has no Lakehouse to host Spark sessions."** — create a
   Lakehouse in the Fabric portal; Fabric Connect never creates items.
+- **HTTP 400 with "is in a terminal state" and "Livy state : dead"** —
+  Fabric has ended the execution session, not reported a missing `.fabric`
+  mapping. For the recognized service message naming the current session
+  and workspace, the extension forgets only that session and preserves
+  the original failure. Rerun setup code, then the failed code: the next
+  run creates a fresh session without restarting VS Code. Unrelated
+  HTTP 400 errors do not reset sessions. The rejection alone does not
+  explain why Fabric ended the session; retain the correlation ID if
+  repeated termination requires service-side investigation.
 - **"Refusing to run '…': its folder's target … belongs to a different
   tenant"** — connect to compute in the target's tenant, or move the file.
 - **"Cannot expand '%run …'"** — the named notebook must exist in the repo

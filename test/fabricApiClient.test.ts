@@ -137,3 +137,57 @@ test("GUIDs are redacted from logged paths", () => {
     "/workspaces/<redacted-id>/lakehouses",
   );
 });
+
+test("HTTP 400 retains typed service detail without retrying the rejection", async () => {
+  for (const body of [
+    { message: "Session is in a terminal state." },
+    { error: { message: "Session is in a terminal state." } },
+  ]) {
+    const { client, calls } = makeClient([
+      () => jsonResponse(400, body, { "x-ms-request-id": "corr-terminal" }),
+    ]);
+    await assert.rejects(
+      client.request({
+        method: "GET",
+        path: "/workspaces/x",
+        tenantId: TENANT,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof FabricApiError);
+        assert.ok("serviceMessage" in error);
+        assert.equal(error.serviceMessage, "Session is in a terminal state.");
+        assert.equal(error.status, 400);
+        assert.equal(error.correlationId, "corr-terminal");
+        assert.match(error.message, /Session is in a terminal state/);
+        return true;
+      },
+    );
+    assert.equal(calls.length, 1);
+  }
+});
+
+test("malformed service detail cannot become typed terminal-session evidence", async () => {
+  for (const body of [
+    null,
+    {},
+    { message: 42 },
+    { error: { message: { state: "dead" } } },
+  ]) {
+    const { client } = makeClient([() => jsonResponse(400, body)]);
+    await assert.rejects(
+      client.request({
+        method: "GET",
+        path: "/workspaces/x",
+        tenantId: TENANT,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof FabricApiError);
+        assert.ok(
+          !("serviceMessage" in error) || error.serviceMessage === undefined,
+        );
+        assert.equal(error.status, 400);
+        return true;
+      },
+    );
+  }
+});
