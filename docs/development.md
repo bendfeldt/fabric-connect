@@ -34,8 +34,9 @@ source. Do not depend on another contributor's local debug configuration.
 ## Toolchain and first setup
 
 - VS Code **1.93+**.
-- Node.js **18+** and npm for building/testing; CI tests Node 18, 20 and 22
-  and packages on Node 20.
+- Node.js **18+** and npm for compilation/native tests; CI tests Node 18,
+  20 and 22. **Packaging requires Node.js 22+**; Build and release-packaging
+  CI use Node 22. The extension's runtime requirement is unchanged.
 - No runtime packages. Development dependencies are TypeScript, Node/VS Code
   type definitions and pinned Prettier. Packaging uses the vsce version in
   the `package` script, not a separately maintained global version.
@@ -112,7 +113,8 @@ npm run package
 
 The output is `fabric-connect-<package.json version>.vsix` in the repo root.
 No tag, commit or release is created. The package script uses
-`@vscode/vsce@3.9.2`; if unavailable locally, `npx` may download that tooling.
+`@vscode/vsce@4.0.0`, whose [Node.js requirement](https://github.com/microsoft/vscode-vsce/blob/v4.0.0/package.json)
+is **22+**. If unavailable locally, `npx` may download that tooling.
 Do not run it in a no-install/offline task unless the tool is already available.
 
 To name a package unambiguously while keeping the manifest's version:

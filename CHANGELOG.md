@@ -6,6 +6,10 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+- **Packaging toolchain** — pin vsce 4.0.0 and use Node 22 for Build and
+  release packaging. Local VSIX builds require Node 22+; extension runtime
+  requirements and the Node 18/20/22 native-test matrix are unchanged.
+  Versioned local development builds still leave checkout manifests untouched.
 - **Documentation refreshed** — current architecture and developer guides
   replace superseded design plans; setup, commands/settings, local bindings,
   module modes, validation fixtures and installed contributor guidance now

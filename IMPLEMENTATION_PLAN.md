@@ -81,6 +81,17 @@ implementation; local link/formatting checks and independent review passed.
 No package build or extension installation was performed as part of this
 documentation correction.
 
+The packaging script now pins vsce 4.0.0, with Node 22 in Build and
+release-packaging CI. Node 22+ is required only for packaging; extension
+runtime requirements and the Node 18/20/22 test matrix are unchanged.
+Local packaging verified normal `1.2.0` and development `1.2.1-dev.16`
+versions in both packaged manifests and VSIX metadata, with 68 allowlisted
+files each. Checkout manifest/lockfile bytes and git commit/tag references
+were unchanged by packaging. The two session-only verification VSIX files
+were removed. Compilation, all 13 manifest regressions, formatting,
+documentation links and independent review passed; no extension installation
+or release was performed.
+
 ## Next authorized work
 
 - After explicit approval, smoke-test current source in a running VS Code host

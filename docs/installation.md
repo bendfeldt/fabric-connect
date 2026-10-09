@@ -15,8 +15,9 @@ before expecting a newer feature in the latest release.
 - A **Microsoft Entra ID account** with access to at least one Microsoft
   Fabric workspace. Sign-in uses VS Code's built-in Microsoft
   authentication provider, so no extra auth tooling is needed.
-- **Node.js 18+ and npm** — only for source builds/development. Installing a
-  released `.vsix` needs neither.
+- **Node.js 18+ and npm** for source compilation/native tests, or
+  **Node.js 22+** to package a VSIX with vsce 4.0.0. Installing a released
+  `.vsix` needs neither.
 
 ## Option 1 — Install a released `.vsix` (recommended)
 
