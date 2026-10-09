@@ -6,10 +6,13 @@
 #   1. propose-bump — run manually (Actions -> Release -> Run workflow).
 #      Infers the semver bump from conventional commits since the last v*
 #      tag (BREAKING CHANGE/"!:" => major, feat => minor, else patch) unless
-#      a bump is chosen explicitly, bumps package.json on a bot/version-bump
-#      branch, opens a PR titled "chore(release): vX.Y.Z" and enables
-#      auto-merge. The PR merges itself once required checks pass.
-#   2. publish-release — the bump PR's squash commit lands on main: package
+#      a bump is chosen explicitly, bumps package.json and the lockfile, files
+#      the changelog's "Unreleased" entries under the new version
+#      (scripts/syncChangelog.cjs) so the repo never has a version without its
+#      changelog section, commits all of it on a bot/version-bump branch,
+#      opens a PR titled "chore(release): vX.Y.Z" and enables auto-merge by
+#      rebase. The PR merges itself once required checks pass.
+#   2. publish-release — the bump PR's rebased commit lands on main: package
 #      the .vsix and publish a GitHub Release, which creates the vX.Y.Z tag
 #      at that commit. Every other push to main does nothing here.
 #
@@ -24,7 +27,7 @@
 #     Contents and Pull requests. The default GITHUB_TOKEN cannot be used for
 #     the bump PR: PRs it creates never trigger workflows, so required checks
 #     would sit pending forever and auto-merge would never fire.
-#   - Settings -> General: "Allow auto-merge" on, squash merging allowed.
+#   - Settings -> General: "Allow auto-merge" on, rebase merging allowed.
 #   - Ruleset on main: require PR, require Build/Test status checks, and no
 #     required human approval (the bot cannot approve its own PR; requiring
 #     approval means someone must also approve the bump PR).
@@ -104,6 +107,11 @@ jobs:
           npm version "${{ steps.bump.outputs.bump }}" --no-git-tag-version
           echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
 
+      - name: Roll the changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: node scripts/syncChangelog.cjs "$VERSION" "$(date -u +%F)"
+
       - name: Open version bump PR
         id: pr
         uses: peter-evans/create-pull-request@v8
@@ -125,7 +133,7 @@ jobs:
         if: steps.pr.outputs.pull-request-number != ''
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: gh pr merge --auto --squash '${{ steps.pr.outputs.pull-request-number }}'
+        run: gh pr merge --auto --rebase '${{ steps.pr.outputs.pull-request-number }}'
 
   publish-release:
     if: ${{ github.event_name == 'push' && github.event.head_commit != null && startsWith(github.event.head_commit.message, 'chore(release):') }}

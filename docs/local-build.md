@@ -21,22 +21,28 @@ source instead (see [Development](development.md#run-and-debug-the-extension)).
 
 Follow [Development](development.md#toolchain-and-first-setup) for initial
 setup and tests. From the repository root, package a development version
-without changing the checkout's `package.json`:
+without changing the checkout's `package.json`. The version is the next patch
+after the checkout's released version plus a development suffix, computed from
+`package.json` so this guide never names a release:
 
 ```sh
-npm run package -- 1.2.1-dev.16 \
+BASE="$(node -p "const [a,b,c]=require('./package.json').version.split('.'); a+'.'+b+'.'+(Number(c)+1)")"
+N=1   # raise this for every build you want to tell apart
+DEV="$BASE-dev.$N"
+npm run package -- "$DEV" \
   --no-git-tag-version \
   --no-update-package-json \
-  --out fabric-connect-1.2.1-dev.16.vsix
+  --out "fabric-connect-$DEV.vsix"
 ```
 
-This cleans/recompiles the working tree and writes
-`fabric-connect-1.2.1-dev.16.vsix` in the repository root. Both the packaged
-manifest and VSIX metadata use **`1.2.1-dev.16`**, so VS Code displays that
-development version. The checkout's `package.json` and `package-lock.json`
-remain unchanged; no version commit, git tag or release is created.
+For a checkout at released version `X.Y.Z` this builds `X.Y.(Z+1)-dev.1`. It
+cleans/recompiles the working tree and writes `fabric-connect-$DEV.vsix` in the
+repository root. Both the packaged manifest and VSIX metadata use that
+development version (`echo "$DEV"` prints it), so VS Code displays it. The checkout's `package.json`
+and `package-lock.json` remain unchanged; no version commit, git tag or
+release is created.
 
-- The positional `1.2.1-dev.16` selects the **embedded package version**.
+- The positional `"$DEV"` selects the **embedded package version**.
 - `--no-update-package-json` applies that version only inside the package.
 - `--no-git-tag-version` explicitly disables npm version commits/tags.
 - `--out` names the exact artifact; changing only its filename would not
@@ -47,11 +53,11 @@ vsce version. These flags and the packaged-version override are supported by
 the official vsce 4.0.0 [CLI](https://github.com/microsoft/vscode-vsce/blob/v4.0.0/src/main.ts)
 and [packaging implementation](https://github.com/microsoft/vscode-vsce/blob/v4.0.0/src/package.ts).
 
-Choose a new development suffix for each distinguishable build, such as
-`1.2.1-dev.17` next. Semver orders `1.2.1-dev.16` above `1.2.0` but below
-`1.2.1`; `1.2.0-dev.16` is below the released `1.2.0`. Use an appropriate
-next release version as the base, and record the source commit alongside
-the artifact. This is a local version override, not Marketplace publishing.
+Choose a new development suffix for each distinguishable build (`-dev.2`
+next). Semver orders `X.Y.(Z+1)-dev.N` above the released `X.Y.Z` but below
+`X.Y.(Z+1)`; `X.Y.Z-dev.N` would be below the released `X.Y.Z`, which is why
+the base is the next patch version. Record the source commit alongside the
+artifact. This is a local version override, not Marketplace publishing.
 
 ### Alternative: keep the manifest version
 
@@ -69,7 +75,7 @@ checkout's manifest version, even when the working tree contains newer source.
 For the versioned development build above:
 
 ```sh
-code --install-extension fabric-connect-1.2.1-dev.16.vsix --force
+code --install-extension "fabric-connect-$DEV.vsix" --force
 ```
 
 For the fixed-name alternative, use `fabric-connect-local.vsix` instead.
@@ -82,8 +88,8 @@ Or use the UI: Extensions view → `…` menu → **Install from VSIX…**.
 ## 3. Reload VS Code
 
 Command Palette → **Developer: Reload Window**. Then check the Extensions
-view shows **`1.2.1-dev.16`** for the primary example, not the checkout's
-manifest version. For the fixed-name alternative, check the manifest version
+view shows the development version (`echo "$DEV"`) for the primary example,
+not the checkout's manifest version. For the fixed-name alternative, check the manifest version
 and record the source commit; the displayed version alone cannot identify it.
 
 ## 4. Test it
@@ -98,12 +104,16 @@ Increment the development suffix and keep the version and filename aligned.
 For example, the next build/install pair is:
 
 ```sh
-npm run package -- 1.2.1-dev.17 \
+N=$((N + 1)); DEV="$BASE-dev.$N"
+npm run package -- "$DEV" \
   --no-git-tag-version \
   --no-update-package-json \
-  --out fabric-connect-1.2.1-dev.17.vsix &&
-  code --install-extension fabric-connect-1.2.1-dev.17.vsix --force
+  --out "fabric-connect-$DEV.vsix" &&
+  code --install-extension "fabric-connect-$DEV.vsix" --force
 ```
+
+(`BASE` and `N` live in your shell session. In a new shell, run the first
+block again with a higher `N`.)
 
 For fixed-name builds, repeat the alternative build command and install
 `fabric-connect-local.vsix --force`. Older packages can coexist without making

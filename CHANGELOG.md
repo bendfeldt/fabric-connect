@@ -4,6 +4,16 @@ All notable changes to Fabric Connect. Changes merged since the last
 release are listed under "Unreleased" until a maintainer runs the release
 workflow; each GitHub Release carries the matching `.vsix`.
 
+## Unreleased
+
+- **Releases keep the whole repo in step** — the Release workflow's
+  version-bump PR now also files this changelog's Unreleased entries under the
+  new version and auto-merges by rebase (it used to squash), so the `auto` bump
+  now reads every commit subject of rebase-merged branches. A test fails CI
+  when the manifest, lockfile and changelog disagree, or when a guide
+  hard-codes a released or development version; the local development-build
+  guide now computes its version from `package.json`. No extension changes.
+
 ## 1.4.0
 
 - Changelog: the entries that shipped in 1.3.0 are filed under 1.3.0
