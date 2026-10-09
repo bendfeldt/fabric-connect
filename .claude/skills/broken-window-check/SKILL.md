@@ -1,7 +1,7 @@
 ---
 name: broken-window-check
 description: Before picking new work, smoke-test the last "completed" feature. If it's broken, revert and re-open it before touching anything else. Kills the "looks shipped, isn't shipped" bug across sessions.
-when_to_use: start of any session in a multi-session project, right after reading progress notes and running init.sh
+when_to_use: start of a multi-session project after reading the existing handoff and checking the actual runtime prerequisites
 ---
 
 # Broken-Window Check
@@ -9,6 +9,12 @@ when_to_use: start of any session in a multi-session project, right after readin
 Across shift-notes-driven sessions (see `shift-notes`), agents will sometimes mark a feature complete after unit tests pass — even when the feature is end-to-end broken. The next session opens the repo, sees a green git log, and builds on top of a broken foundation. By the time anyone notices, three features are stacked on the crack.
 
 **The check:** before picking new work, exercise the most recently "completed" feature end-to-end. If it fails, treat it as your only job this session.
+
+For Fabric Connect use `IMPLEMENTATION_PLAN.md` and the authorized VS Code/Fabric
+path in [Testing](../../../docs/testing.md), not a nonexistent `init.sh`.
+Record unavailable live evidence rather than running services without approval.
+Do not automatically revert user/shared commits or change task scope: report
+the regression and obtain approval for a repair/revert first.
 
 ## The sequence — run in order, no skipping
 

@@ -2,8 +2,11 @@
 
 Fabric Connect is distributed as a `.vsix` package attached to GitHub
 Releases — it is not published to the VS Code Marketplace. Pick one of the
-three installation paths below, then verify the install and move on to the
-[user guide](user-guide.md).
+installation paths below, then verify the install and follow
+[Getting started](getting-started.md).
+
+Guides describe the current source. Check [Unreleased](../CHANGELOG.md#unreleased)
+before expecting a newer feature in the latest release.
 
 ## Prerequisites
 
@@ -12,8 +15,8 @@ three installation paths below, then verify the install and move on to the
 - A **Microsoft Entra ID account** with access to at least one Microsoft
   Fabric workspace. Sign-in uses VS Code's built-in Microsoft
   authentication provider, so no extra auth tooling is needed.
-- **Node.js 18+ and npm** — only if you build from source (options 2
-  and 3). Installing a released `.vsix` needs neither.
+- **Node.js 18+ and npm** — only for source builds/development. Installing a
+  released `.vsix` needs neither.
 
 ## Option 1 — Install a released `.vsix` (recommended)
 
@@ -33,44 +36,25 @@ three installation paths below, then verify the install and move on to the
 
 ## Option 2 — Build the `.vsix` from source
 
-Use this if you want to install a commit that has no release yet.
-
-```sh
-git clone https://github.com/bendfeldt/fabric-connect.git
-cd fabric-connect
-npm ci
-npm test                              # clean build + unit tests
-npm run package                       # produces fabric-connect-<version>.vsix
-```
-
-Then install the generated `.vsix` as in option 1. This is exactly what
-the [Release workflow](../.github/workflows/release.yml) does in CI. For the step-by-step local test loop (rebuild, reinstall, reload), see
-[Build and install a `.vsix` locally](local-build.md).
+Use this for a commit that has no release yet. The authoritative
+[source-build recipe](development.md#package-from-source) covers dependencies,
+tests, tooling and packaging. Then follow the
+[local install/reload/test loop](local-build.md).
 
 ## Option 3 — Run from source (development)
 
-For working on the extension itself:
-
-```sh
-git clone https://github.com/bendfeldt/fabric-connect.git
-cd fabric-connect
-npm ci
-npm run compile        # or: npm run watch
-```
-
-Open the folder in VS Code and press `F5` to launch an Extension
-Development Host window with the extension loaded.
-
-Formatting uses the Prettier version pinned in `package.json` (install the
-VS Code Prettier extension and it picks up the repo's copy). Run
-`npm run format` to format, `npm run format:check` to check.
+For working on the extension itself, use the
+[development guide](development.md#run-and-debug-the-extension). It includes
+a clean-clone `extensionHost` launch configuration; local `.vscode/` files
+are not supplied by git.
 
 ## Verify the installation
 
 - Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and type
   `Fabric:` — you should see the extension's commands (`Fabric: Sign In`,
   `Fabric: Connect to Compute`, …).
-- The **Fabric** view appears in the Explorer side bar.
+- The **Fabric** view appears in the Explorer side bar and the **Fabric**
+  Activity Bar icon opens Configuration, Repo, Lakehouses and Connections.
 - **Help → Welcome → Walkthroughs → Get started with Fabric Connect**
   opens the in-product walkthrough.
 

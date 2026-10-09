@@ -6,7 +6,7 @@
  * git or deployment-pipeline APIs, and creating any item (Lakehouses
  * included, decision D3) — throws `LocalFirstViolationError`.
  *
- * Changing this list is a plan change: update docs/plan-local-first.md in
+ * Changing this list is an architecture change: update docs/architecture.md in
  * the same commit.
  */
 
@@ -124,7 +124,7 @@ export function assertWriteAllowed(
         operation: "enforce local-first write policy",
         entity: describe,
         remediation:
-          "Keep code in your local repo and run it through a Livy session. If this write is genuinely needed, change the allowlist in src/core/writePolicy.ts together with docs/plan-local-first.md.",
+          "Keep code in your local repo and run it through a Livy session. If this write is genuinely needed, change the allowlist in src/core/writePolicy.ts together with docs/architecture.md.",
       },
     );
   }
@@ -181,7 +181,7 @@ export function assertOneLakeWriteAllowed(
         operation: "enforce local-first write policy",
         entity: `OneLake path ${relPath}`,
         remediation:
-          "Keep data writes inside your Spark code. If this write is genuinely needed, change src/core/writePolicy.ts together with docs/plan-local-first.md.",
+          "Keep data writes inside your Spark code. If this write is genuinely needed, change src/core/writePolicy.ts together with docs/architecture.md.",
       },
     );
   }

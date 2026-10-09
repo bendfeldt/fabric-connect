@@ -6,6 +6,10 @@ when_to_use: the loop hit an ambiguous spec, a missing credential, a destructive
 
 # Human-in-the-Loop Escalate
 
+Use only explicitly authorized channels and sanitized context. In Fabric
+Connect's interactive workflow, ask the user and stop. The installed `run.sh`
+has no blocked-file gate; a `BLOCKED.md` record alone will not stop it.
+
 Long-running agent loops fail in a specific way when they meet a question they can't answer: they guess. The guess ships, the next session builds on it, and by the time a human looks the divergence is three commits deep. This skill is the release valve — when the agent is stuck, it stops and asks, cleanly, in a shape the human can act on.
 
 ## Trigger — escalate when any of these are true
@@ -67,11 +71,16 @@ Whether the primary succeeds or fails, always write `./BLOCKED.md` at the repo r
 - C) <option> — <consequence>
 ```
 
-Then `exit 2`. The loop runner (`run.sh`) checks for `BLOCKED.md` at the head of each iteration and exits with code 2 if it exists — that stops the loop until a human clears it.
+Stop the current task; a shell wrapper may return `exit 2` to an operator
+that handles failure. The installed `run.sh` does not check `BLOCKED.md`
+or map a model verdict to that exit code. Do not launch or leave it running
+under the assumption that this file safely pauses it.
 
 ## Human unblocks
 
-The human reads `BLOCKED.md`, edits `PROMPT.md` / drops the credential / approves the destructive step, then `rm BLOCKED.md` and restarts `run.sh`. The deleted `BLOCKED.md` is the unblock signal.
+The human resolves the recorded question and explicitly authorizes resumption.
+Remove only the resolved block record when authorized. Deleting it is not
+an implemented runner signal; do not restart the runner as an automatic step.
 
 ## Anti-patterns — do not do these
 
@@ -79,7 +88,9 @@ The human reads `BLOCKED.md`, edits `PROMPT.md` / drops the credential / approve
 - **Do not loop endlessly.** After the third consecutive `/verify` failure on the same task, escalate. The fourth attempt is not going to succeed by the same reasoning that failed thrice.
 - **Do not silently swallow the missing credential.** Do not commit a placeholder, do not disable the feature, do not "TODO" the auth. Ask.
 - **Do not escalate for questions the repo already answers.** Read `AGENTS.md`, `PROMPT.md`, and the last three commits first. Escalation is expensive human attention — spend it on real ambiguity.
-- **Do not skip writing `BLOCKED.md` because the primary channel succeeded.** The file is the loop's exit contract. Without it, `run.sh` keeps spinning.
+- **Do not confuse a record with enforcement.** Record the block where the
+  client supports it, and stop explicitly; `run.sh` can keep spinning
+  regardless of whether `BLOCKED.md` exists.
 
 ## Pairs with
 

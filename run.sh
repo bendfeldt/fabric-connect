@@ -7,13 +7,15 @@
 #                   LOOPKIT_CLI="codex exec"
 #                   LOOPKIT_CLI="gemini -p"
 #                   LOOPKIT_CLI="aider --message"
-#                 See docs/portability.md.
+#                 See docs/development.md, contributor workflow.
 #
 # Model routing env vars (Claude-only; ignored when LOOPKIT_CLI is set):
 #   CLAUDE_PLANNER_MODEL   reserved for /spec workflows (not used in this loop)
 #   CLAUDE_EXECUTOR_MODEL  --model for the "do the next step" call
 #   CLAUDE_JUDGE_MODEL     --model for the "/verify" call
-# See skills/model-routing/SKILL.md for the three-tier pattern.
+# See .claude/skills/model-routing/SKILL.md for the model flags.
+# This prototype commits before judging, does not parse failed JSON
+# verdicts, and has no BLOCKED.md gate. It does not enforce AGENTS.md.
 set -euo pipefail
 
 EXEC_ARGS=()

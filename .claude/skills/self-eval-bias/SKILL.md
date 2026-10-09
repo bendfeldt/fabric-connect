@@ -23,7 +23,7 @@ The pattern shows up hardest in planner/generator/evaluator architectures where 
 2. **Force a fresh persona.** Drop the generation context. Open a new subagent, or at minimum re-prompt with only the artifact (diff, plan, output) and the acceptance criteria — no reasoning trail, no self-justification.
 3. **Demand concrete evidence, not verdicts.** The reviewer must cite: the file:line it inspected, the input it ran, the observed output, and the criterion it matched against. "LGTM" without these is a null review — discard it.
 4. **Adversarially probe.** Ask the reviewer for the strongest case where the artifact fails. If it can't produce one, the review didn't happen — the reviewer just agreed.
-5. **Run the artifact.** For code, exercise it end-to-end (see [[broken-window-check]]). For a plan, walk the first two steps concretely. Same-context confidence collapses fast against a runtime.
+5. **Run the artifact.** For code, exercise it end-to-end (see [broken-window-check](../broken-window-check/SKILL.md)). For a plan, walk the first two steps concretely. Same-context confidence collapses fast against a runtime.
 6. **Rotate the reviewer periodically.** In long multi-agent loops, re-prompt the evaluator from scratch every ~5 sprints — leniency drift compounds silently.
 
 ## Anti-patterns
@@ -41,6 +41,6 @@ The pattern shows up hardest in planner/generator/evaluator architectures where 
 
 ## Related
 
-- [[broken-window-check]] — the runtime-driven version of "don't trust the last claim".
-- [[adversarial-verify]] — the structural form of "find the strongest failure case".
-- [[shift-notes]] — where you record what the fresh-persona review actually found.
+- [broken-window-check](../broken-window-check/SKILL.md) — the runtime-driven version of "don't trust the last claim".
+- [adversarial-verify](../adversarial-verify/SKILL.md) — the structural form of "find the strongest failure case".
+- [shift-notes](../shift-notes/SKILL.md) — where you record what the fresh-persona review actually found.

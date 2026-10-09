@@ -1,6 +1,6 @@
 ---
 name: progress-reading-protocol
-description: Run the fixed 6-step session-opening sequence — pwd, read progress, git log, count remaining features, init.sh, smoke-test last feature — before touching any new work. The orientation ritual that lets fresh-context sessions reconstruct project state in under a minute.
+description: Read the goal, tracked handoff and git history, inspect optional ledgers, validate locally and smoke-test the last feature when authorized before starting new work.
 when_to_use: very first tool calls of any fresh coding-agent session, rehydrating after a context reset or crash mid-project, verifying a claimed-shipped feature before picking up new work
 ---
 
@@ -16,17 +16,31 @@ Skipping steps is the failure mode. Sessions that skip the smoke-test step (6) r
 - After a context reset, compaction, or crash mid-project — treat the resumed context as a fresh session.
 - Before you write a single line of new code. No exceptions for "quick fixes."
 
-## Procedure — run in order, no skipping
+## Procedure
 
-1. **`pwd`** — confirm you are in the project directory. You may only edit files below this path.
-2. **Read `claude-progress.txt`** (or whatever the project's shift-notes file is called). This is the previous session's prose handoff.
-   2b. **Read `claude-decisions.json`** — the machine-readable ledger of decisions the loopkit `pre-compact` hook extracts before each compaction. Prose in `claude-progress.txt` tells you _what_ the last session did; JSON in `claude-decisions.json` tells you _what was chosen and rejected_. If the two disagree on a specific choice, the JSON is the durable record. See [[active-memory-reminder]].
-3. **`git log --oneline -20`** — see what was actually committed. If the progress file and the git log disagree, trust the git log. The progress file can be truncated by a crashed write; the log is append-only.
-4. **Count remaining features** — `cat feature_list.json | jq '[.[] | select(.passes==false)] | length'`. Adjust the field name to the project's schema. This anchors you to the source of truth for completion state.
-5. **`./init.sh`** — bring up the dev server. If this fails, fixing it is your only job this session. Do not skip to feature work with a broken environment.
-6. **Smoke-test the most recently "completed" feature** — drive it end-to-end via the browser-automation tool, `curl`, or the actual CLI. Not unit tests. If it fails, invoke [[broken-window-check]]: revert the offending commit, flip the feature back to `passes: false`, and fix it before touching new work.
+1. **Confirm the project and working-tree status.** Preserve unrelated user
+   edits. Session artifacts belong in the client's session workspace.
+2. **Read the approved goal and handoff.** Here the tracked handoff is
+   `IMPLEMENTATION_PLAN.md`; use `PROMPT.md` or a session goal if available.
+   Read optional `claude-decisions.json` only if it exists and is safe to read.
+   See [active-memory-reminder](../active-memory-reminder/SKILL.md) for its heuristic limitations.
+3. **`git log --oneline -20`.** Trust committed history over stale state.
+4. **Inspect remaining work in the existing tracker.** Count unfinished
+   entries only if an optional `feature_list.json` exists. This checkout
+   does not use that ledger; do not create one just for orientation.
+5. **Use the actual developer workflow.** Fabric Connect is a VS Code
+   extension, not a web service. Its commands are in
+   [Development](../../../docs/development.md#commands); no `init.sh`,
+   database reset or server startup is required for a documentation task.
+6. **Smoke-test when authorized.** The real extension path is a running
+   VS Code host and, for execution, Fabric. Use the
+   [manual checklist](../../../docs/testing.md) only with authorization.
+   If unavailable, record that gap; local tests are not a live smoke test.
+   For a real failure, use [broken-window-check](../broken-window-check/SKILL.md) and seek approval before
+   reverting shared history or expanding the task into a runtime repair.
 
-Only after all six steps pass do you pick new work (see [[shift-notes]] for selection heuristics).
+Only after reviewing this evidence and its limits pick new work (see
+[shift-notes](../shift-notes/SKILL.md) for selection heuristics).
 
 ## Anti-patterns
 
@@ -38,14 +52,14 @@ Only after all six steps pass do you pick new work (see [[shift-notes]] for sele
 
 ## Cost/benefit
 
-Roughly 2-4k tokens and 30-60 seconds of wall-clock at the top of every session. Payoff crosses over past ~4 sessions on the same project; below that, the ritual is overhead. If your project is one-shot, use [[verification-before-completion]] instead.
+Roughly 2-4k tokens and 30-60 seconds of wall-clock at the top of every session. Payoff crosses over past ~4 sessions on the same project; below that, the ritual is overhead. If your project is one-shot, use [verification-before-completion](../verification-before-completion/SKILL.md) instead.
 
 ## Related
 
-- [[shift-notes]] — the prose ledger this protocol reads and writes.
-- [[active-memory-reminder]] — the paired JSON decisions ledger read in step 2b.
-- [[broken-window-check]] — the sub-protocol for step 6 when the smoke test fails.
-- [[single-feature-per-session]] — what to do once orientation is complete.
-- [[clean-state-contract]] — the mirror discipline at session-end that makes this protocol cheap for the next session.
+- [shift-notes](../shift-notes/SKILL.md) — the prose ledger this protocol reads and writes.
+- [active-memory-reminder](../active-memory-reminder/SKILL.md) — the paired JSON decisions ledger read in step 2b.
+- [broken-window-check](../broken-window-check/SKILL.md) — the sub-protocol for step 6 when the smoke test fails.
+- [single-feature-per-session](../../../AGENTS.md#single-feature-rule) — what to do once orientation is complete.
+- [clean-state-contract](../../../AGENTS.md#clean-state-contract) — the mirror discipline at session-end that makes this protocol cheap for the next session.
 
 When NOT to apply: single-shot sessions with no prior state, or the very first session of a project (there is nothing to read yet — run the initializer instead).

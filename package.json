@@ -852,7 +852,7 @@
           {
             "id": "notebooks",
             "title": "Open and run a Fabric notebook",
-            "description": "Notebooks from Fabric's git integration (*.Notebook/notebook-content.py or .ipynb) open in the Fabric notebook editor; cells run on Fabric Spark.\n[Open a notebook file](command:fabric-connect.openAsFabricNotebook)",
+            "description": "Fabric item notebooks open in the notebook editor; cells run on Lakehouse-hosted Spark. Bind an unbound git default locally without editing notebook metadata.\n[Open a notebook file](command:fabric-connect.openAsFabricNotebook)",
             "media": {
               "markdown": "media/walkthrough/notebooks.md"
             },
@@ -863,7 +863,7 @@
           {
             "id": "runFiles",
             "title": "Run local files and your own modules",
-            "description": "Run a .py/.sql/.scala/.r file or a selection on Fabric. Set source roots so import uses your working tree.\n[Set source roots](command:workbench.action.openSettings?%5B%22fabric-connect.sourceRoots%22%5D)",
+            "description": "Run a .py/.sql/.scala/.r file or selection on Fabric. Choose Local or Remote Python modules; auto uses Local when explicit source roots are set.\n[Python module mode](command:fabric-connect.pythonModules)\n[Set source roots](command:workbench.action.openSettings?%5B%22fabric-connect.sourceRoots%22%5D)",
             "media": {
               "markdown": "media/walkthrough/run-files.md"
             },

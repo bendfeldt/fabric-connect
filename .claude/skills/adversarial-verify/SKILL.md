@@ -36,8 +36,16 @@ Do not be polite. Do not propose fixes. Do not run the code. Just hunt.
 ```json
 {
   "passes": false,
-  "failures": [{ "line": 42, "shortcut": "swallowed errors", "why": "..." }]
+  "failures": [
+    {
+      "file": "src/example.ts",
+      "line": 42,
+      "shortcut": "swallowed errors",
+      "why": "..."
+    }
+  ]
 }
 ```
 
-If it genuinely passes, say so in one line. Most of the time, it doesn't.
+On success return `{"passes": true, "failures": []}`. Do not append prose
+or change the schema for a passing verdict.

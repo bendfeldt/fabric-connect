@@ -1,8 +1,7 @@
 /**
- * Shared structural types. Core modules depend only on these interfaces —
- * never on the `vscode` module or on each other's internals — so every
- * module is unit-testable in plain Node and Part 2 can reuse Auth, Target
- * Config, and the API client unchanged.
+ * Shared structural types. Core modules use typed boundaries and never
+ * depend on `vscode`, so their behavior is testable in plain Node.
+ * Additional interfaces live beside their owning core modules.
  */
 
 /** Auth Module boundary. No awareness of notebooks, targets, or item types. */
@@ -52,7 +51,6 @@ export interface FabricRequestOptions {
   readonly scopes?: readonly string[];
   /** The API the path belongs to; the Fabric REST API when omitted. */
   readonly service?: ServiceTarget;
-  /** Required only by allowlist rules for confirmed infrastructure writes. */
 }
 
 export interface FabricResponse<T> {

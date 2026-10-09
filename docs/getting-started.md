@@ -2,8 +2,9 @@
 
 This guide takes you from a fresh install to running notebooks, your own
 Python modules, Spark jobs and queries on Microsoft Fabric — all from a git
-repo in VS Code. Every step builds on the previous one; allow about 30
-minutes the first time (most of it is waiting for Spark to start).
+repo in VS Code. Spark startup depends on capacity, runtime and Environment.
+This guide describes the current source; check
+[Unreleased](../CHANGELOG.md#unreleased) when using a released VSIX.
 
 Fabric Connect is **local-first**: your code lives in your repo, and the
 extension only _runs_ it on Fabric. It never publishes, deploys, creates or
@@ -94,7 +95,9 @@ Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → **Fabric: Sign In**
 
 1. Pick your Microsoft account, or **Sign in with another account…** —
    VS Code opens the Microsoft sign-in in your browser.
-2. The repo is signed in to your account's tenant. The status bar shows
+2. Pick the tenant: your account's home tenant is first; guest access can
+   use a recent tenant, **Find tenants on my account…**, or a tenant ID/domain.
+3. The repo is signed in to that tenant. The status bar shows
    `Fabric: you@contoso.com`.
 
 That's it, for this repo, for good: like a Tabular Editor `.tmuo` file,
@@ -150,17 +153,24 @@ Compute** to remove it.
    display(df)
    ```
 
-   The first run starts a Spark session, which usually takes 30–90 seconds;
-   later runs reuse it. `display(df)` renders a table (first 1,000 rows).
+   The first run starts a Spark session; later runs reuse it.
+   `display(df)` renders a table (first 1,000 rows).
+
+   If a git-synced notebook shows _default Lakehouse not bound_, click
+   **Bind Lakehouse…** to pick the corresponding physical Lakehouse. The
+   binding stays in `.fabric/local.json`; the notebook is unchanged.
+   Without a default, pick a host Lakehouse when prompted.
 
 4. Look at the second status-bar item, e.g. `Livy: scratch (connected
 compute)`. It tells you which Lakehouse the notebook runs on:
-   - a notebook with a **default Lakehouse** runs there;
-   - a notebook without one runs on the connected compute.
+   - a notebook with a **default Lakehouse** or local binding runs there,
+     in that Lakehouse's workspace;
+   - a notebook without one runs on the connected compute's host.
 
-   Use **Fabric: Manage Lakehouses for Active Notebook** to attach, detach
-   or change the default Lakehouse; the change is saved into the notebook
-   exactly as the Fabric portal writes it.
+   Use the Fabric side bar's **Lakehouses** view to attach, detach or change
+   the default. These actions edit and save notebook metadata, unlike
+   machine-local binding. The separate **Manage Lakehouses** panel is
+   described in the [user guide](user-guide.md#4-attach-lakehouses).
 
 5. Try the notebook features you know from the portal:
 
@@ -190,11 +200,15 @@ when idle.
 ## 6. Use your own Python package
 
 The point of local-first: edit `src/salesutils/cleaning.py` in VS Code and
-use it on Fabric immediately — no wheel, no upload, no deployment.
+use it on Fabric without publishing a wheel or deploying an item. The
+extension stages the source files for you.
 
-1. Open **Settings** → search `fabric-connect.sourceRoots` → add `src`
-   (or put `"fabric-connect.sourceRoots": ["src"]` in
-   `.vscode/settings.json` to share it with your team).
+1. Run **Fabric: Python Modules (Local or Remote)** and pick **Local**.
+   Source folders come from `fabric-connect.sourceRoots`, else supported
+   `pyproject.toml` layouts, else an existing `src` directory. Set
+   `"fabric-connect.sourceRoots": ["src"]` when explicit roots are needed.
+   In `auto` mode, non-empty source roots select Local; otherwise Remote
+   is used, even when `pyproject.toml` exists.
 2. In a notebook cell:
 
    ```python
@@ -208,8 +222,10 @@ use it on Fabric immediately — no wheel, no upload, no deployment.
 Before Python code runs, Fabric Connect zips the `.py` files under your
 source roots, uploads the zip to `Files/.fabric-connect/` in the host
 Lakehouse, adds it to the session and reloads your packages only when the
-code changed. The scratch folder is deleted when you stop or restart the
-session. This is the only place the extension ever writes in OneLake.
+code changed. Stop/restart through the extension attempts to delete this
+window's scratch directory; cleanup is best effort. This is the only
+OneLake prefix the extension itself may write. After switching to Remote,
+restart the session to discard already-staged imports.
 
 ## 7. Run files and selections
 
@@ -222,8 +238,10 @@ Open any `.py`, `.sql`, `.scala` or `.r` file:
 
 Output — printed text, and `display()` / `%%sql` results as text tables —
 appears in the **Fabric Connect: Run** output channel. Files run on the
-connected compute in the same session as your notebooks, so variables and
-imported modules are shared.
+connected compute. Runs share a session when tenant, workspace, Lakehouse and
+optional Environment match, regardless of statement language. Python
+variables/imports remain in that session's Python interpreter; another
+language does not automatically expose them.
 
 ## 8. Run a Spark Job Definition from local files
 
@@ -232,6 +250,9 @@ Run Spark Job Definition**.
 
 - Settings (arguments, main class, libraries, default Lakehouse,
   Environment) come from `SparkJobDefinitionV1.json`.
+- A bound default Lakehouse in those settings needs a folder target for
+  its workspace. Without a bound default, the job uses the compute host.
+  See [optional targets](#12-optional-map-folders-to-workspaces-dev--test--prod).
 - The **main file comes from the repo**: `Main/<file>`, or next to the
   settings file. Library files come from `Libs/`. Libraries referenced by
   `abfss://` URI are passed through unchanged.
@@ -328,23 +349,25 @@ SET API_PATH = /workspaces/$(_cells[-1].value[0].id)
 GET ./items
 ```
 
-List responses show as a table next to the JSON. Only reads work: a cell
-that would create, change or delete something is refused before it is
-sent. Save the notebook as a `.fabnb` file to keep it.
+List responses show as a table next to the JSON. The shared write policy
+blocks workspace item creation, update and deletion; explicitly allowlisted
+operations can run. This is not a data sandbox: user code and GraphQL
+mutations can change data with your permissions. Save as `.fabnb` to keep it.
 
 ## 12. Optional: map folders to workspaces (dev / test / prod)
 
-Everything above works with just the compute connection. Add **targets**
-when a notebook's default Lakehouse should resolve in a specific workspace
-per environment — for example, the same repo checked out against _dev_ on
-your machine and _test_ on a colleague's.
+Compute is enough for code without its own Lakehouse. A valid notebook
+default can also run with only sign-in, without connecting compute.
+Add **targets** to assign folders a tenant, supply a workspace for the
+Manage Lakehouses panel, or resolve a Spark Job Definition's bound default.
+Targets do **not** relocate a notebook's default Lakehouse.
 
 `.fabric/targets.json` (committed) says which folders belong to which
 target and tenant:
 
 ```json
 {
-  "folders": { "notebooks": "sales" },
+  "folders": { "notebooks": "sales", "jobs": "sales" },
   "targets": {
     "sales": {
       "itemType": "notebook",
@@ -366,10 +389,16 @@ says which workspace that target means on this machine:
 }
 ```
 
-A notebook under `notebooks/` then runs its default Lakehouse in that
-workspace. If a mapped folder's tenant differs from the connected
-compute's tenant, Fabric Connect refuses to run rather than risk the wrong
-client's workspace.
+A notebook's default runs in `default_lakehouse_workspace_id` from its
+metadata, or in its local binding's workspace. The target supplies tenant
+context, not a replacement workspace. Use **Bind Lakehouse…** for
+machine-local dev/test Lakehouse choices without a notebook git diff.
+
+For an SJD with a bound `defaultLakehouseArtifactId`, the target workspace
+is used because its settings do not carry a workspace. `notebook` is the
+only registered target `itemType`; it is not a file execution-mode setting.
+If code uses the compute host and the folder target has a different
+tenant, execution is refused rather than borrowing another tenant's host.
 
 ## Your daily loop
 

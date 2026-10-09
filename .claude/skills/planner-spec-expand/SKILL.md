@@ -13,7 +13,7 @@ The planner's job is to expand the brief into a spec dense enough that every dow
 ## When to apply
 
 - The user handed you a brief under ~200 words and expects a real product.
-- You're about to seed [[feature-list-json]] and the brief has no orderable features yet.
+- You're about to seed [feature-list-json](../feature-list-json/SKILL.md) and the brief has no orderable features yet.
 - Scope drifted mid-project and the original spec no longer describes the target — rewrite, don't patch.
 
 ## Procedure — expand in this order
@@ -22,14 +22,14 @@ Do the sections in order. Later sections depend on earlier ones being locked.
 
 1. **Restate the brief in one paragraph.** In your own words, what is being built and for whom. If you can't write this cleanly, ask the user before continuing — the brief is under-specified.
 2. **Pick a design language.** One sentence each on: visual tone (minimal / dense / playful), typography stance (one sans / serif+sans / mono accents), color posture (monochrome + one accent / two-color / full palette), density (airy / compact). This locks a thousand later micro-decisions.
-3. **Enumerate the acceptance surface.** For each user-observable capability, write one sentence of user-observable behavior AND the concrete steps a human would take to verify it. This is the shape [[feature-list-json]] wants — write it in that shape now.
+3. **Enumerate the acceptance surface.** For each user-observable capability, write one sentence of user-observable behavior AND the concrete steps a human would take to verify it. This is the shape [feature-list-json](../feature-list-json/SKILL.md) wants — write it in that shape now.
 4. **Order the features.** Sort by dependency: nothing appears before what it depends on. Ties broken by "what does the user see first when they open the app." The top of the list must be runnable-alone.
 5. **Name the out-of-scope.** One short list of things the brief could imply but you are explicitly not building. Prevents the generator from wandering.
 6. **Write the smoke path.** The single user journey that proves the product exists — 3-6 steps end-to-end. This becomes the initializer's smoke test.
 
 ## Checklist before you hand off
 
-- Every feature has `description` + `steps` in the shape [[feature-list-json]] expects.
+- Every feature has `description` + `steps` in the shape [feature-list-json](../feature-list-json/SKILL.md) expects.
 - The first 3 features can be built in order with no forward dependency.
 - Design language fits on one screen — if it's a page, you over-specified.
 - Out-of-scope list is non-empty. If everything is in scope, you didn't plan, you transcribed.
@@ -44,6 +44,6 @@ Do the sections in order. Later sections depend on earlier ones being locked.
 
 ## When NOT to apply
 
-Skip this for briefs already specified to acceptance-criteria depth, or for single-feature edits to an existing project — use [[shift-notes]] and pick from the existing [[feature-list-json]] instead.
+Skip this for briefs already specified to acceptance-criteria depth, or for single-feature edits to an existing project — use [shift-notes](../shift-notes/SKILL.md) and pick from the existing [feature-list-json](../feature-list-json/SKILL.md) instead.
 
-Related: [[feature-list-json]], [[shift-notes]], [[broken-window-check]].
+Related: [feature-list-json](../feature-list-json/SKILL.md), [shift-notes](../shift-notes/SKILL.md), [broken-window-check](../broken-window-check/SKILL.md).

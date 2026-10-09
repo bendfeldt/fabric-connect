@@ -6,6 +6,10 @@ when_to_use: tuning a prompt, changing a skill, comparing two models, regression
 
 # Eval Harness
 
+This is an optional harness-authoring procedure, not an installed Fabric
+Connect test runner. It requires an approved evaluation task and safe inputs;
+do not create or fan out a benchmark for a documentation-only change.
+
 Every prompt tweak in a long-running agent looks like an improvement in the moment. The only way to know is a graded run against fixed inputs. Loopkit already ships `.claude/agents/verifier.md` — that is your grader. Do not rebuild it.
 
 ## The three-stage loop
@@ -30,7 +34,8 @@ A dumb loop: for each row, call the model with the current prompt/skill, capture
 
 - Same temperature every run (usually 0 for evals).
 - Same seed / model version.
-- Log the git SHA of the prompt/skill under test in the file header.
+- Record the git SHA in JSON metadata or alongside the JSONL, not a
+  non-JSON header line.
 
 If the runner is smart it will bias the eval. Keep it dumb.
 
@@ -43,7 +48,10 @@ Fan out one subagent per row (see `subagent-fanout`). Each gets:
 - The actual output.
 - The verifier system prompt from `.claude/agents/verifier.md`.
 
-Verifier returns strict JSON: `{"pass": bool, "why": "..."}`. Collect into `verdicts.jsonl`.
+The installed verifier returns
+`{"passes": bool, "failures": [{"file": str, "line": int, "shortcut": str, "why": str}]}`.
+Use that schema consistently, with an empty failures array on success.
+Collect verdicts into `verdicts.jsonl`; JSONL rows have no separate non-JSON header.
 
 ## Diff vs baseline
 

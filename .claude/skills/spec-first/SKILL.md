@@ -7,7 +7,9 @@ when_to_use: a task with more than 2 steps, a long-running job, "build X", agent
 # Spec First
 
 Without an external contract, the agent drifts after ~3 iterations — and the failure looks like progress (code written, tests pass, wrong goal solved).
-Write `PROMPT.md` BEFORE acting:
+Write or read the approved goal contract BEFORE acting. Use `PROMPT.md`
+when that is the project's chosen goal file; an approved client session
+plan is also a contract and does not require a duplicate root file:
 
 - **Goal** — one sentence.
 - **Done when** — concrete, checkable conditions. "Test suite green: <cmd>".
