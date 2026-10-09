@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { FabricApiError, LivyError } from "../src/core/errors";
 import { ExecutionDiagnostics } from "../src/core/executionDiagnostics";
+import { FabricApiClient } from "../src/core/fabricApiClient";
 import {
   LivySessionManager,
   listLivySessions,
@@ -76,6 +77,89 @@ function manager(
     pollIntervalMs: 0,
     sleep: async () => undefined,
   });
+}
+
+interface RecoveryCall {
+  readonly method: string;
+  readonly path: string;
+  readonly code?: string;
+}
+
+function recoveryResponse(status: number, message?: unknown): Response {
+  return new Response(JSON.stringify({ message }), {
+    status,
+    headers: { "x-ms-request-id": "corr-terminal" },
+  });
+}
+
+function terminalMessage(
+  sessionId: string,
+  workspaceId = TARGET.workspaceId,
+): string {
+  return `Session ${sessionId} of workspace ${workspaceId} is in a terminal state. Scheduler state : Ended. Plugin state : Ended. Livy state : dead`;
+}
+
+function requestSession(call: RecoveryCall): string {
+  const id = /\/sessions\/([^/]+)\/statements(?:\/[^/]+)?$/.exec(
+    call.path,
+  )?.[1];
+  assert.ok(id, "Expected a session statement request");
+  return id;
+}
+
+function recoveryApi(
+  respond: (call: RecoveryCall) => Response | Promise<Response> | undefined,
+) {
+  const calls: RecoveryCall[] = [];
+  let started = 0;
+  const fetchFn: typeof fetch = async (input, init) => {
+    const call: RecoveryCall = {
+      method: init?.method ?? "GET",
+      path: new URL(String(input)).pathname,
+      code:
+        typeof init?.body === "string"
+          ? (JSON.parse(init.body) as { code?: string }).code
+          : undefined,
+    };
+    calls.push(call);
+    const response = respond(call);
+    if (response !== undefined) {
+      return response;
+    }
+    let body: unknown;
+    if (call.method === "POST" && call.path.endsWith("/sessions")) {
+      body = {
+        id: `00000000-0000-4000-8000-${String(++started).padStart(12, "0")}`,
+        state: "starting",
+      };
+    } else if (call.method === "POST" && call.path.endsWith("/statements")) {
+      body = { id: 0, state: "waiting" };
+    } else if (call.method === "GET" && call.path.endsWith("/statements/0")) {
+      body = { id: 0, state: "available", output: { status: "ok", data: {} } };
+    } else if (call.method === "GET" && /\/sessions\/[^/]+$/.test(call.path)) {
+      body = { state: "idle" };
+    } else if (
+      call.method === "DELETE" &&
+      /\/sessions\/[^/]+$/.test(call.path)
+    ) {
+      body = {};
+    } else {
+      throw new Error(
+        `Unexpected recovery request: ${call.method} ${call.path}`,
+      );
+    }
+    return new Response(JSON.stringify(body), { status: 200 });
+  };
+  return {
+    calls,
+    client: new FabricApiClient(
+      { getToken: async () => "test-token" },
+      { fetchFn, sleep: async () => undefined },
+    ),
+    get started() {
+      return started;
+    },
+  };
 }
 
 test("starts a session, runs a statement, returns its data", async () => {
@@ -362,6 +446,330 @@ test("mid-execution 404 is classified as session expiry and clears the store", a
     },
   );
   assert.equal(store.data.size, 0);
+});
+
+test("terminal-session HTTP 400 recovers on the next run without reload or replay", async () => {
+  let dead = false;
+  const api = recoveryApi((call) =>
+    dead && call.method === "POST" && call.path.endsWith("/statements")
+      ? recoveryResponse(400, terminalMessage(requestSession(call)))
+      : undefined,
+  );
+  const store = memoryStore();
+  const livy = manager(api.client, store);
+  await livy.execute(TARGET, "first", "pyspark", NEVER_CANCELLED);
+  dead = true;
+  await assert.rejects(
+    livy.execute(TARGET, "failed", "pyspark", NEVER_CANCELLED),
+    (error: unknown) => {
+      assert.ok(error instanceof LivyError);
+      assert.equal(error.kind, "session-expired");
+      assert.ok(error.cause instanceof FabricApiError);
+      assert.equal(error.cause.status, 400);
+      assert.equal(error.cause.correlationId, "corr-terminal");
+      assert.match(error.message, /HTTP 400/);
+      assert.match(error.message, /Livy state : dead/);
+      assert.match(error.message, /corr-terminal/);
+      return true;
+    },
+  );
+  assert.equal(store.data.size, 0);
+  assert.equal(api.started, 1);
+  await assert.rejects(
+    livy.execute(TARGET, "cancelled", "pyspark", {
+      isCancellationRequested: true,
+      onCancellationRequested: () => ({ dispose: () => undefined }),
+    }),
+    (error: unknown) =>
+      error instanceof LivyError && error.kind === "cancelled",
+  );
+  assert.equal(api.started, 1);
+  dead = false;
+  assert.equal(
+    (await livy.execute(TARGET, "next", "pyspark", NEVER_CANCELLED)).status,
+    "ok",
+  );
+  assert.equal(api.started, 2);
+  assert.deepEqual(
+    api.calls.filter((call) => call.code).map((call) => call.code),
+    ["first", "failed", "next"],
+  );
+  assert.equal(
+    api.calls.filter(
+      (call) => call.method === "GET" && /\/sessions\/[^/]+$/.test(call.path),
+    ).length,
+    2,
+  );
+  assert.ok(!api.calls.some((call) => call.method === "DELETE"));
+});
+
+for (const [label, status, detail] of [
+  ["generic rejection", 400, () => "Invalid statement"],
+  [
+    "nonterminal state",
+    400,
+    (id: string) => terminalMessage(id).replace("dead", "busy"),
+  ],
+  [
+    "nonterminal scheduler",
+    400,
+    (id: string) =>
+      terminalMessage(id).replace(
+        "Scheduler state : Ended",
+        "Scheduler state : Starting",
+      ),
+  ],
+  [
+    "truncated detail",
+    400,
+    (id: string) => terminalMessage(id).split(" Plugin")[0],
+  ],
+  ["wrong session", 400, () => terminalMessage("other-session")],
+  [
+    "wrong workspace",
+    400,
+    (id: string) => terminalMessage(id, "other-workspace"),
+  ],
+  [
+    "embedded user text",
+    400,
+    (id: string) => `Invalid code: ${terminalMessage(id)}`,
+  ],
+  [
+    "trailing user text",
+    400,
+    (id: string) => `${terminalMessage(id)} in supplied code`,
+  ],
+  ["malformed detail", 400, () => ({ state: "dead" })],
+  ["authentication failure", 401, (id: string) => terminalMessage(id)],
+  ["access failure", 403, (id: string) => terminalMessage(id)],
+] as const) {
+  test(`${label} does not invalidate a cached session`, async () => {
+    let failed = false;
+    const api = recoveryApi((call) =>
+      failed && call.method === "POST" && call.path.endsWith("/statements")
+        ? recoveryResponse(status, detail(requestSession(call)))
+        : undefined,
+    );
+    const store = memoryStore();
+    const livy = manager(api.client, store);
+    await livy.execute(TARGET, "first", "pyspark", NEVER_CANCELLED);
+    const original = [...store.data.entries()];
+    failed = true;
+    await assert.rejects(
+      livy.execute(TARGET, "failed", "pyspark", NEVER_CANCELLED),
+      FabricApiError,
+    );
+    assert.deepEqual([...store.data.entries()], original);
+    failed = false;
+    await livy.execute(TARGET, "next", "pyspark", NEVER_CANCELLED);
+    assert.equal(api.started, 1);
+  });
+}
+
+for (const status of [400, 404]) {
+  for (const reattach of [false, true]) {
+    test(`late HTTP ${status} cannot clear a newer ${reattach ? "reattached" : "replacement"} session generation`, async () => {
+      let finishOld: ((response: Response) => void) | undefined;
+      let submitted: (() => void) | undefined;
+      const oldSubmitted = new Promise<void>((resolve) => {
+        submitted = resolve;
+      });
+      const api = recoveryApi((call) => {
+        if (call.code !== "old") {
+          return undefined;
+        }
+        submitted?.();
+        return new Promise<Response>((resolve) => {
+          finishOld = resolve;
+        });
+      });
+      const store = memoryStore();
+      const livy = manager(api.client, store);
+      await livy.startSession(TARGET, NEVER_CANCELLED);
+      const oldId = [...store.data.values()][0];
+      const old = livy.execute(TARGET, "old", "pyspark", NEVER_CANCELLED);
+      const rejected = assert.rejects(old);
+      await oldSubmitted;
+      if (reattach) {
+        await livy.dispose();
+      } else {
+        await livy.stopSession(TARGET);
+      }
+      await livy.startSession(TARGET, NEVER_CANCELLED);
+      const current = [...store.data.entries()];
+      finishOld?.(recoveryResponse(status, terminalMessage(oldId)));
+      await rejected;
+      assert.deepEqual([...store.data.entries()], current);
+      await livy.execute(TARGET, "next", "pyspark", NEVER_CANCELLED);
+      assert.equal(api.started, reattach ? 1 : 2);
+    });
+  }
+}
+
+test("terminal recovery leaves other hosts and Environments cached", async () => {
+  const api = recoveryApi((call) =>
+    call.code === "failed"
+      ? recoveryResponse(400, terminalMessage(requestSession(call)))
+      : undefined,
+  );
+  const store = memoryStore();
+  const livy = manager(api.client, store);
+  const otherHost = {
+    ...TARGET,
+    lakehouseId: "22222222-2222-3333-4444-555555555555",
+  };
+  const otherEnvironment = {
+    ...TARGET,
+    environmentId: "33333333-2222-3333-4444-555555555555",
+  };
+  for (const target of [TARGET, otherHost, otherEnvironment]) {
+    await livy.startSession(target, NEVER_CANCELLED);
+  }
+  const others = [...store.data.entries()].slice(1);
+  await assert.rejects(
+    livy.execute(TARGET, "failed", "pyspark", NEVER_CANCELLED),
+  );
+  assert.deepEqual([...store.data.entries()], others);
+  for (const target of [otherHost, otherEnvironment]) {
+    await livy.execute(target, "next", "pyspark", NEVER_CANCELLED);
+  }
+  assert.equal(api.started, 3);
+});
+
+for (const phase of ["readiness", "creation", "reattachment"] as const) {
+  test(`late ${phase} response cannot change a replacement's persisted ID`, async () => {
+    let finishOld: ((response: Response) => void) | undefined;
+    let announceOld: (() => void) | undefined;
+    const oldPending = new Promise<void>((resolve) => {
+      announceOld = resolve;
+    });
+    let intercepted = false;
+    const api = recoveryApi((call) => {
+      const acquisitionRequest =
+        phase === "creation"
+          ? call.method === "POST" && call.path.endsWith("/sessions")
+          : call.method === "GET" && /\/sessions\/[^/]+$/.test(call.path);
+      if (intercepted || !acquisitionRequest) {
+        return undefined;
+      }
+      intercepted = true;
+      announceOld?.();
+      return new Promise<Response>((resolve) => {
+        finishOld = resolve;
+      });
+    });
+    const key = `livy-session/${TARGET.tenantId}/${TARGET.workspaceId}/${TARGET.lakehouseId}`;
+    const store = memoryStore(
+      phase === "reattachment" ? { [key]: "old-session" } : {},
+    );
+    const livy = manager(api.client, store);
+    const oldOutcome = livy.startSession(TARGET, NEVER_CANCELLED).then(
+      () => ({ status: "ok" as const }),
+      (error: unknown) => ({ status: "error" as const, error }),
+    );
+    await oldPending;
+    await livy.stopSession(TARGET);
+    await livy.startSession(TARGET, NEVER_CANCELLED);
+    const replacement = [...store.data.entries()];
+    assert.equal(replacement.length, 1);
+    assert.ok(finishOld);
+    finishOld(
+      new Response(
+        JSON.stringify(
+          phase === "creation"
+            ? { id: "old-session", state: "starting" }
+            : { state: "dead" },
+        ),
+        { status: 200 },
+      ),
+    );
+    const outcome = await oldOutcome;
+    assert.deepEqual([...store.data.entries()], replacement);
+    assert.equal(outcome.status, "error");
+    if (outcome.status === "error") {
+      assert.ok(outcome.error instanceof LivyError);
+      assert.equal(
+        outcome.error.kind,
+        phase === "readiness" ? "session-start" : "cancelled",
+      );
+    }
+    const requests = api.calls.length;
+    await livy.execute(TARGET, "next", "pyspark", NEVER_CANCELLED);
+    assert.equal(api.calls.length, requests + 2);
+    assert.equal(api.started, phase === "readiness" ? 2 : 1);
+  });
+}
+
+test("stop before acquisition begins makes no remote session request", async () => {
+  const api = recoveryApi(() => undefined);
+  const store = memoryStore();
+  const livy = manager(api.client, store);
+  const outcome = livy.startSession(TARGET, NEVER_CANCELLED).then(
+    () => ({ status: "ok" as const }),
+    (error: unknown) => ({ status: "error" as const, error }),
+  );
+  await livy.stopSession(TARGET);
+  const result = await outcome;
+  assert.deepEqual(api.calls, []);
+  assert.equal(store.data.size, 0);
+  assert.equal(result.status, "error");
+  if (result.status === "error") {
+    assert.ok(result.error instanceof LivyError);
+    assert.equal(result.error.kind, "cancelled");
+  }
+});
+
+test("terminal recovery bootstraps the replacement and preserves explicit preparation", async () => {
+  const api = recoveryApi((call) =>
+    call.code === "failed"
+      ? recoveryResponse(400, terminalMessage(requestSession(call)))
+      : undefined,
+  );
+  const livy = new LivySessionManager(api.client, memoryStore(), {
+    bootstrap: { code: "bootstrap", kind: "pyspark" },
+    pollIntervalMs: 0,
+    sleep: async () => undefined,
+  });
+  await livy.execute(TARGET, "first", "pyspark", NEVER_CANCELLED);
+  await assert.rejects(
+    livy.execute(TARGET, "failed", "pyspark", NEVER_CANCELLED),
+  );
+  await livy.execute(
+    TARGET,
+    "prepare",
+    "pyspark",
+    NEVER_CANCELLED,
+    undefined,
+    "module-setup",
+  );
+  await livy.execute(TARGET, "next", "pyspark", NEVER_CANCELLED);
+  assert.equal(api.started, 2);
+  assert.deepEqual(
+    api.calls.filter((call) => call.code).map((call) => call.code),
+    ["bootstrap", "first", "failed", "bootstrap", "prepare", "next"],
+  );
+});
+
+test("statement polling preserves 404 recovery but does not classify terminal-shaped HTTP 400", async () => {
+  for (const status of [400, 404]) {
+    const api = recoveryApi((call) =>
+      call.method === "GET" && call.path.endsWith("/statements/0")
+        ? recoveryResponse(status, terminalMessage(requestSession(call)))
+        : undefined,
+    );
+    const store = memoryStore();
+    await assert.rejects(
+      manager(api.client, store).execute(
+        TARGET,
+        "x",
+        "pyspark",
+        NEVER_CANCELLED,
+      ),
+      status === 404 ? LivyError : FabricApiError,
+    );
+    assert.equal(store.data.size, status === 404 ? 0 : 1);
+  }
 });
 
 test("executions on the same session are queued, not raced", async () => {

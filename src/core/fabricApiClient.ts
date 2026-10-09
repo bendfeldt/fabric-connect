@@ -204,13 +204,16 @@ export class FabricApiClient implements IFabricApiClient {
     logPath: string,
     correlationId: string | undefined,
   ): Promise<FabricApiError> {
-    let detail = "";
+    let detail: string | undefined;
     try {
       const body = (await response.json()) as {
-        message?: string;
-        error?: { message?: string };
-      };
-      detail = body.error?.message ?? body.message ?? "";
+        message?: unknown;
+        error?: { message?: unknown };
+      } | null;
+      const message = body?.error?.message ?? body?.message;
+      if (typeof message === "string") {
+        detail = message;
+      }
     } catch {
       // Non-JSON error body: the status-based message below is sufficient.
     }
@@ -249,6 +252,7 @@ export class FabricApiClient implements IFabricApiClient {
         entity: logPath,
         status: response.status,
         correlationId,
+        serviceMessage: detail,
         remediation: next,
       },
     );

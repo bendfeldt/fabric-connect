@@ -171,6 +171,28 @@ This sequence does not authorize a push, extension installation or live
 Fabric calls. Diagnostics are not a latency remedy or working Variable
 Library compensation.
 
+## Terminal-session recovery
+
+The supplied dev.15 trace identifies HTTP 400 during Livy statement
+submission with explicit terminal/dead-session detail. The manager
+previously invalidated sessions only on HTTP 404 and reused the dead
+cached ID until reload.
+
+The approved narrow repair recognizes that observed service-message
+shape with matching session/workspace identities, retains the original
+service failure, and clears only the matching local session generation
+and persisted ID. The next explicit run starts a fresh session; no
+automatic code replay, recovery GET, new timeout policy, mapping/auth
+change or remote deletion is introduced. Existing 404 handling receives
+the same stale-generation guard. Acquisition persistence is fenced too:
+late creation, readiness and reattachment replies cannot overwrite or
+clear a replacement ID; superseded startup reports cancellation.
+Fresh sessions lose in-memory state.
+
+Local real-client/manager regressions reproduced the failure before the
+repair, and the full native suite passes 305 tests. Why Fabric ended the
+session and recovery on the original live operation remain unconfirmed.
+
 ## Next
 
 - Keep latency and Variable Library remedies blocked until authorized
@@ -178,6 +200,9 @@ Library compensation.
   currently available.
 - Smoke-test the side bar feedback in a running VS Code against a real
   tenant (`docs/testing.md` sections 1, 4 and 9).
+- After installing a reviewed build, confirm terminal-session recovery on
+  the original execution path without restarting VS Code. Installation
+  and live service calls are not authorized by this repair.
 
 All planned milestones (M0–M5) are implemented, as stacked PRs (one per
 milestone; the user asked for all of them in one run, overriding the

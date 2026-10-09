@@ -126,12 +126,18 @@ export type LivyErrorKind =
 
 export class FabricApiError extends FabricConnectError {
   readonly status?: number;
+  /** Validated service detail, separate from formatted remediation text. */
+  readonly serviceMessage?: string;
   /** Correlation ID from the response, for support cases. */
   readonly correlationId?: string;
 
   constructor(
     message: string,
-    details: ErrorDetails & { status?: number; correlationId?: string },
+    details: ErrorDetails & {
+      status?: number;
+      correlationId?: string;
+      serviceMessage?: string;
+    },
   ) {
     const suffix =
       details.correlationId === undefined
@@ -140,5 +146,6 @@ export class FabricApiError extends FabricConnectError {
     super(suffix, details);
     this.status = details.status;
     this.correlationId = details.correlationId;
+    this.serviceMessage = details.serviceMessage;
   }
 }

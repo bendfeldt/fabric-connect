@@ -313,9 +313,11 @@ export class LivySessionManager implements ILivySessionManager {
     role: StatementRole,
   ): Promise<LivyStatementResult> {
     this.throwIfCancelled(token, target);
-    const sessionId = await diagnostics.measure("session.acquire", () =>
-      this.getOrCreateSession(target, token, diagnostics),
-    );
+    let session: Promise<string> | undefined;
+    const sessionId = await diagnostics.measure("session.acquire", () => {
+      session = this.getOrCreateSession(target, token, diagnostics);
+      return session;
+    });
     const base = livyBase(target);
 
     let statement: LivyStatement;
@@ -332,7 +334,13 @@ export class LivySessionManager implements ILivySessionManager {
       );
       statement = response.body;
     } catch (cause) {
-      throw this.classifySessionLoss(cause, target, sessionId);
+      throw this.classifySessionLoss(
+        cause,
+        target,
+        sessionId,
+        session,
+        "submit",
+      );
     }
     const statementId = livyId(statement?.id);
     if (statementId === undefined) {
@@ -350,7 +358,7 @@ export class LivySessionManager implements ILivySessionManager {
 
     return diagnostics.measure(
       `statement.wait.${role}`,
-      () => this.pollStatement(target, sessionId, statementId, token),
+      () => this.pollStatement(target, sessionId, statementId, token, session),
       (result) => result.status,
     );
   }
@@ -360,6 +368,7 @@ export class LivySessionManager implements ILivySessionManager {
     sessionId: string,
     statementId: string,
     token: CancelToken,
+    session: Promise<string> | undefined,
   ): Promise<LivyStatementResult> {
     const base = livyBase(target);
     for (;;) {
@@ -376,7 +385,13 @@ export class LivySessionManager implements ILivySessionManager {
         });
         statement = response.body;
       } catch (cause) {
-        throw this.classifySessionLoss(cause, target, sessionId);
+        throw this.classifySessionLoss(
+          cause,
+          target,
+          sessionId,
+          session,
+          "poll",
+        );
       }
 
       if (STATEMENT_FINAL_STATES.has(statement.state)) {
@@ -422,7 +437,7 @@ export class LivySessionManager implements ILivySessionManager {
     }
   }
 
-  private async getOrCreateSession(
+  private getOrCreateSession(
     target: LivyTarget,
     token: CancelToken,
     diagnostics: ExecutionDiagnostics,
@@ -432,13 +447,20 @@ export class LivySessionManager implements ILivySessionManager {
     if (existing !== undefined) {
       return existing;
     }
-    const created = this.attachOrStartSession(target, token, diagnostics)
+    // Register this generation before acquisition can write persisted state.
+    const created: Promise<string> = Promise.resolve()
+      .then(() =>
+        this.attachOrStartSession(target, token, diagnostics, created),
+      )
       .then(async (sessionId) => {
-        await this.runBootstrap(target, sessionId, token, diagnostics);
+        this.throwIfSuperseded(target, created);
+        await this.runBootstrap(target, sessionId, token, diagnostics, created);
         return sessionId;
       })
       .catch((error) => {
-        this.sessions.delete(key); // allow retry after a failed start
+        if (this.sessions.get(key) === created) {
+          this.sessions.delete(key); // allow retry after a failed start
+        }
         throw error;
       });
     this.sessions.set(key, created);
@@ -450,6 +472,7 @@ export class LivySessionManager implements ILivySessionManager {
     sessionId: string,
     token: CancelToken,
     diagnostics: ExecutionDiagnostics,
+    session: Promise<string>,
   ): Promise<void> {
     const bootstrap = this.bootstrap;
     if (bootstrap === undefined) {
@@ -468,7 +491,8 @@ export class LivySessionManager implements ILivySessionManager {
       if (statementId !== undefined) {
         await diagnostics.measure(
           "bootstrap.wait",
-          () => this.pollStatement(target, sessionId, statementId, token),
+          () =>
+            this.pollStatement(target, sessionId, statementId, token, session),
           (result) => result.status,
         );
       }
@@ -482,7 +506,9 @@ export class LivySessionManager implements ILivySessionManager {
     target: LivyTarget,
     token: CancelToken,
     diagnostics: ExecutionDiagnostics,
+    acquisition: Promise<string>,
   ): Promise<string> {
+    this.throwIfSuperseded(target, acquisition);
     const key = sessionKey(target);
     const base = livyBase(target);
 
@@ -503,7 +529,12 @@ export class LivySessionManager implements ILivySessionManager {
             }
             if (!SESSION_DEAD_STATES.has(response.body.state)) {
               // Return, don't await: readiness failures must not trigger a replacement.
-              return this.waitForSessionReady(target, persisted, token);
+              return this.waitForSessionReady(
+                target,
+                persisted,
+                token,
+                acquisition,
+              );
             }
           } catch {
             // Persisted session is gone; fall through and start a fresh one.
@@ -515,7 +546,10 @@ export class LivySessionManager implements ILivySessionManager {
       if (reattached !== undefined) {
         return reattached;
       }
-      this.store.set(key, undefined);
+      this.throwIfSuperseded(target, acquisition);
+      if (this.store.get(key) === persisted) {
+        this.store.set(key, undefined);
+      }
     }
 
     return diagnostics.measure("session.start", async () => {
@@ -544,8 +578,9 @@ export class LivySessionManager implements ILivySessionManager {
           },
         );
       }
+      this.throwIfSuperseded(target, acquisition);
       this.store.set(key, sessionId);
-      return this.waitForSessionReady(target, sessionId, token);
+      return this.waitForSessionReady(target, sessionId, token, acquisition);
     });
   }
 
@@ -553,11 +588,13 @@ export class LivySessionManager implements ILivySessionManager {
     target: LivyTarget,
     sessionId: string,
     token: CancelToken,
+    acquisition: Promise<string>,
   ): Promise<string> {
     const base = livyBase(target);
     const deadline = Date.now() + this.sessionStartTimeoutMs;
     for (;;) {
       this.throwIfCancelled(token, target);
+      this.throwIfSuperseded(target, acquisition);
       let session: LivySessionInfo;
       try {
         const response = await this.api.request<LivySessionInfo>({
@@ -573,7 +610,13 @@ export class LivySessionManager implements ILivySessionManager {
         return sessionId;
       }
       if (SESSION_DEAD_STATES.has(session.state)) {
-        this.store.set(sessionKey(target), undefined);
+        const key = sessionKey(target);
+        if (
+          this.sessions.get(key) === acquisition &&
+          this.store.get(key) === sessionId
+        ) {
+          this.store.set(key, undefined);
+        }
         const reason = sessionDiagnostics(session);
         throw new LivyError(
           `The Livy session for this notebook entered state '${session.state}' before becoming ready.` +
@@ -656,19 +699,32 @@ export class LivySessionManager implements ILivySessionManager {
     cause: unknown,
     target: LivyTarget,
     sessionId: string,
+    session: Promise<string> | undefined,
+    phase: "submit" | "poll",
   ): LivyError | unknown {
-    if (cause instanceof FabricApiError && cause.status === 404) {
-      // Session vanished mid-execution: expired or was stopped upstream.
-      this.sessions.delete(sessionKey(target));
-      this.store.set(sessionKey(target), undefined);
+    if (
+      cause instanceof FabricApiError &&
+      (cause.status === 404 ||
+        (phase === "submit" &&
+          cause.status === 400 &&
+          isTerminalSessionRejection(cause, target, sessionId)))
+    ) {
+      const key = sessionKey(target);
+      if (session !== undefined && this.sessions.get(key) === session) {
+        this.sessions.delete(key);
+        if (this.store.get(key) === sessionId) {
+          this.store.set(key, undefined);
+        }
+      }
+      const detail = cause.message.split(" Next step:")[0];
       return new LivyError(
-        "The Livy session expired or was stopped while the cell was running.",
+        `The Livy session expired or was stopped while the cell was running. Details: ${detail}`,
         {
           operation: "execute cell",
           entity: `session ${sessionId}`,
           kind: "session-expired",
           remediation:
-            "Run the cell again — a fresh session will be started automatically.",
+            "Run the setup code again, then retry the failed code; the next run starts a fresh session.",
           cause,
         },
       );
@@ -685,6 +741,42 @@ export class LivySessionManager implements ILivySessionManager {
       });
     }
   }
+
+  private throwIfSuperseded(
+    target: LivyTarget,
+    acquisition: Promise<string>,
+  ): void {
+    if (this.sessions.get(sessionKey(target)) !== acquisition) {
+      throw new LivyError(
+        "Livy session startup was superseded by a stop, restart or reload.",
+        {
+          operation: "start Livy session",
+          entity: hostEntity(target),
+          kind: "cancelled",
+          remediation: "Run the code again to use the current session.",
+        },
+      );
+    }
+  }
+}
+
+function isTerminalSessionRejection(
+  cause: FabricApiError,
+  target: LivyTarget,
+  sessionId: string,
+): boolean {
+  if (cause.serviceMessage === undefined) {
+    return false;
+  }
+  const match =
+    /^Session ([a-z0-9-]+) of workspace ([a-z0-9-]+) is in a terminal state\.\s+Scheduler state\s*:\s*Ended\.\s+Plugin state\s*:\s*Ended\.\s+Livy state\s*:\s*dead\s*$/i.exec(
+      cause.serviceMessage,
+    );
+  return (
+    match !== null &&
+    match[1].toLowerCase() === sessionId.toLowerCase() &&
+    match[2].toLowerCase() === target.workspaceId.toLowerCase()
+  );
 }
 
 function variableLibraryHint(
