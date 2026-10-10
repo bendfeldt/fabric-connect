@@ -654,6 +654,59 @@ test("an HTTP error while following a batch is not treated as an outage", async 
   assert.equal(polls(), 1);
 });
 
+test("a cancel that Fabric does not accept is reported, not hidden", async () => {
+  for (const status of [403, 404]) {
+    const api: IFabricApiClient = {
+      async request<T>(options: FabricRequestOptions) {
+        if (options.method === "POST") {
+          return { status: 200, body: { id: 42 } } as FabricResponse<T>;
+        }
+        if (options.method === "DELETE") {
+          // Shaped like the client's own errors: reason, then "Next step:".
+          throw new FabricApiError(
+            `The Fabric API request 'DELETE /batches/42' failed with HTTP ${status} because the signed-in identity lacks permission on this resource.`,
+            {
+              operation: "call Fabric API",
+              status,
+              remediation:
+                "Ask a workspace admin to grant your account access.",
+            },
+          );
+        }
+        return { status: 200, body: { state: "running" } } as FabricResponse<T>;
+      },
+    };
+    const cancelled = {
+      isCancellationRequested: true,
+      onCancellationRequested: () => ({ dispose: () => undefined }),
+    };
+    const run = runBatch(
+      api,
+      TARGET,
+      { name: "J", file: "f", args: [] },
+      cancelled,
+      { sleep: async () => undefined },
+    );
+    if (status === 404) {
+      // The batch is already gone: as good as cancelled.
+      assert.equal(await run, "cancelled");
+    } else {
+      await assert.rejects(
+        run,
+        (error: unknown) =>
+          error instanceof SparkJobError &&
+          /may still be running/.test(error.message) &&
+          error.message.includes(
+            "Details: The Fabric API request 'DELETE /batches/42' failed with HTTP 403 because the signed-in identity lacks permission on this resource.",
+          ) &&
+          !error.message.includes("Ask a workspace admin") &&
+          /monitoring hub/.test(error.remediation ?? "") &&
+          error.cause instanceof FabricApiError,
+      );
+    }
+  }
+});
+
 test("a batch without a usable ID is a protocol error", async () => {
   const api: IFabricApiClient = {
     async request<T>() {

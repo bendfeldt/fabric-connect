@@ -491,9 +491,14 @@ The Databricks Connect workflow: edit locally, run on Fabric.
   (or next to the settings file) and libraries from `Libs/` — local files
   only. They are staged to the scratch folder and submitted as a Livy
   batch, and deleted when the job ends (kept, with a note in the output
-  channel, if Fabric Connect loses track of a job that may still be running); state changes (and driver logs, where the service provides them)
-  stream to the output channel, and cancelling the progress notification
-  cancels the batch. Nothing is published to the Spark Job Definition
+  channel, if Fabric Connect loses track of a job that may still be running);
+  state changes (and driver logs, where the service provides them) stream to
+  the output channel, and cancelling the progress notification cancels the
+  batch. If Fabric refuses the cancel, an error says the job may still be
+  running (and its staged files are kept); cancel it from the Fabric
+  monitoring hub. A batch Fabric no longer knows (HTTP 404) counts as
+  cancelled. Nothing is published to
+  the Spark Job Definition
   item.
 
 Staging writes only to `Files/.fabric-connect/` of the host Lakehouse; any
