@@ -11,8 +11,14 @@
 
 import * as path from "node:path";
 import { LIVY_API_VERSION, NETWORK_OUTAGE_GRACE_MS } from "./constants";
-import { FabricApiError, LivyError, SparkJobError } from "./errors";
-import { isNetworkFailure } from "./fabricApiClient";
+import {
+  AuthError,
+  FabricApiError,
+  LivyError,
+  LocalFirstViolationError,
+  SparkJobError,
+} from "./errors";
+import { isNetworkFailure, neverSent } from "./fabricApiClient";
 import type { LivyTarget } from "./livySessionManager";
 import type { CancelToken, IFabricApiClient } from "./types";
 
@@ -256,7 +262,9 @@ export async function runBatch(
       remediation:
         cause instanceof FabricApiError && cause.status === 403
           ? "Ask a workspace admin for Contributor (or higher) access to the host Lakehouse's workspace."
-          : "Check the Fabric monitoring hub first: the job may have been submitted. If it is not there, check that the capacity is running, then run the job again.",
+          : mayHaveReachedFabric(cause)
+            ? "Check the Fabric monitoring hub first: the job may have been submitted. If it is not there, check that the capacity is running, then run the job again."
+            : "Check that the capacity is running, then run the job again.",
       cause,
     });
   }
@@ -298,7 +306,7 @@ export async function runBatch(
               ? ` Details: ${cause.message.split(" Next step:")[0]}`
               : "";
           throw new SparkJobError(
-            `Could not cancel Spark job '${request.name}': Fabric did not accept the cancel request, so the job may still be running.${detail}`,
+            `Could not confirm that Spark job '${request.name}' was cancelled, so it may still be running.${detail}`,
             {
               operation: "cancel Livy batch",
               entity: `Spark job ${request.name}`,
@@ -368,4 +376,23 @@ export async function runBatch(
     }
     await sleep(interval);
   }
+}
+
+/**
+ * Whether a failed submit may still have reached Fabric. Only errors that
+ * provably happened before anything was sent rule that out: a 4xx answer,
+ * a never-sent socket code, a sign-in failure or the write policy. Anything
+ * else (a 5xx, a connection lost mid-request, an answer that could not be
+ * read) keeps the cautious wording.
+ */
+function mayHaveReachedFabric(error: unknown): boolean {
+  if (error instanceof AuthError || error instanceof LocalFirstViolationError) {
+    return false;
+  }
+  if (!(error instanceof FabricApiError)) {
+    return true;
+  }
+  return error.status === undefined
+    ? !neverSent(error.cause)
+    : error.status < 400 || error.status >= 500;
 }

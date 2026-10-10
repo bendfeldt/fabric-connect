@@ -36,10 +36,12 @@ workflow; each GitHub Release carries the matching `.vsix`.
   is lost they are kept and the output channel says where. Stopping a session
   now removes only that window's staged Python modules.
 - **A refused cancel is no longer reported as cancelled** — when you cancel a
-  Spark job and Fabric does not accept the cancel request, Fabric Connect now
-  says the job may still be running, with Fabric's reason (and keeps its
-  staged files), instead of reporting it as cancelled. A job Fabric no longer
-  knows (HTTP 404) still counts as cancelled.
+  Spark job and Fabric Connect cannot confirm the cancel, it now says the job
+  may still be running, with the reason (and keeps its staged files), instead
+  of reporting it as cancelled. A job Fabric no longer knows (HTTP 404) still
+  counts as cancelled. A failed job submit no longer says it may have been
+  submitted when it provably was not (Fabric rejected it with a 4xx, the
+  connection was never made, or sign-in failed).
 - **A cell cancel that does not take effect is reported** — stopping a
   running cell used to clear it as cancelled even when Fabric did not accept
   the cancel request, while the statement kept running. Fabric Connect now

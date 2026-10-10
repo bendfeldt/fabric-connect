@@ -63,7 +63,7 @@ const NEVER_SENT_CODES = new Set([
   "UND_ERR_CONNECT_TIMEOUT",
 ]);
 
-function neverSent(error: unknown): boolean {
+export function neverSent(error: unknown): boolean {
   const code = (error as { cause?: { code?: unknown } } | undefined)?.cause
     ?.code;
   return typeof code === "string" && NEVER_SENT_CODES.has(code);

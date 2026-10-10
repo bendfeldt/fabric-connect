@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import * as path from "node:path";
 import { test } from "node:test";
 import {
+  AuthError,
   FabricApiError,
   LocalFirstViolationError,
   LivyError,
@@ -695,6 +696,10 @@ test("a cancel that Fabric does not accept is reported, not hidden", async () =>
         run,
         (error: unknown) =>
           error instanceof SparkJobError &&
+          /Could not confirm that Spark job 'J' was cancelled/.test(
+            error.message,
+          ) &&
+          !/did not accept/.test(error.message) &&
           /may still be running/.test(error.message) &&
           error.message.includes(
             "Details: The Fabric API request 'DELETE /batches/42' failed with HTTP 403 because the signed-in identity lacks permission on this resource.",
@@ -724,4 +729,76 @@ test("staged file names are made safe for the scratch folder", () => {
   assert.equal(stagedFileName("ünïcode.jar"), "_n_code.jar");
   assert.equal(stagedFileName(".env"), "_.env");
   assert.equal(stagedFileName("util.py"), "util.py");
+});
+
+test("a failed job submit says it may have been submitted only when it may have", async () => {
+  const cases: Array<[string, number | undefined, boolean]> = [
+    ["400", 400, false],
+    ["404", 404, false],
+    ["503", 503, true],
+    ["200 with an unreadable body", 200, true],
+    ["network", undefined, true],
+    ["never sent", undefined, false],
+    ["sign-in", undefined, false],
+    ["write policy", undefined, false],
+    ["body read failed", undefined, true],
+  ];
+  for (const [label, status, mayHaveRun] of cases) {
+    // As the API client wraps it: Node's fetch TypeError as the cause.
+    const fetchError = Object.assign(new TypeError("fetch failed"), {
+      cause: Object.assign(new Error("dns"), {
+        code: label === "never sent" ? "ENOTFOUND" : "ECONNRESET",
+      }),
+    });
+    const api: IFabricApiClient = {
+      async request() {
+        if (label === "sign-in") {
+          // Thrown by the token call, before anything is sent.
+          throw new AuthError("expired", { operation: "acquire token" });
+        }
+        if (label === "write policy") {
+          throw new LocalFirstViolationError("blocked", {
+            operation: "enforce local-first write policy",
+          });
+        }
+        if (label === "body read failed") {
+          // A 2xx whose body broke mid-read reaches the caller unwrapped.
+          throw new TypeError("terminated");
+        }
+        throw new FabricApiError("submit failed", {
+          operation: "call Fabric API",
+          ...(status === undefined ? { cause: fetchError } : { status }),
+        });
+      },
+    };
+    await assert.rejects(
+      runBatch(
+        api,
+        TARGET,
+        { name: "J", file: "f", args: [] },
+        NEVER_CANCELLED,
+      ),
+      (error: unknown) =>
+        error instanceof LivyError &&
+        /may have been submitted/.test(error.remediation ?? "") === mayHaveRun,
+      label,
+    );
+  }
+});
+
+test("a job submit refused for access keeps its access remediation", async () => {
+  const api: IFabricApiClient = {
+    async request() {
+      throw new FabricApiError("forbidden", {
+        operation: "call Fabric API",
+        status: 403,
+      });
+    },
+  };
+  await assert.rejects(
+    runBatch(api, TARGET, { name: "J", file: "f", args: [] }, NEVER_CANCELLED),
+    (error: unknown) =>
+      error instanceof LivyError &&
+      /Contributor \(or higher\) access/.test(error.remediation ?? ""),
+  );
 });
