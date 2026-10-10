@@ -6,6 +6,11 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+- **A failed statement without error output no longer shows as a success** —
+  when Livy reports a statement as failed (state `error`) but sends no error
+  output, the cell now fails with a message saying so instead of showing an
+  empty successful result.
+
 - **No more duplicate runs after a network hiccup** — a request that starts
   work (running a cell, starting a Livy session, submitting a Spark job, or a
   query) is no longer resent after a network error or a 5xx answer, since it
