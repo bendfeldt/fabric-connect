@@ -30,6 +30,7 @@ import type {
   ILivySessionManager,
   LivyStatementResult,
 } from "../core/livySessionManager";
+import { scratchFolder } from "../core/moduleStaging";
 import { sourceCellRanges } from "../core/notebookSourceCodec";
 import { expandRunMagics, hasRunMagic } from "../core/runExpansion";
 import {
@@ -435,6 +436,9 @@ export class CodeRunner implements vscode.Disposable {
         cancellable: true,
       },
       async (progress, token) => {
+        // Set once the batch is submitted: from then on the job may still be
+        // reading the staged files, unless runBatch saw it end.
+        let jobMayRun = false;
         try {
           progress.report({ message: "staging local files" });
           const mainUri = await this.stager.stageFile(
@@ -455,6 +459,7 @@ export class CodeRunner implements vscode.Disposable {
             libUris,
             host.target.environmentId,
           );
+          jobMayRun = true;
           const state = await runBatch(
             this.api,
             host.target,
@@ -468,6 +473,7 @@ export class CodeRunner implements vscode.Disposable {
               onLog: (line) => this.output.appendLine(`  ${line}`),
             },
           );
+          jobMayRun = false;
           this.output.appendLine(`■ Spark job ${name}: ${state}\n`);
           if (state === "dead" || state === "killed") {
             void vscode.window.showErrorMessage(
@@ -475,7 +481,13 @@ export class CodeRunner implements vscode.Disposable {
             );
           }
         } finally {
-          await this.stager.deleteStaged(host.target, subfolder);
+          if (jobMayRun) {
+            this.output.appendLine(
+              `  Staged files kept in '${scratchFolder(this.stager.runId)}/${subfolder}' of ${host.label}: Spark job ${name} may still be running and reading them. Once the Fabric monitoring hub shows the job ended, you can delete that folder in the Fabric portal.`,
+            );
+          } else {
+            await this.stager.deleteStaged(host.target, subfolder);
+          }
         }
       },
     );

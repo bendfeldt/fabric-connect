@@ -99,7 +99,10 @@ as a Livy batch, separate from interactive notebook state.
   setup. Remote mode stages nothing; switching to it does not undo prior
   staging in an already-running session.
 - Stopping/restarting through the extension attempts to remove that window's
-  scratch directory on the host. Cleanup is best effort; service-side expiry
+  staged modules on the host; Spark job files are removed by their own run
+  once the job has ended or was cancelled (best effort: a cancel request that
+  fails still counts as cancelled), and kept when the extension loses track
+  of a job that may still be running. Cleanup is best effort; service-side expiry
   is not a guaranteed scratch-deletion trigger.
 - `notebookCodec.ts` and `notebookSourceCodec.ts` preserve unknown metadata and
   untouched source representations. Fidelity/minimal-diff tests cover portal

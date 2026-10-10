@@ -20,6 +20,7 @@ import {
   localModuleHint,
   type ModulesDescription,
   moduleImportCode,
+  modulesFolder,
   type PythonModuleMode,
   resolveModuleMode,
   scratchFolder,
@@ -317,7 +318,10 @@ export class ModuleStager {
     }
   }
 
-  /** Deletes this window's scratch folder on the host (best effort). */
+  /**
+   * Deletes this window's module bundles on the host (best effort). Spark
+   * job files are left alone: their own run deletes them when the job ends.
+   */
   async cleanup(target: LivyTarget): Promise<void> {
     this.uploaded.delete(hostKey(target));
     try {
@@ -327,10 +331,10 @@ export class ModuleStager {
           workspaceId: target.workspaceId,
           itemId: target.lakehouseId,
         },
-        scratchFolder(this.runId),
+        modulesFolder(this.runId),
       );
     } catch {
-      // Best effort: a leftover scratch folder is harmless and small.
+      // Best effort: leftover module bundles are harmless and small.
     }
   }
 }
