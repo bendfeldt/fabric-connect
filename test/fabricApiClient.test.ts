@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:net";
 import { test } from "node:test";
 import { FabricApiError } from "../src/core/errors";
 import { FabricApiClient, redactPath } from "../src/core/fabricApiClient";
@@ -258,4 +259,104 @@ test("a DELETE is retried on 5xx: stopping twice is harmless", async () => {
   });
   assert.equal(response.status, 200);
   assert.equal(calls.length, 2);
+});
+
+/** Node's fetch failure: a TypeError whose `cause` carries the socket code. */
+function fetchFailure(code: string): Error {
+  const error = new TypeError("fetch failed");
+  (error as Error & { cause: unknown }).cause = Object.assign(new Error(code), {
+    code,
+  });
+  return error;
+}
+
+test("a POST that never reached the service (DNS, refused, connect timeout) is retried", async () => {
+  for (const code of [
+    "ENOTFOUND",
+    "EAI_AGAIN",
+    "ECONNREFUSED",
+    "UND_ERR_CONNECT_TIMEOUT",
+  ]) {
+    const { client, calls } = makeClient([
+      () => fetchFailure(code),
+      () => jsonResponse(200, { id: 1 }),
+    ]);
+    const response = await client.request({
+      method: "POST",
+      path: STATEMENTS,
+      tenantId: TENANT,
+      body: { code: "1", kind: "pyspark" },
+    });
+    assert.equal(response.status, 200, code);
+    assert.equal(calls.length, 2, code);
+  }
+});
+
+test("a POST that never reached the service does not claim it may have run", async () => {
+  const { client, calls } = makeClient([
+    () => fetchFailure("ENOTFOUND"),
+    () => fetchFailure("ENOTFOUND"),
+    () => fetchFailure("ENOTFOUND"),
+    () => fetchFailure("ENOTFOUND"),
+  ]);
+  await assert.rejects(
+    client.request({
+      method: "POST",
+      path: STATEMENTS,
+      tenantId: TENANT,
+      body: { code: "1", kind: "pyspark" },
+    }),
+    (error: unknown) =>
+      error instanceof FabricApiError &&
+      error.status === undefined &&
+      !/may already have run/.test(error.message),
+  );
+  assert.equal(calls.length, 4);
+});
+
+test("a POST whose connection broke mid-request is still not resent", async () => {
+  const { client, calls } = makeClient([() => fetchFailure("ECONNRESET")]);
+  await assert.rejects(
+    client.request({
+      method: "POST",
+      path: STATEMENTS,
+      tenantId: TENANT,
+      body: { code: "1", kind: "pyspark" },
+    }),
+    (error: unknown) =>
+      error instanceof FabricApiError &&
+      /may already have run/.test(error.message),
+  );
+  assert.equal(calls.length, 1);
+});
+
+test("contract: Node's real fetch rejection for a refused connection is recognized as never sent", async () => {
+  // A port that was just free: connecting to it is refused, as when a host
+  // is down. This pins the real rejection shape the classification reads.
+  const server = createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as { port: number };
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  let calls = 0;
+  const client = new FabricApiClient(auth, {
+    baseUrl: `http://127.0.0.1:${port}`,
+    fetchFn: (async (...args: Parameters<typeof fetch>) => {
+      calls++;
+      return fetch(...args);
+    }) as typeof fetch,
+    sleep: async () => undefined,
+  });
+  await assert.rejects(
+    client.request({
+      method: "POST",
+      path: STATEMENTS,
+      tenantId: TENANT,
+      body: { code: "1", kind: "pyspark" },
+    }),
+    (error: unknown) =>
+      error instanceof FabricApiError &&
+      error.status === undefined &&
+      !/may already have run/.test(error.message),
+  );
+  assert.equal(calls, 4, "every attempt is made: the request never left");
 });

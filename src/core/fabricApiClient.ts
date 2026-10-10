@@ -53,6 +53,23 @@ export function isNetworkFailure(error: unknown): boolean {
 }
 
 /**
+ * Socket codes (on the `cause` of Node's `fetch` TypeError) that prove the
+ * request never left this machine, so resending cannot run anything twice.
+ */
+const NEVER_SENT_CODES = new Set([
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+
+function neverSent(error: unknown): boolean {
+  const code = (error as { cause?: { code?: unknown } } | undefined)?.cause
+    ?.code;
+  return typeof code === "string" && NEVER_SENT_CODES.has(code);
+}
+
+/**
  * GET and DELETE are safe to resend; anything else (running a statement,
  * starting a session, submitting a job) may already have run on the service.
  */
@@ -125,7 +142,7 @@ export class FabricApiClient implements IFabricApiClient {
               : JSON.stringify(options.body),
         });
       } catch (cause) {
-        const resendable = isResendable(options.method);
+        const resendable = isResendable(options.method) || neverSent(cause);
         lastError = new FabricApiError(
           `The Fabric API request '${logPath}' failed at the network level.` +
             (resendable

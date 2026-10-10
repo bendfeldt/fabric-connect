@@ -10,8 +10,9 @@ workflow; each GitHub Release carries the matching `.vsix`.
   work (running a cell, starting a Livy session, submitting a Spark job, or a
   query) is no longer resent after a network error or a 5xx answer, since it
   may already have run; the error now says so and asks you to check before
-  running it again. Throttled (429) requests, reads and stops are still
-  retried with backoff.
+  running it again. Throttled (429) requests, reads, stops and requests that
+  never left your machine (DNS failure, refused connection, connect timeout)
+  are still retried with backoff.
 - **Reloads no longer leave a second Livy session running** — when VS Code
   cannot reach the session it saved before a reload (network error, throttling,
   service error), the cell now fails with that error and the saved session is
