@@ -479,7 +479,7 @@ The Databricks Connect workflow: edit locally, run on Fabric.
   added with `addPyFile`, and stale copies are dropped from `sys.modules`.
   `import mypkg` then loads your working tree's code. Unchanged sources are
   not re-uploaded. Stop/restart attempts best-effort cleanup of this
-  window's scratch directory, not deletion of every window's files.
+  window's staged modules, not deletion of every window's files.
 
 - **Spark Job Definitions.** Right-click a `*.SparkJobDefinition` folder →
   **`Fabric: Run Spark Job Definition`**. Settings (arguments, main class,
@@ -490,7 +490,8 @@ The Databricks Connect workflow: edit locally, run on Fabric.
   default it uses the compute host. The main file comes from the folder's `Main/`
   (or next to the settings file) and libraries from `Libs/` — local files
   only. They are staged to the scratch folder and submitted as a Livy
-  batch; state changes (and driver logs, where the service provides them)
+  batch, and deleted when the job ends (kept, with a note in the output
+  channel, if Fabric Connect loses track of a job that may still be running); state changes (and driver logs, where the service provides them)
   stream to the output channel, and cancelling the progress notification
   cancels the batch. Nothing is published to the Spark Job Definition
   item.
@@ -636,7 +637,8 @@ refused before anything is sent.
 
 In OneLake, the extension writes only to `Files/.fabric-connect/` in the
 host Lakehouse (staged modules and job files). Cleanup removes only this
-window's scratch directory and is best effort. Remote idle expiry does
+window's staged modules (on stop/restart) or a finished job's files, and is
+best effort. Remote idle expiry does
 not guarantee cleanup; see [Security and data](security.md).
 
 ## Command reference

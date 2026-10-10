@@ -22,6 +22,13 @@ workflow; each GitHub Release carries the matching `.vsix`.
   the run with an error after a few seconds; Fabric Connect keeps polling for
   up to two minutes and only then reports the network error. The same holds
   for the setup Fabric Connect runs on a new session before your first cell.
+- **A Spark job keeps its files while it may still need them** — a job's
+  staged main file and libraries were deleted as soon as Fabric Connect lost
+  track of the job, or when you stopped or restarted a notebook session on
+  the same Lakehouse, so a job that was still starting could fail. They are
+  now deleted only once the job has ended (or was cancelled); when tracking
+  is lost they are kept and the output channel says where. Stopping a session
+  now removes only that window's staged Python modules.
 
 ## 1.4.1 — 2026-10-09
 

@@ -146,7 +146,7 @@ test("the import prelude is idempotent per bundle and purges stale modules", () 
   assert.match(code, /_fc_names = set\(\["helper","mypkg"\]\)/);
   assert.equal(
     bundlePath("run-1", "a".repeat(64)),
-    `${scratchFolder("run-1")}/modules-${"a".repeat(16)}.zip`,
+    `${scratchFolder("run-1")}/modules/modules-${"a".repeat(16)}.zip`,
   );
   assert.equal(
     abfssUri(WS, LH, "Files/x.zip"),

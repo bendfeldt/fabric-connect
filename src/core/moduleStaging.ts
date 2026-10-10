@@ -138,9 +138,17 @@ export function stagedFileName(fileName: string): string {
   return /^[A-Za-z0-9_]/.test(safe) ? safe : `_${safe}`;
 }
 
+/**
+ * The run's module bundles, kept apart from Spark job files so stopping a
+ * session never deletes the files of a job that is still running.
+ */
+export function modulesFolder(runId: string): string {
+  return `${scratchFolder(runId)}/modules`;
+}
+
 /** Where a bundle is staged; the hash in the name keeps versions apart. */
 export function bundlePath(runId: string, hash: string): string {
-  return `${scratchFolder(runId)}/modules-${hash.slice(0, 16)}.zip`;
+  return `${modulesFolder(runId)}/modules-${hash.slice(0, 16)}.zip`;
 }
 
 /**
