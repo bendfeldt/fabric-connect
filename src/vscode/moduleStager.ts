@@ -283,13 +283,18 @@ export class ModuleStager {
     this.statusBar.show();
   }
 
+  /** The OneLake folder of one staged subfolder of this run. */
+  stagedFolder(subfolder: string): string {
+    return `${scratchFolder(this.runId)}/${subfolder}`;
+  }
+
   /** Stages extra files (e.g. a Spark job's main file) under this run. */
   async stageFile(
     target: LivyTarget,
     subfolder: string,
     file: string,
   ): Promise<string> {
-    const relPath = `${scratchFolder(this.runId)}/${subfolder}/${stagedFileName(path.basename(file))}`;
+    const relPath = `${this.stagedFolder(subfolder)}/${stagedFileName(path.basename(file))}`;
     await this.oneLake.uploadFile(
       {
         tenantId: target.tenantId,
@@ -311,7 +316,7 @@ export class ModuleStager {
           workspaceId: target.workspaceId,
           itemId: target.lakehouseId,
         },
-        `${scratchFolder(this.runId)}/${subfolder}`,
+        this.stagedFolder(subfolder),
       );
     } catch {
       // Best effort: a leftover scratch folder is harmless and small.

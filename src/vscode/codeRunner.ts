@@ -30,7 +30,6 @@ import type {
   ILivySessionManager,
   LivyStatementResult,
 } from "../core/livySessionManager";
-import { scratchFolder } from "../core/moduleStaging";
 import { sourceCellRanges } from "../core/notebookSourceCodec";
 import { expandRunMagics, hasRunMagic } from "../core/runExpansion";
 import {
@@ -483,7 +482,7 @@ export class CodeRunner implements vscode.Disposable {
         } finally {
           if (jobMayRun) {
             this.output.appendLine(
-              `  Staged files kept in '${scratchFolder(this.stager.runId)}/${subfolder}' of ${host.label}: Spark job ${name} may still be running and reading them. Once the Fabric monitoring hub shows the job ended, you can delete that folder in the Fabric portal.`,
+              `  Staged files kept in '${this.stager.stagedFolder(subfolder)}' of ${host.label}: Spark job ${name} may still be running and reading them. Once the Fabric monitoring hub shows the job ended, you can delete that folder in the Fabric portal.`,
             );
           } else {
             await this.stager.deleteStaged(host.target, subfolder);
