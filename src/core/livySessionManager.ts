@@ -13,7 +13,7 @@
  */
 
 import { LIVY_API_VERSION, NETWORK_OUTAGE_GRACE_MS } from "./constants";
-import { FabricApiError, LivyError } from "./errors";
+import { AuthError, FabricApiError, LivyError } from "./errors";
 import {
   ExecutionDiagnostics,
   executionFailureOutcome,
@@ -375,8 +375,7 @@ export class LivySessionManager implements ILivySessionManager {
     let outageSince: number | undefined;
     for (;;) {
       if (token.isCancellationRequested) {
-        await this.cancelStatement(target, sessionId, statementId);
-        return { status: "cancelled" };
+        return this.cancelStatement(target, sessionId, statementId);
       }
       let statement: LivyStatement;
       try {
@@ -439,20 +438,74 @@ export class LivySessionManager implements ILivySessionManager {
     return { status: "ok", data: output?.data ?? {} };
   }
 
+  /**
+   * Cancels a running statement. When the cancel request fails, Livy is
+   * asked where the statement stands before anything is reported: the
+   * cancel may have landed although its answer was lost, or the statement
+   * may have just finished.
+   */
   private async cancelStatement(
     target: LivyTarget,
     sessionId: string,
     statementId: string,
-  ): Promise<void> {
+  ): Promise<LivyStatementResult> {
+    const path = `${livyBase(target)}/sessions/${sessionId}/statements/${statementId}`;
     try {
       await this.api.request({
         method: "POST",
-        path: `${livyBase(target)}/sessions/${sessionId}/statements/${statementId}/cancel`,
+        path: `${path}/cancel`,
         tenantId: target.tenantId,
       });
-    } catch {
-      // Best effort: the user asked to stop; a failed cancel call must not
-      // replace the 'cancelled' outcome with an unrelated error.
+      return { status: "cancelled" };
+    } catch (cause) {
+      if (isGone(cause)) {
+        return { status: "cancelled" };
+      }
+      let statement: LivyStatement | undefined;
+      let checkCause: unknown;
+      try {
+        statement = (
+          await this.api.request<LivyStatement>({
+            method: "GET",
+            path,
+            tenantId: target.tenantId,
+          })
+        ).body;
+      } catch (error) {
+        if (isGone(error)) {
+          return { status: "cancelled" };
+        }
+        checkCause = error;
+      }
+      // "cancelling" means the cancel landed, the same as a successful
+      // cancel request: Livy is ending the statement.
+      if (statement?.state === "cancelling") {
+        return { status: "cancelled" };
+      }
+      if (statement && STATEMENT_FINAL_STATES.has(statement.state)) {
+        return this.toResult(statement, sessionId, statementId);
+      }
+      const reason = (error: unknown): string =>
+        error instanceof Error ? error.message.split(" Next step:")[0] : "";
+      const detail =
+        (cause instanceof Error ? ` Details: ${reason(cause)}` : "") +
+        (checkCause instanceof Error
+          ? ` Checking the statement also failed: ${reason(checkCause)}`
+          : "");
+      throw new LivyError(
+        `Could not confirm the cancel: the statement may still be running.${detail}`,
+        {
+          operation: "cancel cell",
+          entity: `session ${sessionId}`,
+          kind: "cancel-failed",
+          remediation:
+            (cause instanceof AuthError || checkCause instanceof AuthError
+              ? "Sign in again with 'Fabric: Sign In'. "
+              : "") +
+            "To end the statement for certain, stop the Livy session ('Fabric: Stop Livy Session'), or wait for it to finish.",
+          cause,
+        },
+      );
     }
   }
 
@@ -519,7 +572,9 @@ export class LivySessionManager implements ILivySessionManager {
       // Best effort: without the bootstrap, display() output stays plain
       // text; the user's own statement still runs (and reports real errors).
       // Its wait rides out network outages like any statement, so a cell
-      // on a new session may wait up to NETWORK_OUTAGE_GRACE_MS here.
+      // on a new session may wait up to NETWORK_OUTAGE_GRACE_MS here. A
+      // cancel that does not take effect is dropped too: the bootstrap only
+      // defines display(), it never writes data.
     }
   }
 
@@ -786,6 +841,11 @@ export class LivySessionManager implements ILivySessionManager {
       );
     }
   }
+}
+
+/** A 404: the statement or session no longer exists. */
+function isGone(error: unknown): boolean {
+  return error instanceof FabricApiError && error.status === 404;
 }
 
 function isTerminalSessionRejection(

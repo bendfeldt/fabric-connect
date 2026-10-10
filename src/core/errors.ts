@@ -121,6 +121,8 @@ export type LivyErrorKind =
   | "session-start"
   | "session-expired"
   | "cancelled"
+  /** A cancel the user asked for did not take effect: work may still run. */
+  | "cancel-failed"
   /** The Livy API returned a response missing required fields. */
   | "protocol";
 
