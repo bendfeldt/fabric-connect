@@ -54,7 +54,9 @@ includes them.
   and batch polling ride out network-level outages for up to two minutes
   (`NETWORK_OUTAGE_GRACE_MS`); a Spark job's staged files are deleted only
   once the job ended, was cancelled or never got submitted, and session
-  stop/restart deletes only `<runId>/modules/`; duplicated `isRecord`,
+  stop/restart deletes only `<runId>/modules/`; a refused batch cancel is
+  reported as "may still be running" (404 counts as cancelled); duplicated
+  `isRecord`,
   `escapeHtml` and codec `deepEqual` helpers are shared.
 - **Documentation alignment:** current architecture/development references,
   consolidated onboarding/build instructions, complete manual fixtures,
@@ -117,10 +119,6 @@ performed.
 
 ## Next authorized work
 
-- Proposed, needs approval: when a Spark job's cancel request fails (other
-  than 404), report that the job may still be running instead of returning
-  "cancelled", so its staged files are kept.
-
 - After explicit approval, smoke-test current source in a running VS Code host
   and test tenant using [Testing](docs/testing.md), especially walkthrough,
   repo/lakehouse views, bindings and notebook/source-text execution.
@@ -153,8 +151,6 @@ performed.
 - Scratch cleanup is best effort and window-scoped; remote expiry is not a
   guaranteed cleanup trigger. Session stop/restart removes only staged module
   bundles; job folders kept after lost tracking stay until removed by hand.
-- A Spark job cancel whose DELETE fails still counts as cancelled, so its
-  staged files are deleted although the job may still run.
 - Read-only POSTs (DAX, KQL, GraphQL, getDefinition) are no longer retried on
   5xx or network errors; rerunning is manual.
 - `describeWorkspaceCapacity` is a tested core helper without a UI caller

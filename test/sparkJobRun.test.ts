@@ -16,6 +16,8 @@ test("a Spark job's staged files are deleted only once the job can no longer rea
     const Module = require("node:module");
     const load = Module._load;
     const text = [];
+    let cancelled = false;
+    let cancelStatus = 200;
     const disposable = () => ({ dispose() {} });
     const vscode = {
       ProgressLocation: { Notification: 1 },
@@ -29,7 +31,7 @@ test("a Spark job's staged files are deleted only once the job can no longer rea
         createStatusBarItem: () => ({ hide() {}, show() {}, dispose() {} }),
         createOutputChannel: () => ({ show() {}, dispose() {}, appendLine: value => text.push(value) }),
         showErrorMessage: async () => undefined,
-        withProgress: (_options, action) => action({ report() {} }, { isCancellationRequested: false, onCancellationRequested: () => ({ dispose() {} }) })
+        withProgress: (_options, action) => action({ report() {} }, { get isCancellationRequested() { return cancelled; }, onCancellationRequested: () => ({ dispose() {} }) })
       }
     };
     Module._load = function(request, parent, isMain) {
@@ -63,6 +65,10 @@ test("a Spark job's staged files are deleted only once the job can no longer rea
     const jobFolder = "Files/.fabric-connect/" + stager.runId + "/job-Job-";
     const api = { async request(options) {
       if (options.method === "POST") return { status: 200, body: { id: 42 } };
+      if (options.method === "DELETE") {
+        if (cancelStatus !== 200) throw new FabricApiError("cancel failed", { operation: "call Fabric API", status: cancelStatus });
+        return { status: 200, body: {} };
+      }
       if (options.path.includes("/log?")) return { status: 200, body: { log: [] } };
       return { status: 200, body: poll() };
     }};
@@ -89,6 +95,17 @@ test("a Spark job's staged files are deleted only once the job can no longer rea
       await assert.rejects(runner.runSparkJob(uri), /upload failed/);
       assert.equal(deleted.length, 2);
       assert.ok(deleted[1].startsWith(jobFolder), deleted[1]);
+      failStaging = false;
+
+      // Cancelled and Fabric accepted the cancel: its files are deleted.
+      cancelled = true;
+      await runner.runSparkJob(uri);
+      assert.equal(deleted.length, 3);
+
+      // Fabric refused the cancel: the job may still run, so its files stay.
+      cancelStatus = 403;
+      await assert.rejects(runner.runSparkJob(uri), /Could not cancel Spark job 'Job .*may still be running/);
+      assert.equal(deleted.length, 3);
       runner.dispose();
       stager.dispose();
     })().catch(error => { console.error(error); process.exitCode = 1; });

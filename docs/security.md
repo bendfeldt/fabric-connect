@@ -91,7 +91,8 @@ scratch prefix holds zipped Python modules and Spark job files. Each window
 uses its own directory below the prefix. Explicit stop/restart attempts
 to remove that window's staged modules on the host; job completion attempts
 cleanup of its staged subfolder, which is kept when the extension loses
-track of a job that may still be running. Deletion is **best effort**, so failures
+track of a job, or Fabric refuses to cancel it, while it may still be
+running. Deletion is **best effort**, so failures
 can leave files behind. Service-side expiry or closing VS Code does not
 guarantee cleanup.
 

@@ -289,8 +289,25 @@ export async function runBatch(
           path: `${base}/${id}`,
           tenantId: target.tenantId,
         });
-      } catch {
-        // Best effort: the user asked to stop.
+      } catch (cause) {
+        // A batch that is already gone (404) is as good as cancelled; any
+        // other failure leaves the job running, so the caller must know.
+        if (!(cause instanceof FabricApiError && cause.status === 404)) {
+          const detail =
+            cause instanceof Error
+              ? ` Details: ${cause.message.split(" Next step:")[0]}`
+              : "";
+          throw new SparkJobError(
+            `Could not cancel Spark job '${request.name}': Fabric did not accept the cancel request, so the job may still be running.${detail}`,
+            {
+              operation: "cancel Livy batch",
+              entity: `Spark job ${request.name}`,
+              remediation:
+                "Cancel the job from the Fabric monitoring hub, or wait for it to end.",
+              cause,
+            },
+          );
+        }
       }
       return "cancelled";
     }
