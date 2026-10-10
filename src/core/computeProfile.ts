@@ -18,6 +18,7 @@
 
 import { TargetConfigError } from "./errors";
 import { LOCAL_OVERRIDE_FILE } from "./targetResolver";
+import { isRecord } from "./types";
 
 export interface ComputeProfile {
   readonly tenantId: string;
@@ -233,8 +234,4 @@ function invalid(why: string, cause?: unknown): TargetConfigError {
       cause,
     },
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

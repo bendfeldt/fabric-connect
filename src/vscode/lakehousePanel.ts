@@ -33,6 +33,7 @@ import {
 } from "./lakehouseAttachments";
 import { fabricRootOf } from "./notebookSerializer";
 import type { LakehouseBindingStore } from "./lakehouseBindingStore";
+import { escapeHtml } from "../core/displayProtocol";
 
 interface LakehouseListResponse {
   value?: Array<{ id?: string; displayName?: string }>;
@@ -258,15 +259,6 @@ export class LakehousePanel {
 </body>
 </html>`;
   }
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 function createNonce(): string {

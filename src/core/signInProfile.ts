@@ -15,6 +15,7 @@
 
 import { TargetConfigError } from "./errors";
 import { LOCAL_OVERRIDE_FILE } from "./targetResolver";
+import { isRecord } from "./types";
 
 export interface SignInProfile {
   /** The account's sign-in name as VS Code shows it, e.g. you@contoso.com. */
@@ -150,8 +151,4 @@ function invalid(why: string, cause?: unknown): TargetConfigError {
       cause,
     },
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -8,6 +8,7 @@
 
 import * as path from "node:path";
 import { ItemMetadataError } from "./errors";
+import { isRecord } from "./types";
 
 export interface LocalItem {
   readonly type: string;
@@ -193,8 +194,4 @@ export function updatePlatform(text: string, changes: PlatformChanges): string {
   const indent = /^[ \t]+(?=")/m.exec(text)?.[0] ?? "  ";
   const body = JSON.stringify(parsed, undefined, indent).replace(/\n/g, eol);
   return bom + (/\r?\n$/.test(text) ? body + eol : body);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
