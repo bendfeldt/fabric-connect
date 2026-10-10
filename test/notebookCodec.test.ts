@@ -69,6 +69,19 @@ test("round-trip of an unmodified notebook is byte-for-byte identical", () => {
   assert.equal(roundTrip(parsed), portalText);
 });
 
+test("-0 in the file still round-trips byte-for-byte after a JSON trip normalizes it", () => {
+  // JSON.stringify(-0) is "0", so metadata that crossed a JSON boundary
+  // holds 0 where the original text says -0; that is not a change.
+  const text = portalText.replace(
+    '"sessionKeepAliveTimeout": 30',
+    '"sessionKeepAliveTimeout": -0',
+  );
+  assert.notEqual(text, portalText);
+  const parsed = parseNotebook(text, "notebook-content.ipynb");
+  const normalized = JSON.parse(JSON.stringify(parsed.root));
+  assert.equal(roundTrip(parsed, normalized), text);
+});
+
 test("string-form sources stay byte-for-byte when the notebook is unmodified", () => {
   // Same content, but sources in the non-canonical plain-string form.
   const text =
