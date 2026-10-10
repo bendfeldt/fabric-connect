@@ -104,7 +104,7 @@ test("a Spark job's staged files are deleted only once the job can no longer rea
 
       // Fabric refused the cancel: the job may still run, so its files stay.
       cancelStatus = 403;
-      await assert.rejects(runner.runSparkJob(uri), /Could not cancel Spark job 'Job .*may still be running/);
+      await assert.rejects(runner.runSparkJob(uri), /Could not confirm that Spark job 'Job .*was cancelled.*may still be running/);
       assert.equal(deleted.length, 3);
       runner.dispose();
       stager.dispose();
