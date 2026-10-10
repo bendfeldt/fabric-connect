@@ -1633,3 +1633,60 @@ test("a successful poll ends an outage, so separate short outages never add up",
   assert.equal(result.status, "ok");
   assert.equal(polls, script.length);
 });
+
+test("a statement Livy reports as 'error' is a failed cell even without output", async () => {
+  const api = scriptedApi([
+    [/POST .*\/sessions$/, () => ({ id: 7, state: "idle" })],
+    [/GET .*\/sessions\/7$/, () => ({ id: 7, state: "idle" })],
+    [/POST .*\/sessions\/7\/statements$/, () => ({ id: 1, state: "waiting" })],
+    // No id in the body: the message still names the polled statement.
+    [/GET .*\/sessions\/7\/statements\/1$/, () => ({ state: "error" })],
+  ]);
+  const result = await manager(api, memoryStore()).execute(
+    TARGET,
+    "x",
+    "pyspark",
+    NEVER_CANCELLED,
+  );
+  assert.equal(result.status, "error");
+  assert.equal(result.errorName, "Error");
+  assert.match(
+    result.errorValue ?? "",
+    /statement 1 in session 7 as failed without error details\. Check the session's log in the Fabric monitoring hub/,
+  );
+  assert.deepEqual(result.traceback, []);
+  assert.equal(result.hint, undefined);
+});
+
+test("a statement in state 'error' with error output keeps its own error", async () => {
+  const api = scriptedApi([
+    [/POST .*\/sessions$/, () => ({ id: 7, state: "idle" })],
+    [/GET .*\/sessions\/7$/, () => ({ id: 7, state: "idle" })],
+    [/POST .*\/sessions\/7\/statements$/, () => ({ id: 1, state: "waiting" })],
+    [
+      /GET .*\/sessions\/7\/statements\/1$/,
+      () => ({
+        id: 1,
+        state: "error",
+        output: {
+          status: "error",
+          ename: "ValueError",
+          evalue: "bad",
+          traceback: ["ValueError: bad"],
+        },
+      }),
+    ],
+  ]);
+  const result = await manager(api, memoryStore()).execute(
+    TARGET,
+    "x",
+    "pyspark",
+    NEVER_CANCELLED,
+  );
+  assert.deepEqual(result, {
+    status: "error",
+    errorName: "ValueError",
+    errorValue: "bad",
+    traceback: ["ValueError: bad"],
+  });
+});

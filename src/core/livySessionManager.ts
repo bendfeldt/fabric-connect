@@ -406,25 +406,33 @@ export class LivySessionManager implements ILivySessionManager {
       }
 
       if (STATEMENT_FINAL_STATES.has(statement.state)) {
-        return this.toResult(statement);
+        return this.toResult(statement, sessionId, statementId);
       }
       await this.sleep(this.pollIntervalMs);
     }
   }
 
-  private toResult(statement: LivyStatement): LivyStatementResult {
+  private toResult(
+    statement: LivyStatement,
+    sessionId: string,
+    statementId: string,
+  ): LivyStatementResult {
     if (statement.state === "cancelled") {
       return { status: "cancelled" };
     }
     const output = statement.output;
-    if (output?.status === "error") {
-      const hint = variableLibraryHint(output.evalue, output.traceback);
+    // Livy can report a failed statement by its state alone, without output.
+    if (output?.status === "error" || statement.state === "error") {
+      const hint = variableLibraryHint(output?.evalue, output?.traceback);
       // The cell's own exception: a notebook traceback, not an extension error.
       return {
         status: "error",
-        errorName: output.ename ?? "Error",
-        errorValue: output.evalue ?? "",
-        traceback: output.traceback ?? [],
+        errorName: output?.ename ?? "Error",
+        errorValue:
+          output?.status === "error"
+            ? (output.evalue ?? "")
+            : `Livy reported statement ${statementId} in session ${sessionId} as failed without error details. Check the session's log in the Fabric monitoring hub, then run the code again.`,
+        traceback: output?.traceback ?? [],
         ...(hint === undefined ? {} : { hint }),
       };
     }
