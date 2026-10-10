@@ -49,15 +49,25 @@ includes them.
   `test/versionConsistency.test.ts` fails CI when the manifest, lockfile and
   changelog disagree or a guide names a released version.
 - **Reliability fixes from the 2026-10-10 audit:** work-starting POSTs are
-  never resent after a network error or 5xx (GET/DELETE and 429 still retry);
+  not resent after a 5xx or a mid-request network error (GET/DELETE, 429 and
+  requests that never left the machine still retry);
   reattach replaces a saved Livy session only on 404 or an empty answer; cell
   and batch polling ride out network-level outages for up to two minutes
   (`NETWORK_OUTAGE_GRACE_MS`); a Spark job's staged files are deleted only
   once the job ended, was cancelled or never got submitted, and session
   stop/restart deletes only `<runId>/modules/`; a refused batch cancel is
   reported as "may still be running" (404 counts as cancelled); duplicated
-  `isRecord`,
-  `escapeHtml` and codec `deepEqual` helpers are shared.
+  `isRecord`, `escapeHtml` and codec `deepEqual` helpers are shared.
+- **Follow-up audit fixes (same day):** requests that provably never left the
+  machine (DNS, refused connection, connect timeout) are resent again; a cell
+  cancel that does not take effect checks the statement first and otherwise
+  fails with LivyError kind `cancel-failed`; a statement Livy reports as
+  `error` without output is a failed cell; the job submit error drops "may
+  have been submitted" only when the job was provably not accepted (a 4xx
+  answer, a never-sent socket code, a sign-in failure or the write policy)
+  and keeps it for every other error;
+  one stager method builds staged job folder paths; the runner test removes
+  its temp folder.
 - **Documentation alignment:** current architecture/development references,
   consolidated onboarding/build instructions, complete manual fixtures,
   accurate command/settings/security references and installed contributor
@@ -110,12 +120,27 @@ were removed. Compilation, all 13 manifest regressions, formatting,
 documentation links and independent review passed; no extension installation
 or release was performed.
 
-The audit reliability fixes were developed test-first on branch
-`fix/audit-reliability` (one commit each), each reproduced by a failing native
-test and passing an independent verifier review before commit; the outage-reset
-and `-0` fidelity tests were also mutation-checked. All 334 native tests pass.
-No live Fabric run (real network drop, job cold start, reload reattach) was
-performed.
+The audit reliability fixes were developed on branch `fix/audit-reliability`,
+one purpose per commit. Each bug-fix commit carries the tests that pin its
+behavior; refactors (shared helpers, the staged folder path) and the test
+cleanup rely on the existing suite.
+
+Session record (from the 2026-10-10 working session; not reproducible from
+git alone): each bug-fix test was run and seen failing before its fix;
+each commit was made after the verifier subagent returned a passing verdict
+on its diff. For the follow-up cell-cancel and job-submit items the verifier
+failed three rounds over a disputed rule; the user then decided the rule (a
+failed cell cancel checks the statement before reporting; the job submit
+warning uses an allowlist with a cautious default) and the verifier passed
+the result. The `error`-without-output fix was split out of the cell-cancel
+item on review and passed separately.
+
+Reproducible checks, last run on 2026-10-10 after the final code commit:
+`npm test` (348 tests, 0 failures) and
+`npx prettier --check src test docs CHANGELOG.md IMPLEMENTATION_PLAN.md`
+(clean). A contract test pins Node's real `fetch` rejection shape for a
+refused connection. No live Fabric run (real network drop, job cold start,
+reload reattach, cancel races) was performed.
 
 ## Next authorized work
 
@@ -152,7 +177,15 @@ performed.
   guaranteed cleanup trigger. Session stop/restart removes only staged module
   bundles; job folders kept after lost tracking stay until removed by hand.
 - Read-only POSTs (DAX, KQL, GraphQL, getDefinition) are no longer retried on
-  5xx or network errors; rerunning is manual.
+  5xx or mid-request network errors; rerunning is manual.
+- The never-sent socket codes are read from Node's `fetch`; whether VS Code's
+  proxy-aware `fetch` reports the same codes is unverified (unknown codes fall
+  back to "not resent").
+- A failed module-staging prelude in the notebook editor is rendered without
+  saying it was module staging (the text runner labels it).
+- Unverified against live Livy: that a statement can end in state `error`
+  without output (now shown as a failed cell), and the statement states seen
+  after a failed cancel (`cancelling`, `cancelled`, finished).
 - `describeWorkspaceCapacity` is a tested core helper without a UI caller
   since the remote Workspaces view was replaced. Removal would be a separate,
   deliberate code cleanup.
