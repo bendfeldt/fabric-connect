@@ -48,6 +48,14 @@ includes them.
   rebase. Guides no longer hard-code a release or development version, and
   `test/versionConsistency.test.ts` fails CI when the manifest, lockfile and
   changelog disagree or a guide names a released version.
+- **Reliability fixes from the 2026-10-10 audit:** work-starting POSTs are
+  never resent after a network error or 5xx (GET/DELETE and 429 still retry);
+  reattach replaces a saved Livy session only on 404 or an empty answer; cell
+  and batch polling ride out network-level outages for up to two minutes
+  (`NETWORK_OUTAGE_GRACE_MS`); a Spark job's staged files are deleted only
+  once the job ended, was cancelled or never got submitted, and session
+  stop/restart deletes only `<runId>/modules/`; duplicated `isRecord`,
+  `escapeHtml` and codec `deepEqual` helpers are shared.
 - **Documentation alignment:** current architecture/development references,
   consolidated onboarding/build instructions, complete manual fixtures,
   accurate command/settings/security references and installed contributor
@@ -100,7 +108,18 @@ were removed. Compilation, all 13 manifest regressions, formatting,
 documentation links and independent review passed; no extension installation
 or release was performed.
 
+The audit reliability fixes were developed test-first on branch
+`fix/audit-reliability` (one commit each), each reproduced by a failing native
+test and passing an independent verifier review before commit; the outage-reset
+and `-0` fidelity tests were also mutation-checked. All 334 native tests pass.
+No live Fabric run (real network drop, job cold start, reload reattach) was
+performed.
+
 ## Next authorized work
+
+- Proposed, needs approval: when a Spark job's cancel request fails (other
+  than 404), report that the job may still be running instead of returning
+  "cancelled", so its staged files are kept.
 
 - After explicit approval, smoke-test current source in a running VS Code host
   and test tenant using [Testing](docs/testing.md), especially walkthrough,
@@ -132,7 +151,12 @@ or release was performed.
   expanding their workspace supplies names/context. Missing notebook default
   workspace metadata is an explicit error, not a target fallback.
 - Scratch cleanup is best effort and window-scoped; remote expiry is not a
-  guaranteed cleanup trigger.
+  guaranteed cleanup trigger. Session stop/restart removes only staged module
+  bundles; job folders kept after lost tracking stay until removed by hand.
+- A Spark job cancel whose DELETE fails still counts as cancelled, so its
+  staged files are deleted although the job may still run.
+- Read-only POSTs (DAX, KQL, GraphQL, getDefinition) are no longer retried on
+  5xx or network errors; rerunning is manual.
 - `describeWorkspaceCapacity` is a tested core helper without a UI caller
   since the remote Workspaces view was replaced. Removal would be a separate,
   deliberate code cleanup.
