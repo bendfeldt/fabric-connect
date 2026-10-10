@@ -19,6 +19,7 @@
  */
 
 import { NotebookFidelityError } from "./errors";
+import { isRecord } from "./types";
 
 export interface LakehouseAttachment {
   readonly id: string;
@@ -447,10 +448,6 @@ function ensureObject(
   const created: Record<string, unknown> = {};
   parent[key] = created;
   return created;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function asString(value: unknown): string | undefined {

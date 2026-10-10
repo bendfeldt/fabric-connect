@@ -22,6 +22,7 @@ import {
   parseNotebookSource,
   serializeNotebookSource,
 } from "../core/notebookSourceCodec";
+import { isRecord } from "../core/types";
 
 export const NOTEBOOK_TYPE = "fabric-notebook";
 /** Fabric's git source format: notebook-content.py / .scala / .sql / .r. */
@@ -140,10 +141,6 @@ function isCompatibleRaw(
   isMarkdown: boolean,
 ): raw is Record<string, unknown> {
   return isRecord(raw) && (raw["cell_type"] === "markdown") === isMarkdown;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**

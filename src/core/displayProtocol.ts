@@ -13,6 +13,8 @@
  * are taken, so ordinary prints around a payload survive.
  */
 
+import { isRecord } from "./types";
+
 const TAG = "FABRIC_CONNECT_DISPLAY";
 const RS = "\u001e";
 
@@ -273,8 +275,4 @@ function parseTable(json: string): DisplayTable | undefined {
     rows: (parsed["rows"] as unknown[]).filter(Array.isArray) as unknown[][],
     truncated: parsed["truncated"] === true,
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
