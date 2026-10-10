@@ -191,3 +191,71 @@ test("malformed service detail cannot become typed terminal-session evidence", a
     );
   }
 });
+
+const STATEMENTS =
+  "/workspaces/w1/lakehouses/l1/livyapi/versions/2023-12-01/sessions/s1/statements";
+
+test("a POST answered with 5xx is not resent: it may already have run", async () => {
+  const { client, calls } = makeClient([() => jsonResponse(503, {})]);
+  await assert.rejects(
+    client.request({
+      method: "POST",
+      path: STATEMENTS,
+      tenantId: TENANT,
+      body: { code: "1", kind: "pyspark" },
+    }),
+    (error: unknown) =>
+      error instanceof FabricApiError &&
+      error.status === 503 &&
+      /may already have run/.test(error.message) &&
+      /before running it again/.test(error.remediation ?? ""),
+  );
+  assert.equal(calls.length, 1);
+});
+
+test("a POST that fails at the network level is not resent and says it may have run", async () => {
+  const { client, calls } = makeClient([() => new Error("socket hang up")]);
+  await assert.rejects(
+    client.request({
+      method: "POST",
+      path: STATEMENTS,
+      tenantId: TENANT,
+      body: { code: "1", kind: "pyspark" },
+    }),
+    (error: unknown) =>
+      error instanceof FabricApiError &&
+      error.status === undefined &&
+      /may already have run/.test(error.message) &&
+      /before running it again/.test(error.remediation ?? ""),
+  );
+  assert.equal(calls.length, 1);
+});
+
+test("a POST throttled with 429 is retried: the service refused it unrun", async () => {
+  const { client, calls } = makeClient([
+    () => jsonResponse(429, {}, { "retry-after": "0" }),
+    () => jsonResponse(200, { id: 1 }),
+  ]);
+  const response = await client.request({
+    method: "POST",
+    path: STATEMENTS,
+    tenantId: TENANT,
+    body: { code: "1", kind: "pyspark" },
+  });
+  assert.equal(response.status, 200);
+  assert.equal(calls.length, 2);
+});
+
+test("a DELETE is retried on 5xx: stopping twice is harmless", async () => {
+  const { client, calls } = makeClient([
+    () => jsonResponse(503, {}),
+    () => jsonResponse(200, {}),
+  ]);
+  const response = await client.request({
+    method: "DELETE",
+    path: "/workspaces/w1/lakehouses/l1/livyapi/versions/2023-12-01/sessions/s1",
+    tenantId: TENANT,
+  });
+  assert.equal(response.status, 200);
+  assert.equal(calls.length, 2);
+});

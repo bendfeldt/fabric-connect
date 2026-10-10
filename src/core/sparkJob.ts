@@ -253,7 +253,7 @@ export async function runBatch(
       remediation:
         cause instanceof FabricApiError && cause.status === 403
           ? "Ask a workspace admin for Contributor (or higher) access to the host Lakehouse's workspace."
-          : "Check that the capacity is running, then run the job again.",
+          : "Check the Fabric monitoring hub first: the job may have been submitted. If it is not there, check that the capacity is running, then run the job again.",
       cause,
     });
   }
