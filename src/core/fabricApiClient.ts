@@ -47,6 +47,14 @@ export function redactPath(p: string): string {
   return p.replace(GUID_PATTERN, "<redacted-id>");
 }
 
+/**
+ * GET and DELETE are safe to resend; anything else (running a statement,
+ * starting a session, submitting a job) may already have run on the service.
+ */
+function isResendable(method: FabricRequestOptions["method"]): boolean {
+  return method === "GET" || method === "DELETE";
+}
+
 export class FabricApiClient implements IFabricApiClient {
   private readonly baseUrl: string;
   private readonly fetchFn: typeof fetch;
@@ -112,17 +120,25 @@ export class FabricApiClient implements IFabricApiClient {
               : JSON.stringify(options.body),
         });
       } catch (cause) {
+        const resendable = isResendable(options.method);
         lastError = new FabricApiError(
-          `The Fabric API request '${logPath}' failed at the network level.`,
+          `The Fabric API request '${logPath}' failed at the network level.` +
+            (resendable
+              ? ""
+              : " It was not resent because it may already have run."),
           {
             operation: "call Fabric API",
             entity: logPath,
-            remediation:
-              "Check your network connection and proxy settings, then retry.",
+            remediation: resendable
+              ? "Check your network connection and proxy settings, then retry."
+              : "Check your network connection, then check whether the work ran (session output or the Fabric monitoring hub) before running it again.",
             cause,
           },
         );
         this.logger?.debug(`✗ ${logPath} network error (attempt ${attempt})`);
+        if (!resendable) {
+          throw lastError;
+        }
         await this.backoff(attempt, undefined);
         continue;
       }
@@ -149,11 +165,17 @@ export class FabricApiClient implements IFabricApiClient {
         };
       }
 
-      lastError = await this.toApiError(response, logPath, correlationId);
-      if (
-        !RETRYABLE_STATUS.has(response.status) ||
-        attempt === this.maxAttempts
-      ) {
+      lastError = await this.toApiError(
+        response,
+        logPath,
+        correlationId,
+        isResendable(options.method),
+      );
+      // 429 means the request was refused unrun; a 5xx POST may have run.
+      const retryable =
+        response.status === 429 ||
+        (isResendable(options.method) && RETRYABLE_STATUS.has(response.status));
+      if (!retryable || attempt === this.maxAttempts) {
         throw lastError;
       }
       const retryAfter = response.headers.get("retry-after");
@@ -203,6 +225,7 @@ export class FabricApiClient implements IFabricApiClient {
     response: Response,
     logPath: string,
     correlationId: string | undefined,
+    resendable: boolean,
   ): Promise<FabricApiError> {
     let detail: string | undefined;
     try {
@@ -241,11 +264,16 @@ export class FabricApiClient implements IFabricApiClient {
       (response.status >= 500
         ? "the Fabric service reported an internal error"
         : "the request was rejected");
-    const next =
-      known?.next ??
-      "Retry the operation; if it persists, open a support case citing the correlation ID.";
+    const mayHaveRun = !resendable && response.status >= 500;
+    const next = mayHaveRun
+      ? "Check whether the work ran (session output or the Fabric monitoring hub) before running it again; if the error persists, open a support case citing the correlation ID."
+      : (known?.next ??
+        "Retry the operation; if it persists, open a support case citing the correlation ID.");
     return new FabricApiError(
       `The Fabric API request '${logPath}' failed with HTTP ${response.status} because ${why}.` +
+        (mayHaveRun
+          ? " It was not resent because it may already have run."
+          : "") +
         (detail ? ` Service message: ${detail}` : ""),
       {
         operation: "call Fabric API",

@@ -677,7 +677,7 @@ export class LivySessionManager implements ILivySessionManager {
         why =
           "the Fabric service failed to start the session (capacity may be paused)";
         next =
-          "Resume the capacity in the Fabric portal, then run the cell again.";
+          "Resume the capacity in the Fabric portal, then run the cell again. A session may already have started: stop extra ones from the Lakehouse's session list.";
       }
     }
     // The service's own words (status, message, correlation ID) are kept in

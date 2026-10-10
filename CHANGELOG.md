@@ -6,6 +6,13 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+- **No more duplicate runs after a network hiccup** — a request that starts
+  work (running a cell, starting a Livy session, submitting a Spark job, or a
+  query) is no longer resent after a network error or a 5xx answer, since it
+  may already have run; the error now says so and asks you to check before
+  running it again. Throttled (429) requests, reads and stops are still
+  retried with backoff.
+
 ## 1.4.1 — 2026-10-09
 
 - **Releases keep the whole repo in step** — the Release workflow's
