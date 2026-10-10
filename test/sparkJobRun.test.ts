@@ -42,7 +42,10 @@ test("a Spark job's staged files are deleted only once the job can no longer rea
     const { ModuleStager } = require(root + "/vscode/moduleStager.js");
     const { FabricApiError } = require(root + "/core/errors.js");
 
-    const folder = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "fc-job-")), "Job.SparkJobDefinition");
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fc-job-"));
+    // Removed however this process ends, a failed setup step included.
+    process.on("exit", () => fs.rmSync(tmpRoot, { recursive: true, force: true }));
+    const folder = path.join(tmpRoot, "Job.SparkJobDefinition");
     fs.mkdirSync(path.join(folder, "Main"), { recursive: true });
     fs.writeFileSync(path.join(folder, "SparkJobDefinitionV1.json"), JSON.stringify({ executableFile: "main.py" }));
     fs.writeFileSync(path.join(folder, "Main", "main.py"), "print(1)");
