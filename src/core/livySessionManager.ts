@@ -12,7 +12,7 @@
  *    traceback, exactly as the portal shows it.
  */
 
-import { LIVY_API_VERSION } from "./constants";
+import { LIVY_API_VERSION, NETWORK_OUTAGE_GRACE_MS } from "./constants";
 import { FabricApiError, LivyError } from "./errors";
 import {
   ExecutionDiagnostics,
@@ -20,7 +20,7 @@ import {
   type ExecutionOutcome,
   type StatementRole,
 } from "./executionDiagnostics";
-import type { ApiClientLogger } from "./fabricApiClient";
+import { type ApiClientLogger, isNetworkFailure } from "./fabricApiClient";
 import type { CancelToken, IFabricApiClient } from "./types";
 
 export interface LivyTarget {
@@ -371,6 +371,8 @@ export class LivySessionManager implements ILivySessionManager {
     session: Promise<string> | undefined,
   ): Promise<LivyStatementResult> {
     const base = livyBase(target);
+    const now = this.now ?? Date.now;
+    let outageSince: number | undefined;
     for (;;) {
       if (token.isCancellationRequested) {
         await this.cancelStatement(target, sessionId, statementId);
@@ -384,7 +386,16 @@ export class LivySessionManager implements ILivySessionManager {
           tenantId: target.tenantId,
         });
         statement = response.body;
+        outageSince = undefined;
       } catch (cause) {
+        // The statement keeps running remotely: ride out a short outage.
+        if (isNetworkFailure(cause)) {
+          outageSince ??= now();
+          if (now() - outageSince < NETWORK_OUTAGE_GRACE_MS) {
+            await this.sleep(this.pollIntervalMs);
+            continue;
+          }
+        }
         throw this.classifySessionLoss(
           cause,
           target,
@@ -499,6 +510,8 @@ export class LivySessionManager implements ILivySessionManager {
     } catch {
       // Best effort: without the bootstrap, display() output stays plain
       // text; the user's own statement still runs (and reports real errors).
+      // Its wait rides out network outages like any statement, so a cell
+      // on a new session may wait up to NETWORK_OUTAGE_GRACE_MS here.
     }
   }
 

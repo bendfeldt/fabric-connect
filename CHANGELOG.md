@@ -17,6 +17,11 @@ workflow; each GitHub Release carries the matching `.vsix`.
   service error), the cell now fails with that error and the saved session is
   kept; a new session starts only when Fabric reports the old one as ended or
   not found, or returns no session for it.
+- **Running cells and Spark jobs survive a network blip** — while a cell or
+  job runs, losing the network (Wi-Fi switch, VPN reconnect) no longer ends
+  the run with an error after a few seconds; Fabric Connect keeps polling for
+  up to two minutes and only then reports the network error. The same holds
+  for the setup Fabric Connect runs on a new session before your first cell.
 
 ## 1.4.1 — 2026-10-09
 

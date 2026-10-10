@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import * as path from "node:path";
 import { test } from "node:test";
 import {
+  FabricApiError,
   LocalFirstViolationError,
   LivyError,
   OneLakeError,
@@ -540,6 +541,117 @@ test("cancelling a batch deletes it", async () => {
   assert.equal(state, "cancelled");
   assert.equal(calls[calls.length - 1].method, "DELETE");
   assert.match(calls[calls.length - 1].path, /\/batches\/42$/);
+});
+
+/** Batch polls answer by script: "fail" throws `failure`, else a state. */
+function scriptedBatchApi(
+  script: (poll: number) => string,
+  failure: Error = new FabricApiError("network", {
+    operation: "call Fabric API",
+  }),
+) {
+  let polls = 0;
+  const api: IFabricApiClient = {
+    async request<T>(options: FabricRequestOptions) {
+      if (options.method === "POST") {
+        return { status: 200, body: { id: 42 } } as FabricResponse<T>;
+      }
+      const step = script(polls++);
+      if (step === "fail") {
+        throw failure;
+      }
+      return { status: 200, body: { state: step } } as FabricResponse<T>;
+    },
+  };
+  return { api, failure, polls: () => polls };
+}
+
+function outageApi(failingPolls: number, finalState: string) {
+  return scriptedBatchApi((poll) =>
+    poll < failingPolls ? "fail" : finalState,
+  );
+}
+
+function clockedOptions(pollIntervalMs: number) {
+  let clock = 0;
+  return {
+    pollIntervalMs,
+    sleep: async (ms: number) => {
+      clock += ms;
+    },
+    now: () => clock,
+  };
+}
+
+test("a batch keeps being followed through a short network outage", async () => {
+  const { api, polls } = outageApi(3, "success");
+  const state = await runBatch(
+    api,
+    TARGET,
+    { name: "J", file: "f", args: [] },
+    NEVER_CANCELLED,
+    clockedOptions(3000),
+  );
+  assert.equal(state, "success");
+  assert.equal(polls(), 4);
+});
+
+test("a batch is lost only once a network outage outlasts two minutes", async () => {
+  const { api, failure, polls } = outageApi(Infinity, "success");
+  await assert.rejects(
+    runBatch(
+      api,
+      TARGET,
+      { name: "J", file: "f", args: [] },
+      NEVER_CANCELLED,
+      clockedOptions(30_000),
+    ),
+    (error: unknown) =>
+      error instanceof LivyError &&
+      error.kind === "protocol" &&
+      error.cause === failure,
+  );
+  assert.equal(polls(), 5);
+});
+
+test("a successful batch poll ends an outage, so short outages never add up", async () => {
+  const script = [
+    ...Array(4).fill("fail"),
+    "running",
+    ...Array(4).fill("fail"),
+    "success",
+  ];
+  const { api, polls } = scriptedBatchApi((poll) => script[poll]);
+  const state = await runBatch(
+    api,
+    TARGET,
+    { name: "J", file: "f", args: [] },
+    NEVER_CANCELLED,
+    clockedOptions(30_000),
+  );
+  assert.equal(state, "success");
+  assert.equal(polls(), script.length);
+});
+
+test("an HTTP error while following a batch is not treated as an outage", async () => {
+  const { api, failure, polls } = scriptedBatchApi(
+    () => "fail",
+    new FabricApiError("forbidden", {
+      operation: "call Fabric API",
+      status: 403,
+    }),
+  );
+  await assert.rejects(
+    runBatch(
+      api,
+      TARGET,
+      { name: "J", file: "f", args: [] },
+      NEVER_CANCELLED,
+      clockedOptions(3000),
+    ),
+    (error: unknown) => error instanceof LivyError && error.cause === failure,
+  );
+  assert.equal(polls(), 1);
 });
 
 test("a batch without a usable ID is a protocol error", async () => {

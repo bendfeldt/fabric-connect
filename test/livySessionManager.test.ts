@@ -1527,3 +1527,109 @@ test("a saved session that is gone (404) is replaced by a new one", async () => 
   assert.equal(result.status, "ok");
   assert.equal(store.get(key), "99");
 });
+
+function networkFailure(): FabricApiError {
+  return new FabricApiError("network", { operation: "call Fabric API" });
+}
+
+function clockedManager(api: IFabricApiClient, pollIntervalMs: number) {
+  let clock = 0;
+  return new LivySessionManager(api, memoryStore(), {
+    pollIntervalMs,
+    sleep: async (ms) => {
+      clock += ms;
+    },
+    now: () => clock,
+  });
+}
+
+function pollingApi(statementPoll: () => unknown) {
+  return scriptedApi([
+    [/POST .*\/sessions$/, () => ({ id: 7, state: "idle" })],
+    [/GET .*\/sessions\/7$/, () => ({ id: 7, state: "idle" })],
+    [/POST .*\/sessions\/7\/statements$/, () => ({ id: 1, state: "waiting" })],
+    [/GET .*\/sessions\/7\/statements\/1$/, statementPoll],
+  ]);
+}
+
+test("a running cell keeps polling through a short network outage", async () => {
+  let polls = 0;
+  const api = pollingApi(() =>
+    ++polls <= 3
+      ? networkFailure()
+      : { id: 1, state: "available", output: { status: "ok", data: {} } },
+  );
+  const result = await clockedManager(api, 1000).execute(
+    TARGET,
+    "x",
+    "pyspark",
+    NEVER_CANCELLED,
+  );
+  assert.equal(result.status, "ok");
+  assert.equal(polls, 4);
+});
+
+test("a running cell reports the network error once an outage outlasts two minutes", async () => {
+  let polls = 0;
+  const failure = networkFailure();
+  const api = pollingApi(() => {
+    polls++;
+    return failure;
+  });
+  await assert.rejects(
+    clockedManager(api, 30_000).execute(
+      TARGET,
+      "x",
+      "pyspark",
+      NEVER_CANCELLED,
+    ),
+    (error: unknown) => error === failure,
+  );
+  // Polls at 0, 30, 60, 90 and 120 seconds; the last one gives up.
+  assert.equal(polls, 5);
+});
+
+test("an HTTP error while polling is not treated as an outage", async () => {
+  let polls = 0;
+  const api = pollingApi(() => {
+    polls++;
+    return new FabricApiError("gone", {
+      operation: "call Fabric API",
+      status: 404,
+    });
+  });
+  await assert.rejects(
+    clockedManager(api, 1000).execute(TARGET, "x", "pyspark", NEVER_CANCELLED),
+    (error: unknown) =>
+      error instanceof LivyError && error.kind === "session-expired",
+  );
+  assert.equal(polls, 1);
+});
+
+test("a successful poll ends an outage, so separate short outages never add up", async () => {
+  // Polls every 30 s: four failures, one running answer, four failures, done.
+  // Counted as one outage, the second run of failures would pass two minutes.
+  const script = [
+    ...Array(4).fill("fail"),
+    "running",
+    ...Array(4).fill("fail"),
+    "available",
+  ];
+  let polls = 0;
+  const api = pollingApi(() => {
+    const step = script[polls++];
+    return step === "fail"
+      ? networkFailure()
+      : step === "running"
+        ? { id: 1, state: "running" }
+        : { id: 1, state: "available", output: { status: "ok", data: {} } };
+  });
+  const result = await clockedManager(api, 30_000).execute(
+    TARGET,
+    "x",
+    "pyspark",
+    NEVER_CANCELLED,
+  );
+  assert.equal(result.status, "ok");
+  assert.equal(polls, script.length);
+});

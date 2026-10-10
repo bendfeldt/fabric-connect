@@ -55,3 +55,9 @@ export const ARM_TENANTS_API_VERSION = "2022-12-01";
  * tenant is selected (to list the tenants the account belongs to).
  */
 export const HOME_TENANT = "organizations";
+
+/**
+ * How long a poll loop (a running cell, a Spark job) keeps polling through
+ * network failures before it reports them; the remote work keeps running.
+ */
+export const NETWORK_OUTAGE_GRACE_MS = 2 * 60 * 1000;

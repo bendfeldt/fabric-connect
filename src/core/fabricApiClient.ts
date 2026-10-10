@@ -47,6 +47,11 @@ export function redactPath(p: string): string {
   return p.replace(GUID_PATTERN, "<redacted-id>");
 }
 
+/** A request that never got an HTTP answer (offline, DNS, reset). */
+export function isNetworkFailure(error: unknown): boolean {
+  return error instanceof FabricApiError && error.status === undefined;
+}
+
 /**
  * GET and DELETE are safe to resend; anything else (running a statement,
  * starting a session, submitting a job) may already have run on the service.

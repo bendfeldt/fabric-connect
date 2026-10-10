@@ -10,8 +10,9 @@
  */
 
 import * as path from "node:path";
-import { LIVY_API_VERSION } from "./constants";
+import { LIVY_API_VERSION, NETWORK_OUTAGE_GRACE_MS } from "./constants";
 import { FabricApiError, LivyError, SparkJobError } from "./errors";
+import { isNetworkFailure } from "./fabricApiClient";
 import type { LivyTarget } from "./livySessionManager";
 import type { CancelToken, IFabricApiClient } from "./types";
 
@@ -213,6 +214,8 @@ const BATCH_FINAL = new Set(["success", "dead", "killed", "error"]);
 export interface BatchRunOptions {
   readonly pollIntervalMs?: number;
   readonly sleep?: (ms: number) => Promise<void>;
+  /** Injected for tests, with `sleep`, to time network outages. */
+  readonly now?: () => number;
   /** Receives driver log lines as they arrive (best effort). */
   readonly onLog?: (line: string) => void;
   /** Receives state changes. */
@@ -276,6 +279,8 @@ export async function runBatch(
   let logFrom = 0;
   let logsAvailable = options.onLog !== undefined;
   let lastState = "";
+  const now = options.now ?? Date.now;
+  let outageSince: number | undefined;
   for (;;) {
     if (token.isCancellationRequested) {
       try {
@@ -297,7 +302,16 @@ export async function runBatch(
         tenantId: target.tenantId,
       });
       state = response.body?.state ?? "unknown";
+      outageSince = undefined;
     } catch (cause) {
+      // The job keeps running remotely: ride out a short outage.
+      if (isNetworkFailure(cause)) {
+        outageSince ??= now();
+        if (now() - outageSince < NETWORK_OUTAGE_GRACE_MS) {
+          await sleep(interval);
+          continue;
+        }
+      }
       throw new LivyError(`Lost track of Spark job '${request.name}'.`, {
         operation: "follow Livy batch",
         entity: `Spark job ${request.name}`,
