@@ -343,7 +343,10 @@ Session behavior:
   instead of paying startup cost again.
 - **Queueing** — multiple cell runs against the same session execute in
   order, never racing each other.
-- **Cancellation** — stop a running cell with the editor's stop button.
+- **Cancellation** — stop a running cell with the editor's stop button. If
+  Fabric does not confirm the cancel, the cell shows an error saying the
+  statement may still be running; stop the Livy session to end it for
+  certain.
 - **Reattachment** — after a VS Code reload, the extension reconnects to
   an existing live session by saved ID rather than always starting a new
   one. Reuse is keyed by tenant, workspace, Lakehouse and optional

@@ -1690,3 +1690,188 @@ test("a statement in state 'error' with error output keeps its own error", async
     traceback: ["ValueError: bad"],
   });
 });
+
+/** Shaped like the API client's own errors, entity suffix included. */
+function apiFailure(status: number | undefined): FabricApiError {
+  const what = "POST /workspaces/<redacted-id>/…/statements/1/cancel";
+  return new FabricApiError(
+    status === undefined
+      ? `The Fabric API request '${what}' failed at the network level.`
+      : `The Fabric API request '${what}' failed with HTTP ${status} because the request was rejected.`,
+    {
+      operation: "call Fabric API",
+      entity: what,
+      ...(status === undefined ? {} : { status }),
+      remediation: "Retry the operation.",
+    },
+  );
+}
+
+/**
+ * Runs one statement that the user cancels while it runs. `cancel` answers
+ * the cancel request; `after` answers each statement poll after the cancel.
+ */
+async function cancelScenario(cancel: () => unknown, after: () => unknown) {
+  let cancelled = false;
+  const token: CancelToken = {
+    ...NEVER_CANCELLED,
+    get isCancellationRequested() {
+      return cancelled;
+    },
+  };
+  let cancelCalls = 0;
+  const api = scriptedApi([
+    [/POST .*\/sessions$/, () => ({ id: 7, state: "idle" })],
+    [/GET .*\/sessions\/7$/, () => ({ id: 7, state: "idle" })],
+    [
+      /POST .*\/statements\/1\/cancel$/,
+      () => {
+        cancelCalls++;
+        return cancel();
+      },
+    ],
+    [/POST .*\/sessions\/7\/statements$/, () => ({ id: 1, state: "waiting" })],
+    [
+      /GET .*\/sessions\/7\/statements\/1$/,
+      () => {
+        if (cancelled) {
+          return after();
+        }
+        cancelled = true; // the user cancels while the statement runs
+        return { id: 1, state: "running" };
+      },
+    ],
+  ]);
+  const run = manager(api, memoryStore()).execute(
+    TARGET,
+    "x",
+    "pyspark",
+    token,
+  );
+  return { run, cancelCalls: () => cancelCalls };
+}
+
+test("a cell cancel that does not take effect is reported: the statement may still run", async () => {
+  const failures: Array<[string, () => Error]> = [
+    ["403", () => apiFailure(403)],
+    ["503", () => apiFailure(503)],
+    ["network", () => apiFailure(undefined)],
+  ];
+  for (const [label, failure] of failures) {
+    const { run, cancelCalls } = await cancelScenario(failure, () => ({
+      id: 1,
+      state: "running",
+    }));
+    await assert.rejects(
+      run,
+      (error: unknown) =>
+        error instanceof LivyError &&
+        error.kind === "cancel-failed" &&
+        /may still be running/.test(error.message) &&
+        error.message.includes(
+          "Details: The Fabric API request 'POST /workspaces/<redacted-id>/…/statements/1/cancel' failed",
+        ) &&
+        !error.message.includes("Retry the operation") &&
+        /Stop Livy Session/.test(error.remediation ?? "") &&
+        error.cause instanceof FabricApiError,
+      label,
+    );
+    assert.equal(cancelCalls(), 1, label);
+  }
+});
+
+test("a cell cancel that failed for sign-in reasons says to sign in again", async () => {
+  const expired = () =>
+    new AuthError("expired", { operation: "acquire token" });
+  // Sign-in failed on the cancel itself, or only on the follow-up check.
+  for (const [label, cancel] of [
+    ["cancel", expired],
+    ["check", () => apiFailure(503)],
+  ] as const) {
+    const { run } = await cancelScenario(cancel, expired);
+    await assert.rejects(
+      run,
+      (error: unknown) =>
+        error instanceof LivyError &&
+        error.kind === "cancel-failed" &&
+        /Fabric: Sign In/.test(error.remediation ?? ""),
+      label,
+    );
+  }
+});
+
+test("a failed cancel request is checked against the statement before it is reported", async () => {
+  // The cancel landed although its answer was lost: cancelled.
+  for (const state of ["cancelling", "cancelled"]) {
+    const { run } = await cancelScenario(
+      () => apiFailure(undefined),
+      () => ({ id: 1, state }),
+    );
+    assert.equal((await run).status, "cancelled", state);
+  }
+  // The statement or session is gone: as good as cancelled.
+  for (const [label, cancel, after] of [
+    ["cancel 404", () => apiFailure(404), () => ({ id: 1, state: "running" })],
+    ["poll 404", () => apiFailure(503), () => apiFailure(404)],
+  ] as const) {
+    const { run } = await cancelScenario(cancel, after);
+    assert.equal((await run).status, "cancelled", label);
+  }
+  // It finished just before the cancel: its real result, not an error.
+  const { run } = await cancelScenario(
+    () => apiFailure(503),
+    () => ({
+      id: 1,
+      state: "available",
+      output: { status: "ok", data: { "text/plain": "42" } },
+    }),
+  );
+  assert.deepEqual(await run, {
+    status: "ok",
+    data: { "text/plain": "42" },
+  });
+});
+
+test("a cell cancel whose state check also fails is reported with both reasons", async () => {
+  const { run } = await cancelScenario(
+    () => apiFailure(503),
+    () =>
+      new FabricApiError(
+        "The Fabric API request 'GET …/statements/1' failed at the network level.",
+        { operation: "call Fabric API", remediation: "Retry." },
+      ),
+  );
+  await assert.rejects(
+    run,
+    (error: unknown) =>
+      error instanceof LivyError &&
+      error.kind === "cancel-failed" &&
+      error.message.includes("failed with HTTP 503") &&
+      error.message.includes(
+        "Checking the statement also failed: The Fabric API request 'GET …/statements/1' failed at the network level.",
+      ) &&
+      !/Fabric: Sign In/.test(error.remediation ?? ""),
+  );
+});
+
+test("a cell that failed just before the cancel shows its own error", async () => {
+  // Livy reports a failed statement as "available" or "error", with output.
+  for (const state of ["available", "error"]) {
+    const { run } = await cancelScenario(
+      () => apiFailure(503),
+      () => ({
+        id: 1,
+        state,
+        output: {
+          status: "error",
+          ename: "ValueError",
+          evalue: "bad",
+          traceback: ["ValueError: bad"],
+        },
+      }),
+    );
+    const result = await run;
+    assert.equal(result.status, "error", state);
+    assert.equal(result.errorName, "ValueError", state);
+  }
+});

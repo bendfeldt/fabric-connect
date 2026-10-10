@@ -40,6 +40,13 @@ workflow; each GitHub Release carries the matching `.vsix`.
   says the job may still be running, with Fabric's reason (and keeps its
   staged files), instead of reporting it as cancelled. A job Fabric no longer
   knows (HTTP 404) still counts as cancelled.
+- **A cell cancel that does not take effect is reported** — stopping a
+  running cell used to clear it as cancelled even when Fabric did not accept
+  the cancel request, while the statement kept running. Fabric Connect now
+  checks the statement first (a cancel whose answer was lost, or a statement
+  that had just finished, is handled as such); only when it may still be
+  running does the cell show an error saying so, with Fabric's reason, and
+  suggest stopping the Livy session.
 
 ## 1.4.1 — 2026-10-09
 
