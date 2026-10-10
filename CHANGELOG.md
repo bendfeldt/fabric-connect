@@ -12,6 +12,11 @@ workflow; each GitHub Release carries the matching `.vsix`.
   may already have run; the error now says so and asks you to check before
   running it again. Throttled (429) requests, reads and stops are still
   retried with backoff.
+- **Reloads no longer leave a second Livy session running** — when VS Code
+  cannot reach the session it saved before a reload (network error, throttling,
+  service error), the cell now fails with that error and the saved session is
+  kept; a new session starts only when Fabric reports the old one as ended or
+  not found, or returns no session for it.
 
 ## 1.4.1 — 2026-10-09
 

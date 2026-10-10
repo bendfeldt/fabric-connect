@@ -524,6 +524,9 @@ export class LivySessionManager implements ILivySessionManager {
               path: `${base}/sessions/${persisted}`,
               tenantId: target.tenantId,
             });
+            if (response.body === undefined || response.body === null) {
+              return undefined; // an empty answer: treat the session as gone
+            }
             if (SESSION_READY_STATES.has(response.body.state)) {
               return persisted;
             }
@@ -536,8 +539,12 @@ export class LivySessionManager implements ILivySessionManager {
                 acquisition,
               );
             }
-          } catch {
-            // Persisted session is gone; fall through and start a fresh one.
+          } catch (cause) {
+            // Only a session that is gone (404) is replaced; any other
+            // failure would leave a live session running untracked.
+            if (!(cause instanceof FabricApiError && cause.status === 404)) {
+              throw this.sessionStartError(cause, target);
+            }
           }
           return undefined;
         },

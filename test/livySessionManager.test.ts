@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { FabricApiError, LivyError } from "../src/core/errors";
+import { AuthError, FabricApiError, LivyError } from "../src/core/errors";
 import { ExecutionDiagnostics } from "../src/core/executionDiagnostics";
 import { FabricApiClient } from "../src/core/fabricApiClient";
 import {
@@ -1451,4 +1451,79 @@ test("reattachment readiness failures propagate without starting a replacement s
     );
     assert.ok(!logs.some((line) => line.includes("phase=session.start")));
   }
+});
+
+test("a reattach failure other than 404 keeps the saved session instead of starting another", async () => {
+  const key = `livy-session/${TARGET.tenantId}/${TARGET.workspaceId}/${TARGET.lakehouseId}`;
+  const failures: Array<[string, Error]> = [
+    [
+      "503",
+      new FabricApiError("unavailable", {
+        operation: "call Fabric API",
+        status: 503,
+      }),
+    ],
+    [
+      "403",
+      new FabricApiError("forbidden", {
+        operation: "call Fabric API",
+        status: 403,
+      }),
+    ],
+    [
+      "network",
+      new FabricApiError("network", { operation: "call Fabric API" }),
+    ],
+  ];
+  failures.push([
+    "sign-in",
+    new AuthError("cancelled", { operation: "acquire token" }),
+  ]);
+  for (const [label, failure] of failures) {
+    const api = scriptedApi([
+      [/GET .*\/sessions\/42$/, () => failure],
+      [/POST .*\/sessions$/, () => ({ id: 99, state: "idle" })],
+    ]);
+    const store = memoryStore({ [key]: "42" });
+    await assert.rejects(
+      manager(api, store).execute(TARGET, "x", "pyspark", NEVER_CANCELLED),
+      (error: unknown) =>
+        error instanceof LivyError &&
+        error.kind === "session-start" &&
+        error.cause === failure,
+      label,
+    );
+    assert.ok(!api.calls.some((call) => call.method === "POST"), label);
+    assert.equal(store.get(key), "42", label);
+  }
+});
+
+test("a saved session that is gone (404) is replaced by a new one", async () => {
+  const key = `livy-session/${TARGET.tenantId}/${TARGET.workspaceId}/${TARGET.lakehouseId}`;
+  const api = scriptedApi([
+    [
+      /GET .*\/sessions\/42$/,
+      () =>
+        new FabricApiError("gone", {
+          operation: "call Fabric API",
+          status: 404,
+        }),
+    ],
+    [/POST .*\/sessions$/, () => ({ id: 99, state: "idle" })],
+    [/GET .*\/sessions\/99$/, () => ({ id: 99, state: "idle" })],
+    [/POST .*\/sessions\/99\/statements$/, () => ({ id: 1, state: "waiting" })],
+    [
+      /GET .*\/sessions\/99\/statements\/1$/,
+      () => ({ id: 1, state: "available", output: { status: "ok", data: {} } }),
+    ],
+  ]);
+  const store = memoryStore({ [key]: "42" });
+  const result = await manager(api, store).execute(
+    TARGET,
+    "x",
+    "pyspark",
+    NEVER_CANCELLED,
+  );
+  assert.equal(result.status, "ok");
+  assert.equal(store.get(key), "99");
 });
