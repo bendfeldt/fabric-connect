@@ -468,7 +468,12 @@ function deepClone<T>(value: T): T {
   return value;
 }
 
-function deepEqual(a: unknown, b: unknown): boolean {
+/**
+ * JSON value equality for change detection. Leaves compare with `===`, so
+ * -0 equals 0 (JSON text keeps -0 but a round trip through JSON.stringify
+ * does not); `util.isDeepStrictEqual` would see a change there.
+ */
+export function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) {
     return true;
   }

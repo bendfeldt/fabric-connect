@@ -31,6 +31,7 @@
  */
 
 import { NotebookFidelityError } from "./errors";
+import { deepEqual } from "./notebookCodec";
 
 export type SourceCellKind = "code" | "markdown" | "parameters";
 
@@ -618,30 +619,4 @@ function fail(
       cause,
     },
   );
-}
-
-function deepEqual(a: unknown, b: unknown): boolean {
-  if (a === b) {
-    return true;
-  }
-  if (Array.isArray(a) && Array.isArray(b)) {
-    return a.length === b.length && a.every((v, i) => deepEqual(v, b[i]));
-  }
-  if (
-    typeof a === "object" &&
-    a !== null &&
-    typeof b === "object" &&
-    b !== null &&
-    !Array.isArray(a) &&
-    !Array.isArray(b)
-  ) {
-    const ra = a as Record<string, unknown>;
-    const rb = b as Record<string, unknown>;
-    const keys = Object.keys(ra);
-    return (
-      keys.length === Object.keys(rb).length &&
-      keys.every((k) => Object.hasOwn(rb, k) && deepEqual(ra[k], rb[k]))
-    );
-  }
-  return false;
 }
