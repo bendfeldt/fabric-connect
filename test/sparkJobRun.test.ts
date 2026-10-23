@@ -66,8 +66,9 @@ test("a Spark job's staged files are deleted only once the job can no longer rea
     };
     const stager = new ModuleStager(oneLake, undefined);
     const jobFolder = "Files/.fabric-connect/" + stager.runId + "/job-Job-";
+    let submit = () => ({ status: 200, body: { id: 42 } });
     const api = { async request(options) {
-      if (options.method === "POST") return { status: 200, body: { id: 42 } };
+      if (options.method === "POST") return submit();
       if (options.method === "DELETE") {
         if (cancelStatus !== 200) throw new FabricApiError("cancel failed", { operation: "call Fabric API", status: cancelStatus });
         return { status: 200, body: {} };
@@ -100,15 +101,31 @@ test("a Spark job's staged files are deleted only once the job can no longer rea
       assert.ok(deleted[1].startsWith(jobFolder), deleted[1]);
       failStaging = false;
 
+      // Fabric refused the submit: the job never ran, so its files are deleted.
+      const kept = () => text.filter(line => line.includes("Staged files kept")).length;
+      const keptBefore = kept();
+      submit = () => { throw new FabricApiError("bad request", { operation: "call Fabric API", status: 400 }); };
+      await assert.rejects(runner.runSparkJob(uri), /Failed to submit Spark job/);
+      assert.equal(deleted.length, 3);
+      assert.ok(deleted[2].startsWith(jobFolder), deleted[2]);
+      assert.equal(kept(), keptBefore);
+
+      // The submit failed with a 5xx: it may have reached Fabric, so its files stay.
+      submit = () => { throw new FabricApiError("unavailable", { operation: "call Fabric API", status: 503 }); };
+      await assert.rejects(runner.runSparkJob(uri), /Failed to submit Spark job/);
+      assert.equal(deleted.length, 3);
+      assert.equal(kept(), keptBefore + 1);
+      submit = () => ({ status: 200, body: { id: 42 } });
+
       // Cancelled and Fabric accepted the cancel: its files are deleted.
       cancelled = true;
       await runner.runSparkJob(uri);
-      assert.equal(deleted.length, 3);
+      assert.equal(deleted.length, 4);
 
       // Fabric refused the cancel: the job may still run, so its files stay.
       cancelStatus = 403;
       await assert.rejects(runner.runSparkJob(uri), /Could not confirm that Spark job 'Job .*was cancelled.*may still be running/);
-      assert.equal(deleted.length, 3);
+      assert.equal(deleted.length, 4);
       runner.dispose();
       stager.dispose();
     })().catch(error => { console.error(error); process.exitCode = 1; });

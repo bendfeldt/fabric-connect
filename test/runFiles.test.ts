@@ -25,6 +25,7 @@ import {
 } from "../src/core/oneLakeClient";
 import {
   buildBatchRequest,
+  jobMayStillRun,
   locateJobFiles,
   parseSparkJobSettings,
   runBatch,
@@ -801,4 +802,94 @@ test("a job submit refused for access keeps its access remediation", async () =>
       error instanceof LivyError &&
       /Contributor \(or higher\) access/.test(error.remediation ?? ""),
   );
+});
+
+test("a job's staged files are kept only while the job may still run", async () => {
+  const refusedSocket = Object.assign(new TypeError("fetch failed"), {
+    cause: Object.assign(new Error("dns"), { code: "ENOTFOUND" }),
+  });
+  const resetSocket = Object.assign(new TypeError("fetch failed"), {
+    cause: Object.assign(new Error("reset"), { code: "ECONNRESET" }),
+  });
+  const apiError = (status: number) =>
+    new FabricApiError("failed", { operation: "call Fabric API", status });
+  const cases: Array<[string, (method: string) => unknown, boolean]> = [
+    ["submit 400", () => apiError(400), false],
+    ["submit 404", () => apiError(404), false],
+    [
+      "submit never sent",
+      () =>
+        new FabricApiError("failed", {
+          operation: "call Fabric API",
+          cause: refusedSocket,
+        }),
+      false,
+    ],
+    [
+      "submit sign-in",
+      () => new AuthError("expired", { operation: "acquire token" }),
+      false,
+    ],
+    [
+      "submit write policy",
+      () =>
+        new LocalFirstViolationError("blocked", {
+          operation: "enforce local-first write policy",
+        }),
+      false,
+    ],
+    ["submit 503", () => apiError(503), true],
+    [
+      "submit network",
+      () =>
+        new FabricApiError("failed", {
+          operation: "call Fabric API",
+          cause: resetSocket,
+        }),
+      true,
+    ],
+    ["submit body unreadable", () => new TypeError("terminated"), true],
+    ["no batch ID", () => "no id", true],
+    [
+      "lost tracking",
+      (method) => (method === "GET" ? apiError(403) : "ok"),
+      true,
+    ],
+    [
+      "cancel refused",
+      (method) => (method === "DELETE" ? apiError(403) : "ok"),
+      true,
+    ],
+  ];
+  for (const [label, fail, mayRun] of cases) {
+    const api: IFabricApiClient = {
+      async request<T>(options: FabricRequestOptions) {
+        const outcome = fail(options.method);
+        if (outcome instanceof Error) {
+          throw outcome;
+        }
+        const body =
+          options.method === "POST" && outcome !== "no id"
+            ? { id: 7 }
+            : { state: "running" };
+        return { status: 200, body: body as T } as FabricResponse<T>;
+      },
+    };
+    const error = await runBatch(
+      api,
+      TARGET,
+      { name: "J", file: "f", args: [] },
+      label === "cancel refused"
+        ? {
+            isCancellationRequested: true,
+            onCancellationRequested: () => ({ dispose: () => undefined }),
+          }
+        : NEVER_CANCELLED,
+      { sleep: async () => undefined },
+    ).then(
+      () => assert.fail(`${label}: runBatch should have failed`),
+      (e: unknown) => e,
+    );
+    assert.equal(jobMayStillRun(error), mayRun, label);
+  }
 });

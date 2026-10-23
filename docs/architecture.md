@@ -100,9 +100,12 @@ as a Livy batch, separate from interactive notebook state.
   staging in an already-running session.
 - Stopping/restarting through the extension attempts to remove that window's
   staged modules on the host; Spark job files are removed by their own run
-  once the job has ended or its cancellation was accepted (a 404 on the
-  cancel counts as accepted: the batch is gone), and kept when the extension
-  loses track of the job or Fabric refuses to cancel it. Cleanup
+  once the job has ended, its cancellation was accepted (a 404 on the
+  cancel counts as accepted: the batch is gone) or Fabric provably did
+  not accept its submit (a 4xx answer, a never-sent socket code, a sign-in failure
+  or the write policy). They are kept when the submit may have reached
+  Fabric, the extension loses track of the job or Fabric refuses to cancel
+  it. Cleanup
   is best effort; service-side expiry
   is not a guaranteed scratch-deletion trigger.
 - `notebookCodec.ts` and `notebookSourceCodec.ts` preserve unknown metadata and

@@ -6,6 +6,13 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+- **A rejected Spark job no longer leaves its files behind** — when Fabric
+  rejects a job's submit (a 4xx answer, a sign-in failure, or a request that
+  never left your machine), its staged files are now deleted and the output
+  no longer says the job may still be running. When the submit may have
+  reached Fabric (a 5xx answer or a connection lost mid-request), the files
+  are still kept with that note.
+
 - **A failed statement without error output no longer shows as a success** —
   when Livy reports a statement as failed (state `error`) but sends no error
   output, the cell now fails with a message saying so instead of showing an
