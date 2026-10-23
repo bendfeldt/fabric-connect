@@ -35,6 +35,7 @@ import { expandRunMagics, hasRunMagic } from "../core/runExpansion";
 import {
   SJD_SETTINGS_FILE,
   buildBatchRequest,
+  jobMayStillRun,
   locateJobFiles,
   parseSparkJobSettings,
   runBatch,
@@ -436,7 +437,8 @@ export class CodeRunner implements vscode.Disposable {
       },
       async (progress, token) => {
         // Set once the batch is submitted: from then on the job may still be
-        // reading the staged files, unless runBatch saw it end.
+        // reading the staged files, unless runBatch saw it end or the submit
+        // provably was not accepted.
         let jobMayRun = false;
         try {
           progress.report({ message: "staging local files" });
@@ -479,6 +481,9 @@ export class CodeRunner implements vscode.Disposable {
               `Spark job ${name} ended as '${state}'. See the 'Fabric Connect: Run' output and the Fabric monitoring hub for the driver log.`,
             );
           }
+        } catch (error) {
+          jobMayRun &&= jobMayStillRun(error);
+          throw error;
         } finally {
           if (jobMayRun) {
             this.output.appendLine(

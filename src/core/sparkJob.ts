@@ -379,6 +379,22 @@ export async function runBatch(
 }
 
 /**
+ * Whether a job may still be running after `runBatch` threw: false only when
+ * the submit itself failed and Fabric provably did not accept the job (it
+ * answered 4xx, or the request never left the machine). Lost tracking,
+ * a refused cancel or an accepted submit without a usable batch ID all leave
+ * the job possibly running.
+ */
+export function jobMayStillRun(error: unknown): boolean {
+  return !(
+    error instanceof LivyError &&
+    error.kind === "session-start" &&
+    error.operation === "submit Livy batch" &&
+    !mayHaveReachedFabric(error.cause)
+  );
+}
+
+/**
  * Whether a failed submit may still have reached Fabric. Only errors that
  * provably happened before anything was sent rule that out: a 4xx answer,
  * a never-sent socket code, a sign-in failure or the write policy. Anything

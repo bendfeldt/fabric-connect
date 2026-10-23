@@ -68,6 +68,10 @@ includes them.
   and keeps it for every other error;
   one stager method builds staged job folder paths; the runner test removes
   its temp folder.
+- **Second follow-up (2026-10-23):** a Spark job whose submit Fabric provably
+  did not accept (same rule as the submit warning, decided in core by
+  `jobMayStillRun`) now has its staged files deleted, without the "may still
+  be running" note; a submit that may have reached Fabric still keeps them.
 - **Documentation alignment:** current architecture/development references,
   consolidated onboarding/build instructions, complete manual fixtures,
   accurate command/settings/security references and installed contributor
