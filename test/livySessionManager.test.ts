@@ -1530,7 +1530,9 @@ test("a saved session that cannot be checked fails with recovery steps and is ke
         error.message.includes(failure.message) &&
         (error.entity ?? "").includes("session 42") &&
         /run the cell again/i.test(error.remediation ?? "") &&
-        /'Fabric: Stop Livy Session'/.test(error.remediation ?? ""),
+        /'Fabric: Stop Livy Session' with this notebook active \(for a file, with no notebook active\)/.test(
+          error.remediation ?? "",
+        ),
       label,
     );
     assert.ok(!api.calls.some((call) => call.method === "POST"), label);

@@ -756,7 +756,7 @@ export class LivySessionManager implements ILivySessionManager {
         kind: "session-start",
         remediation: signIn
           ? "Sign in again with 'Fabric: Sign In', then run the cell again."
-          : "Run the cell again. If it keeps failing, run 'Fabric: Stop Livy Session' with this notebook active: it drops the saved session even if stopping it fails, and the next run starts a new one (the old session may run until it times out).",
+          : "Run the cell again. If it keeps failing, run 'Fabric: Stop Livy Session' with this notebook active (for a file, with no notebook active): it drops the saved session even if stopping it fails, and the next run starts a new one (the old session may run until it times out).",
         cause,
       },
     );

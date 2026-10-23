@@ -417,6 +417,9 @@ versions ask you to type a tenant GUID instead.
       session starts.
 - [ ] **Fabric: Stop Livy Session**. **Expect:** the session stops (also
       gone from **Show Livy Sessions**).
+- [ ] Run a plain `.py` file, close every notebook, then run **Fabric: Stop
+      Livy Session**. **Expect:** the compute host's session stops; the next
+      file run starts a new session.
 - [ ] If a real session expires and the service returns HTTP 404 or the
       recognized matching HTTP 400 terminal/dead-session rejection:
       **Expect:** the original failure remains visible, no failed code

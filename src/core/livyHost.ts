@@ -156,7 +156,7 @@ function resolveHost(input: LivyHostInput): LivyHost {
       },
     );
   }
-  const hosted = hostOf(compute);
+  const hosted = computeHost(compute);
   if (hosted === undefined) {
     throw new HostLakehouseNeededError(
       `Cannot run '${input.entity}': it has no Lakehouse of its own and no host Lakehouse is picked for the connected capacity.`,
@@ -167,6 +167,20 @@ function resolveHost(input: LivyHostInput): LivyHost {
           "Pick a host Lakehouse ('Change Host Lakehouse…' in the Fabric side bar's Configuration), or (for a notebook) set a default Lakehouse in the Lakehouses view.",
       },
     );
+  }
+  return hosted;
+}
+
+/**
+ * The connected capacity's host Lakehouse, where code without a Lakehouse
+ * of its own runs; undefined without compute or a picked host.
+ */
+export function computeHost(
+  compute: ComputeProfile | undefined,
+): LivyHost | undefined {
+  const hosted = compute === undefined ? undefined : hostOf(compute);
+  if (hosted === undefined) {
+    return undefined;
   }
   return {
     target: {

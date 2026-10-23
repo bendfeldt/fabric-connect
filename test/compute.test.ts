@@ -29,6 +29,7 @@ import {
   listWorkspaces,
 } from "../src/core/fabricCatalog";
 import {
+  computeHost,
   diagnoseLivyHost,
   probeLivyHost,
   resolveLivyHost,
@@ -831,6 +832,34 @@ test("a failed start is explained by the host's workspace, capacity or Lakehouse
       { workspace: "unknown", lakehouse: "unknown" },
       "notebook",
     ),
+    undefined,
+  );
+});
+
+test("the compute host to stop is the one plain files run on, Environment included", () => {
+  const compute = {
+    tenantId: "87654321-4321-4321-4321-cba987654321",
+    capacityId: "99999999-8888-7777-6666-555555555555",
+    workspaceId: "12345678-1234-1234-1234-123456789abc",
+    lakehouseId: "11111111-2222-3333-4444-555555555555",
+    environmentId: "22222222-3333-4444-5555-666666666666",
+    lakehouseName: "Host",
+  };
+  const expected = {
+    target: {
+      tenantId: compute.tenantId,
+      workspaceId: compute.workspaceId,
+      lakehouseId: compute.lakehouseId,
+      environmentId: compute.environmentId,
+    },
+    source: "compute",
+    label: "Host (connected capacity's host)",
+  };
+  assert.deepEqual(computeHost(compute), expected);
+  assert.deepEqual(resolveLivyHost({ entity: "load.py", compute }), expected);
+  assert.equal(computeHost(undefined), undefined);
+  assert.equal(
+    computeHost({ tenantId: compute.tenantId, capacityId: compute.capacityId }),
     undefined,
   );
 });

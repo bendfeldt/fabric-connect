@@ -75,7 +75,10 @@ includes them.
   A saved Livy session that cannot be checked on reattach (any error but 404) fails with its own error naming the session and cause, with next
   steps (retry, or `Fabric: Stop Livy Session` to drop it); the saved ID is
   still kept and no session is started. A test pins that `stopSession`
-  clears the saved ID even when its DELETE fails.
+  clears the saved ID even when its DELETE fails. With no Fabric notebook
+  active, `Fabric: Stop Livy Session` now stops the compute host's session
+  (core `computeHost`, the same target and Environment plain files run on)
+  instead of refusing; it never prompts for a host.
 - **Documentation alignment:** current architecture/development references,
   consolidated onboarding/build instructions, complete manual fixtures,
   accurate command/settings/security references and installed contributor
@@ -149,6 +152,20 @@ Reproducible checks, last run on 2026-10-10 after the final code commit:
 (clean). A contract test pins Node's real `fetch` rejection shape for a
 refused connection. No live Fabric run (real network drop, job cold start,
 reload reattach, cancel races) was performed.
+
+Second follow-up session (2026-10-23): three commits (job files on a
+rejected submit, reattach recovery guidance, Stop fallback to the compute
+host). Each new test was seen failing before its fix, except the
+`stopSession` failing-DELETE test, which pins behavior that already held.
+Each commit was made after the verifier passed its diff; the first round
+failed each one (submit wording, the dead-state replacement rule in the
+docs, and a self-comparing test plus an incomplete warning), and the
+re-review passed after the fixes. `npm test` (352 tests, 0 failures) and
+`npx prettier --check src test docs CHANGELOG.md IMPLEMENTATION_PLAN.md`
+passed. The Stop command handler in `extension.ts` is not reachable by the
+native harness; only its core `computeHost` decision is tested. Not run (no
+live Fabric): a rejected and a 5xx job submit, a reattach that keeps failing
+followed by Stop, and Stop with no notebook active (docs/testing.md).
 
 ## Next authorized work
 
