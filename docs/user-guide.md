@@ -365,7 +365,9 @@ Session behavior:
   in-memory variables, imports and temporary views.
 
 To end a session explicitly, run **`Fabric: Stop Livy Session`** with the
-notebook active; **`Fabric: Restart Livy Session`** stops it and starts a
+notebook active; with no Fabric notebook active, it stops the session that
+plain files run on (the connected capacity's host Lakehouse).
+**`Fabric: Restart Livy Session`** stops the notebook's session and starts a
 fresh one. **`Fabric: Show Livy Sessions`** lists the active sessions on the
 host Lakehouse (including ones left running by other windows) and stops the
 ones you pick.
@@ -678,7 +680,7 @@ not guarantee cleanup; see [Security and data](security.md).
 | `Fabric: Run Cell`                              | Run a source-text cell from its code lens                      |
 | `Fabric: Run All Above`                         | Run preceding source-text code cells and the current cell      |
 | `Fabric: Python Modules (Local or Remote)`      | Select working-tree or installed Python packages               |
-| `Fabric: Stop Livy Session`                     | Stop the active notebook's Livy session                        |
+| `Fabric: Stop Livy Session`                     | Stop the active notebook's (or compute host's) Livy session    |
 | `Fabric: Restart Livy Session`                  | Stop and immediately start a fresh session                     |
 | `Fabric: Show Livy Sessions`                    | List active sessions on the host Lakehouse; stop selected ones |
 | `Fabric: Run File on Fabric`                    | Run the active (or selected) Python/SQL/Scala/R file           |

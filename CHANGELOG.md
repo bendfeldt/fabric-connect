@@ -6,6 +6,11 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+- **`Fabric: Stop Livy Session` works without a notebook** — with no Fabric
+  notebook active, it now stops the session that plain files and selections
+  run on (the connected capacity's host Lakehouse) instead of asking you to
+  open a notebook.
+
 - **A session that cannot be checked after a reload says how to recover** —
   when Fabric Connect cannot check the Livy session it saved (an HTTP error
   other than 404, or a network error), the error now names the session and

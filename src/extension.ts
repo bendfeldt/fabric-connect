@@ -18,7 +18,7 @@ import {
 } from "./core/computeProfile";
 import { FabricApiClient } from "./core/fabricApiClient";
 import { ExecutionDiagnostics } from "./core/executionDiagnostics";
-import { probeLivyHost } from "./core/livyHost";
+import { computeHost, probeLivyHost } from "./core/livyHost";
 import { DISPLAY_BOOTSTRAP_CODE } from "./core/displayProtocol";
 import {
   LivySessionManager,
@@ -538,19 +538,23 @@ export function activate(context: vscode.ExtensionContext): void {
         const uri = activeFabricNotebookUri();
         const notebook =
           uri === undefined ? undefined : await fabricNotebookFor(uri);
-        if (notebook === undefined || !isFabricNotebook(notebook)) {
+        // Without a notebook: the session plain files run on.
+        const host =
+          notebook !== undefined && isFabricNotebook(notebook)
+            ? await resolveNotebookHost(
+                notebook,
+                targetResolver,
+                compute,
+                () => signIn.tenant(),
+                attachmentSources,
+              )
+            : computeHost(await compute());
+        if (host === undefined) {
           void vscode.window.showWarningMessage(
-            "Open a Fabric notebook first, then run this command to stop its Livy session.",
+            "No Livy session to stop: open a Fabric notebook, or connect to compute ('Fabric: Connect to Compute') and pick a host Lakehouse ('Change Host Lakehouse…' in Configuration), then run this command again.",
           );
           return;
         }
-        const host = await resolveNotebookHost(
-          notebook,
-          targetResolver,
-          compute,
-          () => signIn.tenant(),
-          attachmentSources,
-        );
         await livyManager.stopSession(host.target);
         await stager.cleanup(host.target);
         void vscode.window.showInformationMessage(
