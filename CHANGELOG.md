@@ -6,6 +6,12 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+- **Stopping your session from Show Livy Sessions no longer fails the next
+  run** — with no notebook active and an Environment on the compute host,
+  stopping the session your files use left it marked as current, so the
+  next run failed once with "expired or was stopped". It is now forgotten
+  when stopped, and the next run starts a new session.
+
 - **`Fabric: Stop Livy Session` works without a notebook** — with no Fabric
   notebook active, it now stops the session that plain files and selections
   run on (the connected capacity's host Lakehouse) instead of asking you to

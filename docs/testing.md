@@ -417,6 +417,10 @@ versions ask you to type a tenant GUID instead.
       session starts.
 - [ ] **Fabric: Stop Livy Session**. **Expect:** the session stops (also
       gone from **Show Livy Sessions**).
+- [ ] With an Environment on the compute host, run a plain `.py` file, close
+      every notebook, then stop that session from **Fabric: Show Livy
+      Sessions**. **Expect:** the next file run starts a new session without
+      an "expired or was stopped" error.
 - [ ] Run a plain `.py` file, close every notebook, then run **Fabric: Stop
       Livy Session**. **Expect:** the compute host's session stops; the next
       file run starts a new session.
