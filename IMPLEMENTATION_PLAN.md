@@ -72,6 +72,10 @@ includes them.
   did not accept (same rule as the submit warning, decided in core by
   `jobMayStillRun`) now has its staged files deleted, without the "may still
   be running" note; a submit that may have reached Fabric still keeps them.
+  A saved Livy session that cannot be checked on reattach (any error but 404) fails with its own error naming the session and cause, with next
+  steps (retry, or `Fabric: Stop Livy Session` to drop it); the saved ID is
+  still kept and no session is started. A test pins that `stopSession`
+  clears the saved ID even when its DELETE fails.
 - **Documentation alignment:** current architecture/development references,
   consolidated onboarding/build instructions, complete manual fixtures,
   accurate command/settings/security references and installed contributor
@@ -163,6 +167,10 @@ reload reattach, cancel races) was performed.
 
 ## Known limits and open evidence gaps
 
+- Unverified against live Fabric: that a gone Livy session answers HTTP 404
+  on `GET /sessions/{id}`. If Fabric answers 400 or 403 instead, reattach
+  keeps failing until the user runs `Fabric: Stop Livy Session`; no other
+  status is treated as gone without live evidence.
 - Live latency and Variable Library notebook-state failure causes remain
   unconfirmed. Notebook utility documentation does not prove standalone Livy
   support.

@@ -6,6 +6,12 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+- **A session that cannot be checked after a reload says how to recover** —
+  when Fabric Connect cannot check the Livy session it saved (an HTTP error
+  other than 404, or a network error), the error now names the session and
+  the cause, and says to run again or run `Fabric: Stop Livy Session`, which
+  drops the saved session so the next run starts a new one.
+
 - **A rejected Spark job no longer leaves its files behind** — when Fabric
   rejects a job's submit (a 4xx answer, a sign-in failure, or a request that
   never left your machine), its staged files are now deleted and the output
