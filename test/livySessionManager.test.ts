@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { AuthError, FabricApiError, LivyError } from "../src/core/errors";
 import { ExecutionDiagnostics } from "../src/core/executionDiagnostics";
 import { FabricApiClient } from "../src/core/fabricApiClient";
+import { computeHost } from "../src/core/livyHost";
 import {
   LivySessionManager,
   listLivySessions,
@@ -1002,6 +1003,36 @@ test("startSession starts eagerly; stopSessionById stops orphans and our own", a
   await livy.stopSessionById(TARGET, "8");
   assert.deepEqual(deleted, ["orphan-1", "8"]);
   assert.equal(store.data.size, 0);
+});
+
+test("stopping our compute-host session by ID forgets it when the host has an Environment", async () => {
+  const hosted = computeHost({
+    ...TARGET,
+    capacityId: "99999999-8888-7777-6666-555555555555",
+    environmentId: "22222222-3333-4444-5555-666666666666",
+  });
+  assert.ok(hosted);
+  const target = hosted.target;
+  let next = 8;
+  const api = scriptedApi([
+    [/POST .*\/sessions$/, () => ({ id: next++, state: "idle" })],
+    [/GET .*\/sessions\/\d+$/, () => ({ state: "idle" })],
+    [/DELETE .*\/sessions\/8$/, () => ({})],
+    [/POST .*\/sessions\/9\/statements$/, () => ({ id: 1, state: "waiting" })],
+    [
+      /GET .*\/sessions\/9\/statements\/1$/,
+      () => ({ id: 1, state: "available", output: { status: "ok", data: {} } }),
+    ],
+  ]);
+  const store = memoryStore();
+  const livy = manager(api, store);
+  await livy.startSession(target, NEVER_CANCELLED);
+  // As Show Livy Sessions does for the compute host.
+  await livy.stopSessionById(target, "8");
+  assert.equal(store.data.size, 0);
+  const result = await livy.execute(target, "x", "pyspark", NEVER_CANCELLED);
+  assert.equal(result.status, "ok");
+  assert.equal([...store.data.values()][0], "9");
 });
 
 test("listLivySessions maps the monitoring API and skips entries without IDs", async () => {

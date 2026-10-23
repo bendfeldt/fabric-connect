@@ -11,11 +11,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import {
-  type ComputeProfile,
-  describeCompute,
-  hostOf,
-} from "./core/computeProfile";
+import { type ComputeProfile, describeCompute } from "./core/computeProfile";
 import { FabricApiClient } from "./core/fabricApiClient";
 import { ExecutionDiagnostics } from "./core/executionDiagnostics";
 import { computeHost, probeLivyHost } from "./core/livyHost";
@@ -606,8 +602,6 @@ export function activate(context: vscode.ExtensionContext): void {
           activeUri === undefined
             ? undefined
             : await fabricNotebookFor(activeUri);
-        const current = await compute();
-        const hosted = current === undefined ? undefined : hostOf(current);
         const host =
           notebook !== undefined && isFabricNotebook(notebook)
             ? (
@@ -619,13 +613,8 @@ export function activate(context: vscode.ExtensionContext): void {
                   attachmentSources,
                 )
               ).target
-            : hosted === undefined
-              ? undefined
-              : {
-                  tenantId: hosted.tenantId,
-                  workspaceId: hosted.workspaceId,
-                  lakehouseId: hosted.lakehouseId,
-                };
+            : // With its Environment: the saved session is keyed by it.
+              computeHost(await compute())?.target;
         if (host === undefined) {
           void vscode.window.showWarningMessage(
             "Open a Fabric notebook, or pick a host Lakehouse ('Change Host Lakehouse…' in Configuration), so there is a Lakehouse to list sessions for.",

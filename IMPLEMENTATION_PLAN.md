@@ -78,7 +78,9 @@ includes them.
   clears the saved ID even when its DELETE fails. With no Fabric notebook
   active, `Fabric: Stop Livy Session` now stops the compute host's session
   (core `computeHost`, the same target and Environment plain files run on)
-  instead of refusing; it never prompts for a host.
+  instead of refusing; it never prompts for a host. Show Livy Sessions'
+  compute-host fallback now keeps the Environment too, so stopping your own
+  session from its list forgets it (it used to fail the next run once).
 - **Documentation alignment:** current architecture/development references,
   consolidated onboarding/build instructions, complete manual fixtures,
   accurate command/settings/security references and installed contributor
@@ -166,6 +168,11 @@ passed. The Stop command handler in `extension.ts` is not reachable by the
 native harness; only its core `computeHost` decision is tested. Not run (no
 live Fabric): a rejected and a 5xx job submit, a reattach that keeps failing
 followed by Stop, and Stop with no notebook active (docs/testing.md).
+A fourth commit keeps the Environment in Show Livy Sessions' compute-host
+target. Its test pins only the manager side and passed before the fix; the
+handler change has no automated test. The verifier failed it for that
+reason, and the user accepted the gap and approved the commit. Its manual
+smoke step (docs/testing.md) was not run.
 
 ## Next authorized work
 
@@ -184,6 +191,9 @@ followed by Stop, and Stop with no notebook active (docs/testing.md).
 
 ## Known limits and open evidence gaps
 
+- `extension.ts` command handlers are not reachable by the native tests:
+  the Stop and Show Livy Sessions compute-host fallbacks are checked only
+  through core `computeHost` and manual smoke steps.
 - Unverified against live Fabric: that a gone Livy session answers HTTP 404
   on `GET /sessions/{id}`. If Fabric answers 400 or 403 instead, reattach
   keeps failing until the user runs `Fabric: Stop Livy Session`; no other
