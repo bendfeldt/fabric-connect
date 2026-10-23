@@ -6,6 +6,8 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+## 1.4.2 — 2026-10-23
+
 - **Stopping your session from Show Livy Sessions no longer fails the next
   run** — with no notebook active and an Environment on the compute host,
   stopping the session your files use left it marked as current, so the
