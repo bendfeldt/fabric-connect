@@ -351,7 +351,13 @@ Session behavior:
   an existing live session by saved ID rather than always starting a new
   one. Reuse is keyed by tenant, workspace, Lakehouse and optional
   Environment, not by statement language. Notebook/file runs on that same
-  target share session state; unrelated targets do not.
+  target share session state; unrelated targets do not. A new session
+  replaces the saved one only when Fabric says it is gone (HTTP 404, an
+  empty answer, or a session that has ended, such as `dead` or `killed`). If the saved session cannot be checked (another HTTP
+  error, a network error), the run fails, the saved session is kept and no
+  new one starts. Run again to retry; if it keeps failing, run
+  **`Fabric: Stop Livy Session`**, which drops the saved session even if
+  stopping it fails, so the next run starts a new one.
 - **Expired sessions** — a missing session (HTTP 404) or the specific
   HTTP 400 submission rejection reporting a matching terminal/dead session
   clears that local session reference. The failed code is not replayed.

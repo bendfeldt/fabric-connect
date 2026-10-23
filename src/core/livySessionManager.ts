@@ -619,7 +619,7 @@ export class LivySessionManager implements ILivySessionManager {
             // Only a session that is gone (404) is replaced; any other
             // failure would leave a live session running untracked.
             if (!(cause instanceof FabricApiError && cause.status === 404)) {
-              throw this.sessionStartError(cause, target);
+              throw this.savedSessionCheckError(cause, target, persisted);
             }
           }
           return undefined;
@@ -727,6 +727,39 @@ export class LivySessionManager implements ILivySessionManager {
       }
       await this.sleep(this.pollIntervalMs);
     }
+  }
+
+  /**
+   * The saved session could not be checked. It is kept, since it may still
+   * be running; the user retries, or stops it to drop the saved ID.
+   */
+  private savedSessionCheckError(
+    cause: unknown,
+    target: LivyTarget,
+    sessionId: string,
+  ): LivyError {
+    if (cause instanceof LivyError) {
+      return cause;
+    }
+    const signIn =
+      cause instanceof AuthError ||
+      (cause instanceof FabricApiError && cause.status === 401);
+    const detail =
+      cause instanceof Error
+        ? ` Details: ${cause.message.split(" Next step:")[0]}`
+        : "";
+    return new LivyError(
+      `Could not check the saved Livy session, so it was kept and no new session was started.${detail}`,
+      {
+        operation: "check saved Livy session",
+        entity: `session ${sessionId} on ${hostEntity(target)}`,
+        kind: "session-start",
+        remediation: signIn
+          ? "Sign in again with 'Fabric: Sign In', then run the cell again."
+          : "Run the cell again. If it keeps failing, run 'Fabric: Stop Livy Session' with this notebook active: it drops the saved session even if stopping it fails, and the next run starts a new one (the old session may run until it times out).",
+        cause,
+      },
+    );
   }
 
   private sessionStartError(cause: unknown, target: LivyTarget): LivyError {

@@ -89,6 +89,10 @@ as a Livy batch, separate from interactive notebook state.
   a VS Code workspace-state adapter for reattachment. Reuse is per execution
   tenant, workspace, Lakehouse and optional Environment, not statement
   language. Runs on the same target share state; unrelated targets do not.
+  Reattachment replaces a saved session only on HTTP 404, an empty
+  answer or a dead session state; any other failure to check it fails the run with recovery steps
+  and keeps the saved ID. `stopSession` clears the saved ID before its
+  DELETE, so stopping drops it even when the DELETE fails.
 - HTTP 404 and the specifically recognized HTTP 400 terminal/dead-session
   rejection invalidate only the matching local generation. Original errors
   remain visible; failed code is never replayed automatically. The next

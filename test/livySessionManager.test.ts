@@ -1498,6 +1498,84 @@ test("a reattach failure other than 404 keeps the saved session instead of start
   }
 });
 
+test("a saved session that cannot be checked fails with recovery steps and is kept", async () => {
+  const key = `livy-session/${TARGET.tenantId}/${TARGET.workspaceId}/${TARGET.lakehouseId}`;
+  const apiFailure = (status: number) =>
+    new FabricApiError(`HTTP ${status} from Fabric`, {
+      operation: "call Fabric API",
+      status,
+    });
+  const failures: Array<[string, Error]> = [
+    ["400", apiFailure(400)],
+    ["403", apiFailure(403)],
+    ["500", apiFailure(500)],
+    [
+      "network",
+      new FabricApiError("connection reset", { operation: "call Fabric API" }),
+    ],
+  ];
+  for (const [label, failure] of failures) {
+    const api = scriptedApi([
+      [/GET .*\/sessions\/42$/, () => failure],
+      [/POST .*\/sessions$/, () => ({ id: 99, state: "idle" })],
+    ]);
+    const store = memoryStore({ [key]: "42" });
+    await assert.rejects(
+      manager(api, store).execute(TARGET, "x", "pyspark", NEVER_CANCELLED),
+      (error: unknown) =>
+        error instanceof LivyError &&
+        error.kind === "session-start" &&
+        error.cause === failure &&
+        /Could not check the saved Livy session/.test(error.message) &&
+        error.message.includes(failure.message) &&
+        (error.entity ?? "").includes("session 42") &&
+        /run the cell again/i.test(error.remediation ?? "") &&
+        /'Fabric: Stop Livy Session'/.test(error.remediation ?? ""),
+      label,
+    );
+    assert.ok(!api.calls.some((call) => call.method === "POST"), label);
+    assert.equal(store.get(key), "42", label);
+  }
+});
+
+test("stopping a saved session drops it even when the DELETE fails, so the next run starts fresh", async () => {
+  const key = `livy-session/${TARGET.tenantId}/${TARGET.workspaceId}/${TARGET.lakehouseId}`;
+  const api = scriptedApi([
+    [
+      /DELETE .*\/sessions\/42$/,
+      () =>
+        new FabricApiError("bad request", {
+          operation: "call Fabric API",
+          status: 400,
+        }),
+    ],
+    [
+      /GET .*\/sessions\/42$/,
+      () => assert.fail("the saved session is checked"),
+    ],
+    [/POST .*\/sessions$/, () => ({ id: 99, state: "idle" })],
+    [/GET .*\/sessions\/99$/, () => ({ id: 99, state: "idle" })],
+    [/POST .*\/sessions\/99\/statements$/, () => ({ id: 1, state: "waiting" })],
+    [
+      /GET .*\/sessions\/99\/statements\/1$/,
+      () => ({ id: 1, state: "available", output: { status: "ok", data: {} } }),
+    ],
+  ]);
+  const store = memoryStore({ [key]: "42" });
+  const livy = manager(api, store);
+  await assert.rejects(livy.stopSession(TARGET), FabricApiError);
+  assert.equal(store.get(key), undefined);
+  const result = await livy.execute(TARGET, "x", "pyspark", NEVER_CANCELLED);
+  assert.equal(result.status, "ok");
+  assert.equal(store.get(key), "99");
+  assert.equal(
+    api.calls.filter((call) =>
+      /POST .*\/sessions$/.test(`${call.method} ${call.path}`),
+    ).length,
+    1,
+  );
+});
+
 test("a saved session that is gone (404) is replaced by a new one", async () => {
   const key = `livy-session/${TARGET.tenantId}/${TARGET.workspaceId}/${TARGET.lakehouseId}`;
   const api = scriptedApi([
