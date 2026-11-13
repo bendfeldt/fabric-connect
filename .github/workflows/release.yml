@@ -34,34 +34,30 @@
 #     approval means someone must also approve the bump PR).
 #
 # Optional VS Code Marketplace publishing (GitHub OIDC, no stored secret):
-#   publish-release exchanges the job's GitHub OIDC token for a Microsoft
-#   Entra ID token (azure/login) and runs `vsce publish --azure-credential`.
-#   vsce requests a token for the Azure DevOps resource
-#   (499b84ac-1321-427f-aa17-267ca6975798) from the Azure CLI session.
-#   azure/login runs with allow-no-subscriptions, so no Azure subscription
-#   is configured here. It is skipped with a warning until both repository
-#   variables are set:
-#   - Entra app registration (or user-assigned managed identity) with a
-#     federated credential: issuer https://token.actions.githubusercontent.com,
-#     subject repo:bendfeldt/fabric-connect:ref:refs/heads/main, audience
-#     api://AzureADTokenExchange.
-#   - That identity added as a member of the Marketplace publisher named in
-#     package.json, with permission to publish. The membership steps and
-#     role are not verified here; check Microsoft's current extension
-#     publishing documentation
-#     (https://code.visualstudio.com/api/working-with-extensions/publishing-extension).
-#     This workflow has not been run against a live publisher.
-#   - Repository variables (Settings -> Secrets and variables -> Actions ->
-#     Variables): AZURE_CLIENT_ID and AZURE_TENANT_ID. These are identifiers,
-#     not secrets.
+#   publish-release runs `vsce publish --oidc` (Marketplace trusted
+#   publishing). vsce requests a GitHub OIDC token with audience
+#   marketplace.visualstudio.com and exchanges it at the Marketplace's
+#   /_apis/gallery/token endpoint for a publish credential scoped to the
+#   publisher in package.json. No Entra ID, Azure account or PAT is used.
+#   The flag is hidden from `vsce --help` in vsce 4.0.0, so treat it as
+#   preview: this workflow has not been run against a live publisher.
+#   It is skipped with a warning until it is enabled:
+#   - On the Marketplace publisher page (marketplace.visualstudio.com/manage),
+#     look for a setting that trusts this repository's GitHub Actions
+#     workflow for publishing. Whether the Marketplace offers it, and what
+#     it requires, is not verified here. If the Marketplace refuses the
+#     exchange, vsce exits with an error (oidc.js throws on any non-2xx
+#     answer), so this step fails and the later "Create GitHub Release"
+#     step does not run.
+#   - Repository variable (Settings -> Secrets and variables -> Actions ->
+#     Variables): MARKETPLACE_TRUSTED_PUBLISHING = true.
 #   The "already released" guard skips the whole job, so a version whose
-#   GitHub Release already exists (for example, one released before these
-#   variables were set) is never sent to the Marketplace by this workflow.
+#   GitHub Release already exists (for example, one released before the
+#   variable was set) is never sent to the Marketplace by this workflow.
 #   Publish such a version once by hand with
 #   `npx @vscode/vsce@4.0.0 publish --packagePath <the release's .vsix>`,
-#   authenticated as a publisher member: either `az login` as an Entra
-#   identity on the publisher and add `--azure-credential`, or a
-#   Marketplace PAT via `vsce login <publisher>` or the VSCE_PAT variable.
+#   authenticated with a Marketplace PAT through `vsce login <publisher>`
+#   or the VSCE_PAT variable (--oidc works only inside GitHub Actions).
 name: Release
 
 on:
@@ -171,7 +167,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      id-token: write # GitHub OIDC token for the Marketplace Entra ID login
+      id-token: write # GitHub OIDC token for Marketplace trusted publishing
     steps:
       - uses: actions/checkout@v4 # the pushed SHA is the release commit
 
@@ -218,33 +214,25 @@ jobs:
         id: marketplace
         if: steps.guard.outputs.skip != 'true'
         env:
-          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
-          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          ENABLED: ${{ vars.MARKETPLACE_TRUSTED_PUBLISHING }}
         run: |
-          if [ -n "$AZURE_CLIENT_ID" ] && [ -n "$AZURE_TENANT_ID" ]; then
+          if [ "$ENABLED" = "true" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "::warning::VS Code Marketplace publishing skipped:" \
-              "AZURE_CLIENT_ID and AZURE_TENANT_ID repository variables are not" \
-              "both set. See the header comment in .github/workflows/release.yml."
+              "the MARKETPLACE_TRUSTED_PUBLISHING repository variable is not" \
+              "'true'. See the header comment in .github/workflows/release.yml."
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Sign in to Microsoft Entra ID (GitHub OIDC)
+      - name: Publish to VS Code Marketplace (trusted publishing)
         if: steps.guard.outputs.skip != 'true' && steps.marketplace.outputs.enabled == 'true'
-        uses: azure/login@v2
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          allow-no-subscriptions: true
-
-      - name: Publish to VS Code Marketplace
-        if: steps.guard.outputs.skip != 'true' && steps.marketplace.outputs.enabled == 'true'
-        # --azure-credential uses the Azure CLI session from azure/login; the
-        # .vsix is the one packaged above, so nothing is rebuilt.
+        # --oidc exchanges this job's GitHub OIDC token (id-token: write)
+        # for a Marketplace credential; the .vsix is the one packaged above,
+        # so nothing is rebuilt.
         run: >
           npx --yes @vscode/vsce@4.0.0 publish
-          --azure-credential
+          --oidc
           --skip-duplicate
           --packagePath 'fabric-connect-${{ steps.guard.outputs.version }}.vsix'
 
