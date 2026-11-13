@@ -153,26 +153,24 @@ commit in that PR changes `package.json`, `package-lock.json` and
 the manifest version.
 
 The same job publishes that `.vsix` to the VS Code Marketplace before creating
-the GitHub Release, once the `AZURE_CLIENT_ID` and `AZURE_TENANT_ID`
-repository variables are set; until then it logs a warning and skips that step.
-It authenticates with GitHub OIDC exchanged for a Microsoft Entra ID token
-(`azure/login`, then `vsce publish --azure-credential`), so there is no
-Marketplace PAT to store or rotate. The Entra identity needs a federated
-credential for this repository's `main` branch and must be added as a member
-of the Marketplace publisher with permission to publish. The membership steps
-and role are not verified in this repository; check Microsoft's current
-[publishing documentation](https://code.visualstudio.com/api/working-with-extensions/publishing-extension).
-The one-time steps are in the header comment of
-`.github/workflows/release.yml`. This path has not been run against a live
-publisher.
+the GitHub Release, once the `MARKETPLACE_TRUSTED_PUBLISHING` repository
+variable is `true`; until then it logs a warning and skips that step. It uses
+Marketplace trusted publishing (`vsce publish --oidc`): the job's GitHub OIDC
+token is exchanged with the Marketplace for a publish credential, so there is
+no Entra ID, Azure account or PAT to store or rotate. `--oidc` is hidden from
+`vsce --help` in vsce 4.0.0, so treat it as preview. Whether the Marketplace
+publisher page offers a setting to trust this repository's workflow, and what
+it requires, is not verified in this repository, and the path has not been run
+against a live publisher. If the Marketplace refuses the token exchange, vsce
+exits with an error and the job stops before creating the GitHub Release. The
+one-time steps are in the header comment of `.github/workflows/release.yml`.
 
 The "already released" guard skips the whole job, so a version whose GitHub
 Release already exists is never sent to the Marketplace by the workflow, even
-if the variables are set later. Publish that version once by hand with
+if the variable is set later. Publish that version once by hand with
 `npx @vscode/vsce@4.0.0 publish --packagePath <the release's .vsix>`,
-authenticated as a publisher member: either sign in with `az login` as an
-Entra identity on the publisher and add `--azure-credential`, or use a
-Marketplace PAT through `vsce login <publisher>` or the `VSCE_PAT` variable.
+authenticated with a Marketplace PAT through `vsce login <publisher>` or the
+`VSCE_PAT` variable; `--oidc` works only inside GitHub Actions.
 
 ## Keeping versions consistent
 
