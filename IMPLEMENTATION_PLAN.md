@@ -35,8 +35,8 @@ includes them.
 - **Sign-in and shipping:** remembered repo account/tenant, tenant picker,
   walkthrough completion/advance, LF normalization, VSIX allowlist, native
   manifest/UI-consumer tests, build/test CI and manually initiated release PRs.
-  The release job has opt-in VS Code Marketplace publishing (GitHub OIDC to
-  Entra ID, `vsce publish --azure-credential`); see the evidence gap below.
+  The release job has opt-in VS Code Marketplace publishing (GitHub OIDC
+  trusted publishing, `vsce publish --oidc`); see the evidence gap below.
 - **Execution diagnostics:** opt-in client phase timings in notebook and
   text/file paths. The specific Variable Library missing-notebook-state error
   retains its traceback and adds guidance, not a fallback or compatibility shim.
@@ -193,12 +193,13 @@ smoke step (docs/testing.md) was not run.
 
 ## Known limits and open evidence gaps
 
-- Marketplace publishing in the Release workflow has never run: no Entra
-  identity, federated credential, publisher membership or Marketplace upload
-  has been exercised. Only the YAML parse, the vsce 4.0.0 flags
-  (`--azure-credential`, `--skip-duplicate`, `--packagePath`) and its token
-  resource were checked locally. Versions released before the variables are
-  set (including the current one) need a one-time manual publish.
+- Marketplace publishing in the Release workflow has never run: no trusted
+  publisher setting, OIDC token exchange or Marketplace upload has been
+  exercised, and `vsce --oidc` is hidden from `--help` (likely preview). Only
+  the YAML parse and the vsce 4.0.0 source (`--oidc`, `--skip-duplicate`,
+  `--packagePath`, publisher read from the packaged manifest) were checked
+  locally. Versions released before the variable is set (including the
+  current one) need a one-time manual publish.
 - `extension.ts` command handlers are not reachable by the native tests:
   the Stop and Show Livy Sessions compute-host fallbacks are checked only
   through core `computeHost` and manual smoke steps.
