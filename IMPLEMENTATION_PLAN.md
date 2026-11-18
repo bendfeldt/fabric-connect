@@ -10,6 +10,15 @@ includes them.
 
 ## Implemented
 
+- **Local notebook execution bridge:** notebook-scoped Livy sessions and module
+  scratch paths; a private module-level execution descriptor in notebook and
+  source-cell paths; opt-in selected active Variable Library values using the
+  existing definition-read helper. Source uploads record their actual bundle.
+  No notebook-context impersonation, deployment, write-policy broadening or
+  authentication changes. Coordinated consumer changes are in `fabric-aqv`.
+  Live VS Code/Fabric acceptance and installation remain unverified and require
+  separate approval.
+
 - **Local-first policy:** non-GET API requests require the tested allowlist;
   OneLake writes are restricted to `Files/.fabric-connect/`. No workspace item
   provisioning, deployment, remote scheduler runs or pipeline execution.
@@ -95,6 +104,15 @@ milestone or outstanding stacked-PR merge instruction in this tracker.
 The native `node:test` suites exercise core behavior through scripted seams,
 and manifest/consumer tests use VS Code API stand-ins. They do not replace a
 running VS Code host or live Fabric verification.
+
+Local notebook execution bridge validation: TypeScript compilation, all 357
+native tests, changed-file Prettier checks and the required independent
+adversarial review passed. The coordinated analytics runtime/configuration
+regressions also passed. Its full repository gate remains blocked by preserved
+pre-existing notebook binding and Load-cell edits, not waived or repaired by this
+feature. No extension installation, remote session, authentication change,
+deployment or business write was performed; live Local/Remote execution and
+deployed Fabric compatibility remain unqualified.
 
 Terminal-session recovery was reproduced locally through real client/manager
 code with scripted service responses. It does not establish why Fabric ended
@@ -228,3 +246,19 @@ smoke step (docs/testing.md) was not run.
 - `describeWorkspaceCapacity` is a tested core helper without a UI caller
   since the remote Workspaces view was replaced. Removal would be a separate,
   deliberate code cleanup.
+
+## Variable Library picker and Connections pane cleanup (2026-11-17)
+
+- Added the Configuration Variable library row and `fabric-connect.variableLibrary` picker. It resolves the active notebook target, falls back to the connected host only when no Fabric notebook is active, shows variable names only, preselects saved names, preserves values on cancellation, supports explicit clearing, and rejects empty selections.
+- The existing `fabric-connect.variableLibraries` workspace setting remains the private bridge input and is restricted to one library. The execution descriptor and active-value-set resolution are unchanged; only selected active values continue into notebook execution.
+- Removed the duplicate Activity Bar Connections view and its obsolete root mode/menu conditions. The main Fabric Explorer retains the Connections group and read-only listing/actions.
+- Updated manifest, user and testing documentation, installation notes, changelog and this handoff.
+- Evidence: `npm run compile -- --pretty false` passed. The full `npm test` suite passed (367 tests) after rerunning with local socket permission because one existing fetch-contract test binds `127.0.0.1`. Focused picker, target, manifest, Configuration-row and Explorer-Connections tests also passed.
+- Evidence gap: no live VS Code/Fabric picker smoke test was run; it requires an authorized tenant/VS Code host. Prettier checks passed for the changed TypeScript and Markdown files.
+
+## Notebook target resolution and Remote module switching (2026-11-17)
+
+- Variable Library listing now resolves the active Fabric notebook with the execution host resolver and uses configured compute only when no notebook is active. Invalid/unbound notebook targets still fail instead of falling back to an unrelated workspace.
+- The Local → Remote picker transition now restarts only a tracked session on the active notebook host or existing compute host; no session is created when none is tracked. Direct settings edits do not trigger restart.
+- Evidence: `npm run compile -- --pretty false` passed; the focused target/session/module-picker suites passed (114 tests); the full `npm test` suite passed (372 tests); Prettier checks passed for changed task files.
+- Independent adversarial review passed. Live VS Code/Fabric smoke test remains unavailable and is needed to validate picker-driven session replacement against a real Fabric notebook.
