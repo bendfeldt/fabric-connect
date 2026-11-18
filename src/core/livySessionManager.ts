@@ -21,6 +21,7 @@ import {
   type StatementRole,
 } from "./executionDiagnostics";
 import { type ApiClientLogger, isNetworkFailure } from "./fabricApiClient";
+import { createHash } from "node:crypto";
 import type { CancelToken, IFabricApiClient } from "./types";
 
 export interface LivyTarget {
@@ -29,6 +30,7 @@ export interface LivyTarget {
   readonly lakehouseId: string;
   /** Fabric Environment (libraries, Spark settings); starter pool if absent. */
   readonly environmentId?: string;
+  readonly sessionScope?: string;
 }
 
 export interface LivyStatementResult {
@@ -44,6 +46,7 @@ export interface LivyStatementResult {
 }
 
 export interface ILivySessionManager {
+  hasSession(target: LivyTarget): boolean;
   execute(
     target: LivyTarget,
     code: string,
@@ -194,6 +197,10 @@ export class LivySessionManager implements ILivySessionManager {
     this.bootstrap = options.bootstrap;
     this.logger = options.logger;
     this.now = options.now;
+  }
+
+  hasSession(target: LivyTarget): boolean {
+    return this.store.get(sessionKey(target)) !== undefined;
   }
 
   async startSession(target: LivyTarget, token: CancelToken): Promise<void> {
@@ -918,7 +925,11 @@ function variableLibraryHint(
 function sessionKey(target: LivyTarget): string {
   const environment =
     target.environmentId === undefined ? "" : `/${target.environmentId}`;
-  return `livy-session/${target.tenantId}/${target.workspaceId}/${target.lakehouseId}${environment}`;
+  const scope =
+    target.sessionScope === undefined
+      ? ""
+      : `/notebook-${createHash("sha256").update(target.sessionScope).digest("hex")}`;
+  return `livy-session/${target.tenantId}/${target.workspaceId}/${target.lakehouseId}${environment}${scope}`;
 }
 
 /** Attaches the Environment the way Fabric documents it for Livy sessions. */

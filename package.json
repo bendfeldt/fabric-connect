@@ -211,6 +211,11 @@
         "icon": "$(edit)"
       },
       {
+        "command": "fabric-connect.variableLibrary",
+        "title": "Fabric: Variable Library",
+        "icon": "$(edit)"
+      },
+      {
         "command": "fabric-connect.openAsNotebook",
         "title": "Fabric: Open as Notebook",
         "icon": "$(notebook)"
@@ -330,6 +335,21 @@
           },
           "default": [],
           "description": "Workspace-relative folders whose Python modules are staged to the Spark session before Python code runs, so `import` uses your working tree (e.g. [\"src\"]). When empty, Local mode uses the folders pyproject.toml names, else `src`."
+        },
+        "fabric-connect.variableLibraries": {
+          "type": "object",
+          "maxProperties": 1,
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "default": {},
+          "scope": "resource",
+          "description": "Explicit Variable Library names mapped to selected variable names. Notebook cells receive these active workspace values through a private execution bridge. Definition reads require existing item read/write permission; values are not logged. Empty disables library reads."
         },
         "fabric-connect.pythonModules": {
           "type": "string",
@@ -487,7 +507,7 @@
       "view/title": [
         {
           "command": "fabric-connect.explorer.refresh",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/",
+          "when": "view == fabricConnect.explorer",
           "group": "navigation"
         },
         {
@@ -514,47 +534,47 @@
         },
         {
           "command": "fabric-connect.explorer.pullItem",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem =~ /fabricItem/",
+          "when": "view == fabricConnect.explorer && viewItem =~ /fabricItem/",
           "group": "1_pull"
         },
         {
           "command": "fabric-connect.explorer.copySqlConnectionString",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem =~ /\\bsql\\b/",
+          "when": "view == fabricConnect.explorer && viewItem =~ /\\bsql\\b/",
           "group": "2_copy"
         },
         {
           "command": "fabric-connect.explorer.copyId",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem =~ /fabric(Item|Workspace|Capacity|Connection)/",
+          "when": "view == fabricConnect.explorer && viewItem =~ /fabric(Item|Workspace|Capacity|Connection)/",
           "group": "2_copy"
         },
         {
           "command": "fabric-connect.explorer.copyName",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem =~ /fabric/",
+          "when": "view == fabricConnect.explorer && viewItem =~ /fabric/",
           "group": "2_copy"
         },
         {
           "command": "fabric-connect.explorer.copyOneLakePath",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem =~ /fabric(Table|Folder|File|Item)/",
+          "when": "view == fabricConnect.explorer && viewItem =~ /fabric(Table|Folder|File|Item)/",
           "group": "2_copy"
         },
         {
           "command": "fabric-connect.explorer.previewTable",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem == fabricTable",
+          "when": "view == fabricConnect.explorer && viewItem == fabricTable",
           "group": "inline"
         },
         {
           "command": "fabric-connect.explorer.previewTable",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem == fabricTable",
+          "when": "view == fabricConnect.explorer && viewItem == fabricTable",
           "group": "0_preview"
         },
         {
           "command": "fabric-connect.explorer.previewFile",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem == fabricFile",
+          "when": "view == fabricConnect.explorer && viewItem == fabricFile",
           "group": "0_preview"
         },
         {
           "command": "fabric-connect.explorer.openInFabric",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem =~ /fabric(Item|Workspace)/",
+          "when": "view == fabricConnect.explorer && viewItem =~ /fabric(Item|Workspace)/",
           "group": "3_open"
         },
         {
@@ -640,6 +660,11 @@
         {
           "command": "fabric-connect.pythonModules",
           "when": "view == fabricConnect.configuration && viewItem == fabricConfigModules",
+          "group": "inline"
+        },
+        {
+          "command": "fabric-connect.variableLibrary",
+          "when": "view == fabricConnect.configuration && viewItem == fabricConfigVariableLibrary",
           "group": "inline"
         },
         {
@@ -791,11 +816,6 @@
         {
           "id": "fabricConnect.lakehouses",
           "name": "Lakehouses"
-        },
-        {
-          "id": "fabricConnect.connections",
-          "name": "Connections",
-          "visibility": "collapsed"
         }
       ],
       "explorer": [

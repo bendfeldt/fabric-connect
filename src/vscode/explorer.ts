@@ -7,9 +7,8 @@
  * tenant's connections. Every call is a GET (or the allowlisted
  * getDefinition read); nothing here changes a workspace.
  *
- * The whole tree is the "Fabric" view in VS Code's Explorer side bar; the
- * Fabric Activity Bar container shows its parts as separate views (see
- * `ExplorerRoot`).
+ * The whole tree is the "Fabric" view in VS Code's Explorer side bar and
+ * includes the Connections group.
  *
  * Actions: copy ID / name / OneLake path / SQL connection string, preview a
  * table (on the connected compute) or a file, pull an item into the repo,
@@ -68,11 +67,6 @@ type Node =
   | OneLakeNode
   | { kind: "connection"; label: string; description: string; id: string };
 
-/**
- * What a view shows at the top: the whole tree, or just the connections.
- */
-export type ExplorerRoot = "all" | "connections";
-
 /** Item types with a SQL connection string. */
 const SQL_ITEMS = new Set(["Lakehouse", "Warehouse", "SQLEndpoint"]);
 const PREVIEW_BYTES = 64 * 1024;
@@ -100,7 +94,6 @@ export class FabricExplorer
     private readonly selectedCapacity: () => Promise<string | undefined>,
     /** The compute with its host Lakehouse, asked for when missing. */
     private readonly requireHost: () => Promise<HostedCompute>,
-    private readonly root: ExplorerRoot = "all",
   ) {}
 
   dispose(): void {
@@ -244,16 +237,11 @@ export class FabricExplorer
           },
         ];
       }
-      switch (this.root) {
-        case "all":
-          return [
-            { kind: "group", group: "capacities" },
-            { kind: "group", group: "unassigned" },
-            { kind: "group", group: "connections" },
-          ];
-        default:
-          return this.children({ kind: "group", group: this.root });
-      }
+      return [
+        { kind: "group", group: "capacities" },
+        { kind: "group", group: "unassigned" },
+        { kind: "group", group: "connections" },
+      ];
     }
     const tenantId = await this.tenant();
     if (tenantId === undefined) {

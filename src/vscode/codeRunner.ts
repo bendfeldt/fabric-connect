@@ -334,9 +334,11 @@ export class CodeRunner implements vscode.Disposable {
         }
       }
     }
+    const context =
+      kind === "pyspark" ? await this.run.context?.(host.target) : undefined;
     const result = await this.livy.execute(
       host.target,
-      code,
+      context === undefined ? code : `${context}\n${code}`,
       kind,
       token,
       diagnostics,

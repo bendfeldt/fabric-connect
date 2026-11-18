@@ -80,6 +80,7 @@ export interface RunContext {
    * modules (undefined when nothing is configured to stage).
    */
   readonly prepare?: (target: LivyTarget) => Promise<string | undefined>;
+  readonly context?: (target: LivyTarget) => Promise<string | undefined>;
   /**
    * A hint for a failed import whose package is also in the repo while
    * Python modules are Remote (undefined when there is nothing to add).
@@ -111,7 +112,7 @@ export async function resolveNotebookHost(
       ? undefined
       : await withSources(notebook.uri, getLakehouseAttachments(root), sources);
   const bound = attachments?.localBinding;
-  return resolveLivyHost({
+  const host = resolveLivyHost({
     entity: `notebook ${path.basename(path.dirname(notebook.uri.fsPath))}`,
     notebookDefault:
       bound === undefined
@@ -132,6 +133,10 @@ export async function resolveNotebookHost(
     signedInTenant: signedInTenant(),
     compute: await compute(),
   });
+  return {
+    ...host,
+    target: { ...host.target, sessionScope: notebook.uri.toString() },
+  };
 }
 
 /**
@@ -508,9 +513,11 @@ export class FabricNotebookController implements vscode.Disposable {
           }
         }
       }
+      const context =
+        kind === "pyspark" ? await this.run.context?.(target) : undefined;
       const result = await this.livy.execute(
         target,
-        code,
+        context === undefined ? code : `${context}\n${code}`,
         kind,
         execution.token,
         diagnostics,

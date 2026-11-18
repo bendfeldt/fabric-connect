@@ -87,9 +87,9 @@ encoded separators and extra query strings cannot satisfy them.
 
 **OneLake writes** (upload, delete) are allowed only below
 `Files/.fabric-connect/` in a Lakehouse, with plain path segments. This
-scratch prefix holds zipped Python modules and Spark job files. Each window
-uses its own directory below the prefix. Explicit stop/restart attempts
-to remove that window's staged modules on the host; job completion attempts
+scratch prefix holds Spark job files only; local Python modules are sent
+inside the Livy statement and never written to OneLake. Each window uses its
+own directory below the prefix. Job completion attempts
 cleanup of its staged subfolder, which is kept when the extension loses
 track of a job, or Fabric refuses to cancel it, while it may still be
 running. Deletion is **best effort**, so failures

@@ -88,7 +88,9 @@ as a Livy batch, separate from interactive notebook state.
 - `LivySessionManager` queues statements, reuses sessions and persists IDs through
   a VS Code workspace-state adapter for reattachment. Reuse is per execution
   tenant, workspace, Lakehouse and optional Environment, not statement
-  language. Runs on the same target share state; unrelated targets do not.
+  language. Notebooks additionally use a hashed local notebook URI, so other
+  notebooks and loose files cannot reuse their globals. The notebook and source
+  editors for one URI share its session.
   Reattachment replaces a saved session only on HTTP 404, an empty
   answer or a dead session state; any other failure to check it fails the run with recovery steps
   and keeps the saved ID. `stopSession` clears the saved ID before its
@@ -97,13 +99,14 @@ as a Livy batch, separate from interactive notebook state.
   rejection invalidate only the matching local generation. Original errors
   remain visible; failed code is never replayed automatically. The next
   explicit run acquires a fresh session and setup state must be rebuilt.
-- Local Python modules are bundled into a deterministic ZIP, uploaded under a
-  window-specific `Files/.fabric-connect/` scratch path and added to the
-  session. Content hashes avoid repeat uploads, not all preparation or remote
-  setup. Remote mode stages nothing; switching to it does not undo prior
-  staging in an already-running session.
-- Stopping/restarting through the extension attempts to remove that window's
-  staged modules on the host; Spark job files are removed by their own run
+- Local Python modules are bundled into a deterministic ZIP that travels
+  base64-encoded inside the statement; the driver writes it to its temp
+  folder and adds it to the session. Nothing is written to OneLake, so the
+  host needs no write access, and the statement size limit bounds the
+  bundle. A content-hashed name makes resending unchanged sources a no-op in
+  the session. Remote mode stages nothing; switching to it does not undo
+  prior staging in an already-running session.
+- Module bundles live on the driver and end with the session; Spark job files are removed by their own run
   once the job has ended, its cancellation was accepted (a 404 on the
   cancel counts as accepted: the batch is gone) or Fabric provably did
   not accept its submit (a 4xx answer, a never-sent socket code, a sign-in failure
@@ -118,6 +121,15 @@ as a Livy batch, separate from interactive notebook state.
 - `CachedItemIndex` is invalidated by `.platform` file changes and supports
   local `%run`, logical-ID detection and hovers. `%run` inlines local Python
   cells by item display name; it never runs a deployed copy.
+- The private versioned `_fabric_connect_execution` descriptor is prepended to
+  Python notebook cells at module level, without modifying notebook sources or
+  Fabric's read-only runtime context. It records real host IDs, notebook scope,
+  module mode and explicitly selected Variable Library values. The opt-in
+  `variableLibraries` setting maps library names to variable-name lists.
+  Existing definition-read/LRO helpers retrieve the active value set; no
+  repository-default fallback, item mutation or authentication change is made.
+  The source prelude separately records the uploaded archive. Consumer wheels
+  decide how to validate this development metadata; it is not authentication.
 
 ## Other surfaces
 
@@ -125,7 +137,8 @@ as a Livy batch, separate from interactive notebook state.
   a target per query file and renders escaped results in a script-free webview.
 - The Explorer **Fabric** tree browses capacities, workspaces, remote items,
   OneLake and connections. The Activity Bar **Fabric** container has
-  **Configuration**, **Repo**, **Lakehouses** and **Connections** views.
+  **Configuration**, **Repo** and **Lakehouses** views; connections stay in
+  the main Explorer tree.
   Repo discovers item folders through `.platform`, not a remote workspace.
 - Lakehouse attach/default/detach edits local notebook metadata. Machine-local
   Bind/Unbind edits `local.json` instead. Neither changes a remote item.

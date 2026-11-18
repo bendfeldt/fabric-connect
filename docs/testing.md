@@ -211,7 +211,7 @@ can check with `git diff` that saving changes nothing unexpected.
       it shows _Sign in to browse Fabric_; clicking it starts the sign-in.
 - [ ] A **Fabric** icon is in the Activity Bar, next to Explorer and
       Source Control. Click it. **Expect:** the views **Configuration**,
-      **Repo**, **Lakehouses** and **Connections** (collapsed); no
+      **Repo** and **Lakehouses**; no
       **Tenants** or **Capacities** view. Before you sign in, Configuration shows a
       **Sign In** button.
 - [ ] The status bar shows **Fabric: sign in**.
@@ -453,12 +453,13 @@ versions ask you to type a tenant GUID instead.
       `"fabric-connect.pythonModules": "local"`. Run the import again.
       **Expect:** it succeeds; `print(pkg.__file__)` points into a
       `modules-….zip`.
-- [ ] Click the status bar item → **Remote**. **Expect:** the row
-      follows. Set `"fabric-connect.pythonModules": "local"` by hand in
-      `.vscode/settings.json`. **Expect:** both follow.
-- [ ] Switch back to **Remote**, run **Fabric: Restart Livy Session**,
-      and run it again. **Expect:** the ImportError again (installed copy;
-      a running session keeps already-staged code until it restarts).
+- [ ] Click the status bar item → **Remote**. **Expect:** the row follows
+      and an existing session is automatically replaced; notebook variables
+      and Spark state are cleared. Run the import again. **Expect:** the
+      ImportError for a package available only in the local tree.
+- [ ] Set `"fabric-connect.pythonModules": "local"` by hand in
+      `.vscode/settings.json`. **Expect:** row and status bar follow without
+      automatically restarting the running session.
 - [ ] Settings → `fabric-connect.sourceRoots` → add `src`, then select
       **Local** explicitly. **Expect:** a previously selected `remote`
       mode is not silently overridden by setting source roots.
@@ -542,7 +543,8 @@ For each item you have:
 - [ ] Hover the `logicalId` GUID in a pulled `.platform` file, or an ID in
       `.fabric/local.json`. **Expect:** a hover naming the item, workspace
       or capacity.
-- [ ] **Connections** lists the tenant's connections.
+- [ ] In the Explorer side bar, expand Fabric → **Connections**. **Expect:**
+      the tenant's connections remain browsable in the main Fabric tree.
 - [ ] Fabric side bar → **Configuration**. **Expect:** Account, Tenant and
       Compute rows. Compute expands to Capacity (name · SKU), Workspace,
       Lakehouse and, when set, Environment. The inline buttons sign in,
@@ -552,6 +554,18 @@ For each item you have:
       account…**. **Expect:** every tenant on your account. Pick another
       tenant. **Expect:** the status bar and Configuration show it, and
       the Explorer Fabric tree and capacity-dependent listings reload for it.
+- [ ] Configuration → **Variable library**. **Expect:** _not selected_ or
+      `<library> · <N> variables`; clicking the row or pencil opens the picker.
+- [ ] With a Fabric notebook active, choose a library. **Expect:** the
+      notebook's configured workspace is used and only variable names appear.
+      Select names; **Expect:** the row updates and workspace settings contain
+      one library with only those names.
+- [ ] Reopen the picker. **Expect:** saved names are preselected. Cancel at
+      either picker; **Expect:** the setting is unchanged. Choose no variable;
+      **Expect:** a warning and no change. Choose **None / Clear selection**;
+      **Expect:** the setting is removed.
+- [ ] Close Fabric notebooks, keep a connected compute host, and open the
+      picker. **Expect:** the host workspace's libraries are listed.
 - [ ] **Repo**. **Expect:** only folders that contain Fabric items, in
       your repo's structure; no loose files and no folders without items
       (e.g. `docs/`); `<name>.Notebook` folders show as the notebook's
@@ -639,10 +653,10 @@ as part of the comparison.
 
 3. Compare notebook editor cells, source-text Run Cell / Run All Above /
    Run All, and a file/selection. If comparing Local and Remote modules,
-   use equivalent package versions in separate sessions: switching to
-   Remote does not remove modules already staged in a running session.
-   Starting/stopping sessions is a deliberate user action, not an
-   automatic diagnostic step. Test a queued run as well as an idle one.
+   use equivalent package versions in separate sessions. Switching from
+   Local to Remote through the picker replaces a tracked session and clears
+   its state; direct settings edits do not restart it. Test a queued run as
+   well as an idle one.
 4. Compare Variable Library access over Livy with a deployed Fabric
    notebook in the intended workspace, using the same identity, runtime
    and relevant Environment. Assign the result without displaying it:

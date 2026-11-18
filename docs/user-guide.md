@@ -350,8 +350,10 @@ Session behavior:
 - **Reattachment** — after a VS Code reload, the extension reconnects to
   an existing live session by saved ID rather than always starting a new
   one. Reuse is keyed by tenant, workspace, Lakehouse and optional
-  Environment, not by statement language. Notebook/file runs on that same
-  target share session state; unrelated targets do not. A new session
+  Environment, plus the local notebook URI for notebooks. Notebook editor and
+  source-cell commands for the same notebook share that isolated session;
+  other notebooks and loose files do not. Loose files on the same target still
+  share their file-execution session. A new session
   replaces the saved one only when Fabric says it is gone (HTTP 404, an
   empty answer, or a session that has ended, such as `dead` or `killed`). If the saved session cannot be checked (another HTTP
   error, a network error), the run fails, the saved session is kept and no
@@ -472,9 +474,11 @@ The Databricks Connect workflow: edit locally, run on Fabric.
   the status bar always show the same mode:
   - **Remote** — what the Fabric environment has installed, e.g. your
     published wheel. Nothing is staged. This is the default unless
-    `fabric-connect.sourceRoots` is set. After switching from Local, run
-    **Fabric: Restart Livy Session**: a running session keeps the code it
-    already staged.
+    `fabric-connect.sourceRoots` is set. Choosing Remote from Local through
+    the picker automatically replaces an existing session, clearing Python
+    variables, Spark caches, and other session state. Editing the setting
+    directly does not restart a session. If the automatic restart fails,
+    Remote remains selected; retry with **Fabric: Restart Livy Session**.
   - **Local** — your working tree. The source folders are
     `fabric-connect.sourceRoots` if set, else the folders `pyproject.toml`
     names (setuptools `packages.find.where` or `package-dir`, Hatch wheel
@@ -486,11 +490,10 @@ The Databricks Connect workflow: edit locally, run on Fabric.
 
   On Local, every Python run — notebook cells included — first stages
   the `.py` files under those folders to the session: they are zipped,
-  uploaded to the host Lakehouse's scratch folder `Files/.fabric-connect/`,
-  added with `addPyFile`, and stale copies are dropped from `sys.modules`.
-  `import mypkg` then loads your working tree's code. Unchanged sources are
-  not re-uploaded. Stop/restart attempts best-effort cleanup of this
-  window's staged modules, not deletion of every window's files.
+  sent with the statement to the driver's temp folder (nothing is written
+  to OneLake), added with `addPyFile`, and stale copies are dropped from
+  `sys.modules`. `import mypkg` then loads your working tree's code.
+  Unchanged sources are not decoded again; the files end with the session.
 
 - **Spark Job Definitions.** Right-click a `*.SparkJobDefinition` folder →
   **`Fabric: Run Spark Job Definition`**. Settings (arguments, main class,
@@ -579,7 +582,6 @@ views:
   uses the display name on the next git sync.
 - **Lakehouses** — attach Lakehouses to a notebook and pick its default;
   see [Attach Lakehouses](#4-attach-lakehouses).
-- **Connections** — collapsed by default.
 
 **Explorer side bar.** The **Fabric** view in VS Code's Explorer side bar
 stays, with the same tree in one place. It browses the tenant the
@@ -702,13 +704,46 @@ Explorer actions are **Refresh**, **Copy ID**, **Copy Name**,
 Their context menus pass the selected tree node; they are not standalone
 commands requiring a fabricated ID.
 
+### Variable Library picker and handoff
+
+Libraries that depend on deployed notebook state may not resolve through plain
+Lakehouse Livy. Use the **Variable library** row in Configuration or run
+**Fabric: Variable Library** to select a library and the non-secret variable
+names to forward to Python notebook cells. The picker displays names only,
+never values. It uses the active Fabric notebook's configured workspace, or
+the connected compute host workspace when no Fabric notebook is active. The
+selection is saved at workspace scope; choose **None / Clear selection** to
+remove it. Cancelling either picker leaves the current setting unchanged.
+
+The equivalent setting shape is:
+
+```json
+{
+  "fabric-connect.variableLibraries": {
+    "application_settings": ["source_namespace", "configuration_fingerprint"]
+  }
+}
+```
+
+The bridge reads the selected workspace's active value set, applies its overrides
+and forwards only the selected names in a private execution descriptor. It does
+not modify notebook sources, Fabric runtime context or the Variable Library.
+Missing libraries, variables, value sets or access fail before the user cell.
+Definition reads require existing item read/write permission and delegated
+scopes despite being read operations. No scopes are added automatically; review
+any authentication change separately. Empty settings make no library API calls.
+Values are not logged by the bridge, but user code and service errors can expose
+values; select only non-secret settings. A consumer library must explicitly
+support this descriptor; this does not emulate all Fabric notebook utilities.
+
 ## Settings
 
-| Setting                        | Default | Effect                                                                                                                                    |
-| ------------------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `fabric-connect.debugLogging`  | `false` | Log redacted Fabric API requests/responses (retries included) to the **Fabric Connect** output channel                                    |
-| `fabric-connect.sourceRoots`   | `[]`    | Explicit workspace-relative Python source folders; in Local mode an empty list uses supported `pyproject.toml` roots, else existing `src` |
-| `fabric-connect.pythonModules` | `auto`  | Resource-scoped `auto`, `local` or `remote`; `auto` selects Local only when `sourceRoots` is non-empty, otherwise Remote                  |
+| Setting                            | Default | Effect                                                                                                                                                                  |
+| ---------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fabric-connect.debugLogging`      | `false` | Log redacted Fabric API requests/responses (retries included) to the **Fabric Connect** output channel                                                                  |
+| `fabric-connect.sourceRoots`       | `[]`    | Explicit workspace-relative Python source folders; in Local mode an empty list uses supported `pyproject.toml` roots, else existing `src`                               |
+| `fabric-connect.pythonModules`     | `auto`  | Resource-scoped `auto`, `local` or `remote`; `auto` selects Local only when `sourceRoots` is non-empty, otherwise Remote                                                |
+| `fabric-connect.variableLibraries` | `{}`    | Workspace-scoped selection of one library mapped to explicit variable-name arrays; forward active workspace configuration through the private notebook execution bridge |
 
 HTTP paths are redacted and execution diagnostics use fixed labels, local
 sequence numbers, timings and outcomes. Runtime errors and ordinary cell

@@ -31,6 +31,10 @@ type Node =
   | { kind: "compute"; profile: ComputeProfile | undefined; error?: string }
   | { kind: "modules"; description: ModulesDescription }
   | {
+      kind: "variableLibrary";
+      library: { name: string; variableCount: number } | undefined;
+    }
+  | {
       kind: "detail";
       label: string;
       value: string;
@@ -54,6 +58,9 @@ export class ConfigurationView
     ) => string | undefined,
     /** Python modules mode, as `ModuleStager.describe` reports it. */
     private readonly modules: () => Promise<ModulesDescription>,
+    private readonly variableLibrary: () =>
+      | { name: string; variableCount: number }
+      | undefined,
   ) {}
 
   dispose(): void {
@@ -134,6 +141,19 @@ export class ConfigurationView
         };
         return item;
       }
+      case "variableLibrary": {
+        const item = new vscode.TreeItem("Variable library", none);
+        item.description = node.library
+          ? `${node.library.name} · ${node.library.variableCount} variables`
+          : "not selected";
+        item.iconPath = new vscode.ThemeIcon("symbol-variable");
+        item.contextValue = "fabricConfigVariableLibrary";
+        item.command = {
+          title: "Variable Library",
+          command: "fabric-connect.variableLibrary",
+        };
+        return item;
+      }
       case "detail": {
         const item = new vscode.TreeItem(node.label, none);
         item.description = node.value;
@@ -177,6 +197,7 @@ export class ConfigurationView
         { kind: "tenant" },
         compute,
         { kind: "modules", description: await this.modules() },
+        { kind: "variableLibrary", library: this.variableLibrary() },
       ];
     }
     if (node.kind !== "compute" || node.profile === undefined) {

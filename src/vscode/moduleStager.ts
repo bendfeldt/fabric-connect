@@ -1,8 +1,8 @@
 /**
- * Stages the working tree's Python modules to the session host before
- * Python code runs (Python modules: Local), and removes this window's
- * scratch folder when a session stops. With Python modules: Remote nothing
- * is staged and `import` uses what the Fabric environment has installed.
+ * Sends the working tree's Python modules to the session before Python
+ * code runs (Python modules: Local), and stages Spark job files in this
+ * window's OneLake scratch folder. With Python modules: Remote nothing is
+ * sent and `import` uses what the Fabric environment has installed.
  */
 
 import * as crypto from "node:crypto";
@@ -14,13 +14,12 @@ import type { LivyTarget } from "../core/livySessionManager";
 import { StagingError } from "../core/errors";
 import {
   bundleModules,
-  bundlePath,
+  bundleFileName,
   describeModules,
   failedImportPackage,
   localModuleHint,
   type ModulesDescription,
   moduleImportCode,
-  modulesFolder,
   type PythonModuleMode,
   resolveModuleMode,
   scratchFolder,
@@ -32,8 +31,6 @@ import { type OneLakeClient, abfssUri } from "../core/oneLakeClient";
 export class ModuleStager {
   /** One scratch folder per VS Code window, so windows never collide. */
   readonly runId = `run-${new Date().toISOString().slice(0, 10)}-${crypto.randomBytes(4).toString("hex")}`;
-  /** Bundle hashes already uploaded, per host Lakehouse. */
-  private readonly uploaded = new Map<string, Set<string>>();
   private readonly statusBar: vscode.StatusBarItem;
   private readonly changed = new vscode.EventEmitter<void>();
   private readonly watchers: vscode.Disposable[] = [];
@@ -101,7 +98,7 @@ export class ModuleStager {
    * Python to run before the user's code so `import` sees the local
    * sources, or undefined when Python modules are Remote.
    */
-  async prepare(target: LivyTarget): Promise<string | undefined> {
+  async prepare(_target: LivyTarget): Promise<string | undefined> {
     if (this.workspaceRoot === undefined || this.mode() === "remote") {
       return undefined;
     }
@@ -128,24 +125,9 @@ export class ModuleStager {
     if (bundle === undefined) {
       return undefined;
     }
-    const relPath = bundlePath(this.runId, bundle.hash);
-    const key = hostKey(target);
-    const done = this.uploaded.get(key) ?? new Set<string>();
-    if (!done.has(bundle.hash)) {
-      await this.oneLake.uploadFile(
-        {
-          tenantId: target.tenantId,
-          workspaceId: target.workspaceId,
-          itemId: target.lakehouseId,
-        },
-        relPath,
-        bundle.zip,
-      );
-      done.add(bundle.hash);
-      this.uploaded.set(key, done);
-    }
     return moduleImportCode(
-      abfssUri(target.workspaceId, target.lakehouseId, relPath),
+      Buffer.from(bundle.zip).toString("base64"),
+      bundleFileName(bundle.hash),
       bundle.topLevel,
     );
   }
@@ -231,7 +213,9 @@ export class ModuleStager {
   }
 
   /** Lets you pick Local or Remote; saved in this repo's settings. */
-  async pickMode(): Promise<void> {
+  async pickMode(): Promise<
+    { previous: PythonModuleMode; selected: PythonModuleMode } | undefined
+  > {
     const packages = [...(await this.localPackages()).values()];
     const current = this.mode();
     const picked = await vscode.window.showQuickPick(
@@ -242,21 +226,21 @@ export class ModuleStager {
           description: current === "local" ? "current" : undefined,
           detail:
             packages.length > 0
-              ? `Import your working tree (${packages.join(", ")}), staged to the session's Lakehouse before Python runs.`
-              : "Import your working tree, staged to the session's Lakehouse before Python runs.",
+              ? `Import your working tree (${packages.join(", ")}), sent to the session before Python runs.`
+              : "Import your working tree, sent to the session before Python runs.",
         },
         {
           label: "Remote",
           mode: "remote" as const,
           description: current === "remote" ? "current" : undefined,
           detail:
-            "Import what the Fabric environment has installed (e.g. your published wheel). Nothing is staged; a running session keeps code staged earlier until you restart it.",
+            "Import what the Fabric environment has installed (e.g. your published wheel). Choosing Remote from Local replaces a running session and clears its state.",
         },
       ],
       { title: "Python modules: where should import find your packages?" },
     );
     if (picked === undefined) {
-      return;
+      return undefined;
     }
     await vscode.workspace
       .getConfiguration("fabric-connect")
@@ -265,6 +249,7 @@ export class ModuleStager {
         picked.mode,
         vscode.ConfigurationTarget.Workspace,
       );
+    return { previous: current, selected: picked.mode };
   }
 
   /** Shows the mode in the status bar when the repo has Python packages. */
@@ -322,26 +307,6 @@ export class ModuleStager {
       // Best effort: a leftover scratch folder is harmless and small.
     }
   }
-
-  /**
-   * Deletes this window's module bundles on the host (best effort). Spark
-   * job files are left alone: their own run deletes them when the job ends.
-   */
-  async cleanup(target: LivyTarget): Promise<void> {
-    this.uploaded.delete(hostKey(target));
-    try {
-      await this.oneLake.deleteDirectory(
-        {
-          tenantId: target.tenantId,
-          workspaceId: target.workspaceId,
-          itemId: target.lakehouseId,
-        },
-        modulesFolder(this.runId),
-      );
-    } catch {
-      // Best effort: leftover module bundles are harmless and small.
-    }
-  }
 }
 
 async function isDirectory(p: string): Promise<boolean> {
@@ -350,10 +315,6 @@ async function isDirectory(p: string): Promise<boolean> {
 
 async function isFile(p: string): Promise<boolean> {
   return (await fs.stat(p).catch(() => undefined))?.isFile() === true;
-}
-
-function hostKey(target: LivyTarget): string {
-  return `${target.tenantId}/${target.workspaceId}/${target.lakehouseId}`;
 }
 
 async function listFilesRecursive(dir: string): Promise<string[]> {

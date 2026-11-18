@@ -55,7 +55,8 @@ are not supplied by git.
   `Fabric:` — you should see the extension's commands (`Fabric: Sign In`,
   `Fabric: Connect to Compute`, …).
 - The **Fabric** view appears in the Explorer side bar and the **Fabric**
-  Activity Bar icon opens Configuration, Repo, Lakehouses and Connections.
+  Activity Bar icon opens Configuration, Repo and Lakehouses; Connections
+  remain in the main Fabric Explorer tree.
 - **Help → Welcome → Walkthroughs → Get started with Fabric Connect**
   opens the in-product walkthrough.
 

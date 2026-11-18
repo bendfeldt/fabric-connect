@@ -80,6 +80,36 @@ function manager(
   });
 }
 
+test("notebooks on one host keep independent sessions and stop independently", async () => {
+  const api = recoveryApi(() => undefined);
+  const store = memoryStore();
+  const livy = manager(api.client, store);
+  const first = { ...TARGET, sessionScope: "file:///repo/First.Notebook" };
+  const second = { ...TARGET, sessionScope: "file:///repo/Second.Notebook" };
+  await livy.startSession(first, NEVER_CANCELLED);
+  await livy.startSession(second, NEVER_CANCELLED);
+  assert.equal(api.started, 2);
+  assert.equal(store.data.size, 2);
+  await livy.stopSession(first);
+  assert.equal(store.data.size, 1);
+  await livy.startSession(second, NEVER_CANCELLED);
+  assert.equal(api.started, 2);
+});
+
+test("reports only sessions tracked for the exact target", async () => {
+  const api = recoveryApi(() => undefined);
+  const store = memoryStore();
+  const livy = manager(api.client, store);
+  const notebook = { ...TARGET, sessionScope: "file:///repo/First.Notebook" };
+
+  assert.equal(livy.hasSession(TARGET), false);
+  await livy.startSession(TARGET, NEVER_CANCELLED);
+  assert.equal(livy.hasSession(TARGET), true);
+  assert.equal(livy.hasSession(notebook), false);
+  await livy.stopSession(TARGET);
+  assert.equal(livy.hasSession(TARGET), false);
+});
+
 interface RecoveryCall {
   readonly method: string;
   readonly path: string;

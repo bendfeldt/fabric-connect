@@ -11,6 +11,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { executionContextCode } from "./core/executionContext";
 import { type ComputeProfile, describeCompute } from "./core/computeProfile";
 import { FabricApiClient } from "./core/fabricApiClient";
 import { ExecutionDiagnostics } from "./core/executionDiagnostics";
@@ -24,6 +25,7 @@ import { CachedItemIndex } from "./core/localItemIndex";
 import { NameCache, guidAt } from "./core/nameCache";
 import { OneLakeClient } from "./core/oneLakeClient";
 import { TargetResolver } from "./core/targetResolver";
+import { isRecord } from "./core/types";
 import type { TenantInfo } from "./core/tenantDirectory";
 import { EntraAuthProvider } from "./vscode/authProvider";
 import {
@@ -40,7 +42,7 @@ import {
 import { LakehouseBindingStore } from "./vscode/lakehouseBindingStore";
 import { type LakehouseNode, LakehousesView } from "./vscode/lakehousesView";
 import { type RepoNode, RepoView } from "./vscode/repoView";
-import { type ExplorerRoot, FabricExplorer } from "./vscode/explorer";
+import { FabricExplorer } from "./vscode/explorer";
 import { ComputeConnection } from "./vscode/computeConnection";
 import { LakehousePanel } from "./vscode/lakehousePanel";
 import {
@@ -48,6 +50,11 @@ import {
   fabricNotebookFor,
 } from "./vscode/activeNotebook";
 import { ModuleStager } from "./vscode/moduleStager";
+import { restartTrackedSessionAfterModeChange } from "./vscode/moduleModeTransition";
+import {
+  resolveVariableLibraryTarget,
+  VariableLibraryPicker,
+} from "./vscode/variableLibraryPicker";
 import { NotebookCellLensProvider } from "./vscode/notebookCellLens";
 import { NotebookTextDiff, openAsText } from "./vscode/notebookTextDiff";
 import { TEXT_VIEW_SCHEME } from "./core/notebookTextDiff";
@@ -174,6 +181,15 @@ export function activate(context: vscode.ExtensionContext): void {
     fs: { readFile },
     prepare: (target: Parameters<ModuleStager["prepare"]>[0]) =>
       stager.prepare(target),
+    context: (target: Parameters<ModuleStager["prepare"]>[0]) =>
+      executionContextCode(
+        apiClient,
+        target,
+        stager.mode(),
+        vscode.workspace
+          .getConfiguration("fabric-connect")
+          .get<unknown>("variableLibraries", {}),
+      ),
     importHint: (
       errorName: string | undefined,
       errorValue: string | undefined,
@@ -215,26 +231,22 @@ export function activate(context: vscode.ExtensionContext): void {
     resultsPanel,
   );
   const names = new NameCache();
-  const newExplorer = (root: ExplorerRoot) =>
-    new FabricExplorer(
-      apiClient,
-      oneLake,
-      livyManager,
-      compute,
-      () => signIn.tenant(),
-      names,
-      resultsPanel,
-      workspaceRoot,
-      () => computeConnection.connectedCapacityId(),
-      () => computeConnection.requireHost(),
-      root,
-    );
+  const explorer = new FabricExplorer(
+    apiClient,
+    oneLake,
+    livyManager,
+    compute,
+    () => signIn.tenant(),
+    names,
+    resultsPanel,
+    workspaceRoot,
+    () => computeConnection.connectedCapacityId(),
+    () => computeConnection.requireHost(),
+  );
   // The Explorer side bar's "Fabric" tree, and its parts as the views of
   // the Fabric Activity Bar container.
-  const explorer = newExplorer("all");
   const explorerViews: Array<[string, FabricExplorer]> = [
     ["fabricConnect.explorer", explorer],
-    ["fabricConnect.connections", newExplorer("connections")],
   ];
   const explorers = explorerViews.map(([, view]) => view);
   const refreshExplorers = () => {
@@ -247,6 +259,17 @@ export function activate(context: vscode.ExtensionContext): void {
     compute,
     (profile) => computeConnection.nameHiddenReason(profile),
     () => stager.describe(),
+    () => {
+      const configured = vscode.workspace
+        .getConfiguration("fabric-connect")
+        .get<unknown>("variableLibraries", {});
+      if (!isRecord(configured)) return undefined;
+      const entries = Object.entries(configured);
+      if (entries.length !== 1 || !Array.isArray(entries[0][1])) {
+        return undefined;
+      }
+      return { name: entries[0][0], variableCount: entries[0][1].length };
+    },
   );
   // Lakehouses attached to the active (or Repo-selected) notebook, offered
   // from the workspaces on the connected capacity.
@@ -354,6 +377,11 @@ export function activate(context: vscode.ExtensionContext): void {
       configurationView,
     ),
     stager.onDidChange(() => configurationView.refresh()),
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("fabric-connect.variableLibraries")) {
+        configurationView.refresh();
+      }
+    }),
     computeConnection.onDidChange(() => {
       refreshExplorers();
       configurationView.refresh();
@@ -552,7 +580,6 @@ export function activate(context: vscode.ExtensionContext): void {
           return;
         }
         await livyManager.stopSession(host.target);
-        await stager.cleanup(host.target);
         void vscode.window.showInformationMessage(
           `Livy session on ${host.label} stopped.`,
         );
@@ -580,7 +607,6 @@ export function activate(context: vscode.ExtensionContext): void {
           ),
         );
         await livyManager.stopSession(host.target);
-        await stager.cleanup(host.target);
         await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
@@ -660,7 +686,137 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
 
     vscode.commands.registerCommand("fabric-connect.pythonModules", () =>
-      runReportingErrors(() => stager.pickMode()),
+      runReportingErrors(async () => {
+        const transition = await stager.pickMode();
+        if (
+          transition?.previous !== "local" ||
+          transition.selected !== "remote"
+        ) {
+          return;
+        }
+        const uri = activeFabricNotebookUri();
+        const host =
+          uri === undefined
+            ? computeHost(await compute())
+            : await computeConnection.runWithHost(async () => {
+                const notebook = await fabricNotebookFor(uri);
+                if (!isFabricNotebook(notebook)) {
+                  throw new Error("Open a Fabric notebook to switch modules.");
+                }
+                return resolveNotebookHost(
+                  notebook,
+                  targetResolver,
+                  compute,
+                  () => signIn.tenant(),
+                  attachmentSources,
+                );
+              });
+        const restarted = await restartTrackedSessionAfterModeChange(
+          transition,
+          host?.target,
+          livyManager,
+          async (target) => {
+            await vscode.window.withProgress(
+              {
+                location: vscode.ProgressLocation.Notification,
+                title: `Starting a new Livy session on ${host?.label}…`,
+                cancellable: true,
+              },
+              (_progress, token) => livyManager.startSession(target, token),
+            );
+          },
+        );
+        if (restarted) {
+          void vscode.window.showInformationMessage(
+            `Livy session on ${host?.label} restarted.`,
+          );
+        }
+      }),
+    ),
+    vscode.commands.registerCommand("fabric-connect.variableLibrary", () =>
+      runReportingErrors(async () => {
+        const notebook = activeFabricNotebookUri();
+        const configuration =
+          vscode.workspace.getConfiguration("fabric-connect");
+        const picker = new VariableLibraryPicker(
+          apiClient,
+          () =>
+            resolveVariableLibraryTarget(
+              notebook !== undefined,
+              async () => {
+                if (notebook?.scheme !== "file") {
+                  throw new Error(
+                    "The active Fabric notebook must be a local file.",
+                  );
+                }
+                const fabricNotebook = await fabricNotebookFor(notebook);
+                if (!isFabricNotebook(fabricNotebook)) {
+                  throw new Error(
+                    "The active document is not a Fabric notebook.",
+                  );
+                }
+                const host = await computeConnection.runWithHost(() =>
+                  resolveNotebookHost(
+                    fabricNotebook,
+                    targetResolver,
+                    compute,
+                    () => signIn.tenant(),
+                    attachmentSources,
+                  ),
+                );
+                return host.target;
+              },
+              async () => computeConnection.requireHost(),
+            ),
+          {
+            read: () => configuration.get<unknown>("variableLibraries", {}),
+            write: async (value) => {
+              await configuration.update(
+                "variableLibraries",
+                value,
+                vscode.ConfigurationTarget.Workspace,
+              );
+              configurationView.refresh();
+            },
+          },
+          {
+            async chooseLibrary(libraries) {
+              const choice = await vscode.window.showQuickPick(
+                [
+                  ...libraries.map((library) => ({
+                    label: library.name,
+                    library,
+                  })),
+                  { label: "None / Clear selection", clear: true as const },
+                ],
+                { placeHolder: "Select a Variable Library" },
+              );
+              return choice === undefined
+                ? undefined
+                : "clear" in choice
+                  ? { kind: "clear" }
+                  : { kind: "library", library: choice.library };
+            },
+            async chooseVariables(names, preselected) {
+              const selected = await vscode.window.showQuickPick(
+                names.map((name) => ({
+                  label: name,
+                  picked: preselected.includes(name),
+                })),
+                {
+                  placeHolder: "Select variables to forward to notebook cells",
+                  canPickMany: true,
+                },
+              );
+              return selected?.map(({ label }) => label);
+            },
+            warn(message) {
+              void vscode.window.showWarningMessage(message);
+            },
+          },
+        );
+        await picker.pick();
+      }),
     ),
 
     vscode.languages.registerCodeLensProvider(

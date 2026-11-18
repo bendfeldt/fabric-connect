@@ -19,6 +19,11 @@ source instead (see [Development](development.md#run-and-debug-the-extension)).
 
 ## 1. Build a versioned development VSIX
 
+The versioned `npm run package -- "$DEV" ...` command below is the preferred
+way to create an installable local development build. `BASE`, `N` and `DEV`
+only calculate the concrete next-patch development version so this guide stays
+valid after releases.
+
 Follow [Development](development.md#toolchain-and-first-setup) for initial
 setup and tests. From the repository root, package a development version
 without changing the checkout's `package.json`. The version is the next patch
