@@ -34,7 +34,7 @@ but never import `vscode`. There is no universal Spark transport/plugin framewor
 Notebook editor / source-text code lens / file or selection
   -> resolve tenant and Lakehouse host
   -> prepare cell language and local %run expansion
-  -> prepare local Python modules when Local mode is active
+-> prepare a Local source bundle or keyed Local wheel setup
   -> acquire/reuse/reattach a Livy session and bootstrap display()
   -> serialize statements through the session queue
   -> submit and poll through FabricApiClient
@@ -106,6 +106,10 @@ as a Livy batch, separate from interactive notebook state.
   bundle. A content-hashed name makes resending unchanged sources a no-op in
   the session. Remote mode stages nothing; switching to it does not undo
   prior staging in an already-running session.
+- Local wheel mode hashes the workspace file and stages it beneath the
+  OneLake scratch prefix. Livy installs it before user code; setup is keyed
+  by session ID and content hash, and failures block that cell. Direct Livy
+  `%pip` plus driver/executor behavior remains a live release gate.
 - Module bundles live on the driver and end with the session; Spark job files are removed by their own run
   once the job has ended, its cancellation was accepted (a 404 on the
   cancel counts as accepted: the batch is gone) or Fabric provably did

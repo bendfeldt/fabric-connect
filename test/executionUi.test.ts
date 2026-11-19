@@ -94,7 +94,10 @@ test("real execution consumers preserve failures and render hints separately acr
     const livy = new LivySessionManager(api, { get() {}, set() {} }, { logger });
     const run = {
       diagnostics: () => new ExecutionDiagnostics(logger),
-      prepare: async () => "module prelude",
+    prepare: async () => ({
+      key: "test-modules",
+      createStatement: async () => ({ code: "module prelude", kind: "pyspark" }),
+    }),
       importHint: async () => "Existing import guidance"
     };
     const compute = async () => { if (failHost) throw new Error("host failed"); return target; };
@@ -163,7 +166,7 @@ test("real execution consumers preserve failures and render hints separately acr
       run.context = async () => { throw new Error("configuration unavailable"); };
       const beforeContextFailure = submitted.length;
       await runner.runNotebookCells(notebookUri, "all");
-      assert.equal(submitted.length, beforeContextFailure + 1, "failed context setup submits only module setup, never user code");
+      assert.equal(submitted.length, beforeContextFailure, "failed context setup submits no additional statements after cached module setup");
       runner.dispose();
       controller.dispose();
     })().catch(error => { console.error(error); process.exitCode = 1; });

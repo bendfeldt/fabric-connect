@@ -207,7 +207,7 @@
       },
       {
         "command": "fabric-connect.pythonModules",
-        "title": "Fabric: Python Modules (Local or Remote)",
+        "title": "Fabric: Python Modules (Local, Wheel, or Remote)",
         "icon": "$(edit)"
       },
       {
@@ -356,16 +356,24 @@
           "enum": [
             "auto",
             "local",
+            "wheel",
             "remote"
           ],
           "enumDescriptions": [
             "Local when 'fabric-connect.sourceRoots' is set, otherwise Remote.",
             "Import your working tree: its packages are staged to the session before Python code runs.",
+            "Install a selected workspace wheel temporarily in the Livy session.",
             "Import what the Fabric environment has installed (e.g. your published wheel). Nothing is staged."
           ],
           "default": "auto",
           "scope": "resource",
           "description": "Where Python `import` finds your packages. Change it with 'Fabric: Python Modules' or the status bar."
+        },
+        "fabric-connect.localWheel": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Workspace-relative .whl path selected by 'Fabric: Python Modules'. Installed temporarily into Livy sessions; never published or attached to a Fabric Environment."
         }
       }
     },
@@ -883,7 +891,7 @@
           {
             "id": "runFiles",
             "title": "Run local files and your own modules",
-            "description": "Run a .py/.sql/.scala/.r file or selection on Fabric. Choose Local or Remote Python modules; auto uses Local when explicit source roots are set.\n[Python module mode](command:fabric-connect.pythonModules)\n[Set source roots](command:workbench.action.openSettings?%5B%22fabric-connect.sourceRoots%22%5D)",
+            "description": "Run a .py/.sql/.scala/.r file or selection on Fabric. Choose Local, Wheel, or Remote Python modules; auto uses Local when explicit source roots are set.\n[Python module mode](command:fabric-connect.pythonModules)\n[Set source roots](command:workbench.action.openSettings?%5B%22fabric-connect.sourceRoots%22%5D)",
             "media": {
               "markdown": "media/walkthrough/run-files.md"
             },

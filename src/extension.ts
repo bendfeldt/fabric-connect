@@ -688,10 +688,17 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("fabric-connect.pythonModules", () =>
       runReportingErrors(async () => {
         const transition = await stager.pickMode();
-        if (
-          transition?.previous !== "local" ||
-          transition.selected !== "remote"
-        ) {
+        if (transition === undefined) {
+          return;
+        }
+        const requiresRestart =
+          transition.wheelChanged ||
+          (transition.previous !== transition.selected &&
+            (transition.previous === "wheel" ||
+              transition.selected === "wheel" ||
+              (transition.previous === "local" &&
+                transition.selected === "remote")));
+        if (!requiresRestart) {
           return;
         }
         const uri = activeFabricNotebookUri();

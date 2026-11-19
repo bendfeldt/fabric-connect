@@ -474,6 +474,23 @@ versions ask you to type a tenant GUID instead.
       window's directory is removed if cleanup succeeds; other windows'
       directories may remain. Cleanup failures can leave staged files.
 
+### Local wheel live release gate
+
+Run this only with an authorized disposable Fabric workspace and a reviewed
+pure-Python wheel plus a native wheel with a small dependency set.
+
+- [ ] Select **Local wheel…** for each wheel and run an import on the driver,
+      then import it inside Spark executor/UDF work. Confirm dependencies come
+      from the session's configured package sources.
+- [ ] Replace wheel bytes at the same path and filename without changing its
+      package version. Confirm the changed content hash triggers reinstall.
+- [ ] Restart Livy and repeat both imports. Confirm setup runs for the new
+      session and the staged file under `Files/.fabric-connect/` is removed
+      after installation (cleanup remains best effort).
+- [ ] If direct Livy `%pip` is rejected, or imports fail on either driver or
+      executors, stop: do not ship or silently downgrade native-wheel support.
+      Record the Fabric platform limitation instead.
+
 ## 6. Run files and selections
 
 - [ ] Open `scripts/hello.py` → **▷ Fabric: Run File on Fabric** (editor

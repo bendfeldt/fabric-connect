@@ -45,6 +45,30 @@ test("Local to Remote restarts exactly the tracked target", async () => {
   assert.deepEqual(restarted, [target]);
 });
 
+test("switching into or out of Wheel restarts, as does selecting another wheel", async () => {
+  for (const transition of [
+    { previous: "remote", selected: "wheel" },
+    { previous: "wheel", selected: "local" },
+    { previous: "wheel", selected: "wheel", wheelChanged: true },
+  ] as const) {
+    const tracker = sessionTracker(true);
+    let restarted = 0;
+    assert.equal(
+      await restartTrackedSessionAfterModeChange(
+        transition,
+        target,
+        tracker.sessions,
+        async () => {
+          restarted++;
+        },
+      ),
+      true,
+    );
+    assert.equal(restarted, 1);
+    assert.deepEqual(tracker.calls, ["check", "stop"]);
+  }
+});
+
 test("does not create or restart sessions without the matching transition", async () => {
   const tracker = sessionTracker(false);
   let starts = 0;

@@ -6,6 +6,8 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+- **Local wheel mode** — select a workspace `.whl`, install it ephemerally in Livy sessions, and deduplicate setup by session and file hash. Direct Livy `%pip` behavior on driver and executors is not live-validated; this feature must not ship until the acceptance gate in `docs/testing.md` passes.
+
 - **Switching Python modules to Remote restarts an existing session** — the picker clears packages previously staged from the working tree; notebook and Spark state is reset. Direct setting edits do not restart.
 
 - **Variable Library picker** — select a workspace library and explicit variable names from Configuration; values are not shown, and only selected active values reach notebook cells. Connections remain in the main Fabric Explorer instead of a duplicate Activity Bar view.

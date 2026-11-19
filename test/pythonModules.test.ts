@@ -6,11 +6,13 @@ import {
   localModuleHint,
   resolveModuleMode,
   sourceRootsFromPyproject,
+  wheelInstallCode,
 } from "../src/core/moduleStaging";
 
 test("module mode: an explicit setting wins, auto follows sourceRoots", () => {
   assert.equal(resolveModuleMode("local", []), "local");
   assert.equal(resolveModuleMode("remote", ["src"]), "remote");
+  assert.equal(resolveModuleMode("wheel", ["src"]), "wheel");
   assert.equal(resolveModuleMode("auto", ["src"]), "local");
   assert.equal(resolveModuleMode("auto", []), "remote");
   assert.equal(resolveModuleMode(undefined, []), "remote");
@@ -139,4 +141,16 @@ test("the modules description is one text for the status bar and the side bar", 
   );
   assert.equal(describeModules("local", []).icon, "file-code");
   assert.equal(describeModules("remote", []).icon, "cloud");
+  assert.equal(
+    describeModules("wheel", [], "analytics.whl").label,
+    "Wheel · analytics.whl",
+  );
+  assert.equal(describeModules("wheel", [], "analytics.whl").icon, "package");
+});
+
+test("wheel install uses the selected staged path and forces reinstall", () => {
+  assert.equal(
+    wheelInstallCode("abfss://workspace@fabric/lakehouse/Files/wheel.whl"),
+    '%pip install --force-reinstall "abfss://workspace@fabric/lakehouse/Files/wheel.whl"',
+  );
 });

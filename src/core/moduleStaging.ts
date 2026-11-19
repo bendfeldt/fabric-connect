@@ -182,7 +182,7 @@ export function moduleImportCode(
  * Where `import` finds your packages: `local` stages the working tree,
  * `remote` uses what the Fabric environment has installed (e.g. a wheel).
  */
-export type PythonModuleMode = "local" | "remote";
+export type PythonModuleMode = "local" | "wheel" | "remote";
 
 /**
  * The effective mode. `auto` keeps the behaviour from before the setting
@@ -193,7 +193,7 @@ export function resolveModuleMode(
   setting: string | undefined,
   sourceRoots: readonly string[],
 ): PythonModuleMode {
-  if (setting === "local" || setting === "remote") {
+  if (setting === "local" || setting === "wheel" || setting === "remote") {
     return setting;
   }
   return sourceRoots.length > 0 ? "local" : "remote";
@@ -273,13 +273,14 @@ export interface ModulesDescription {
   readonly mode: PythonModuleMode;
   /** "Local · analytics", "Remote", "Remote · no local packages". */
   readonly label: string;
-  readonly icon: "file-code" | "cloud";
+  readonly icon: "file-code" | "cloud" | "package";
   readonly tooltip: string;
 }
 
 export function describeModules(
   mode: PythonModuleMode,
   packages: readonly string[],
+  wheelName?: string,
 ): ModulesDescription {
   if (mode === "local") {
     return {
@@ -290,6 +291,15 @@ export function describeModules(
         "Python imports use your working tree, staged to the session before Python runs.",
     };
   }
+  if (mode === "wheel") {
+    return {
+      mode,
+      label: `Wheel · ${wheelName ?? "not selected"}`,
+      icon: "package",
+      tooltip:
+        "The selected local wheel is staged temporarily and installed into the Livy session before Python runs.",
+    };
+  }
   return {
     mode,
     label: packages.length > 0 ? "Remote" : "Remote · no local packages",
@@ -297,6 +307,10 @@ export function describeModules(
     tooltip:
       "Python imports use what the Fabric environment has installed (e.g. your wheel).",
   };
+}
+
+export function wheelInstallCode(wheelUri: string): string {
+  return `%pip install --force-reinstall ${JSON.stringify(wheelUri)}`;
 }
 
 /** The hint added to an import error when the package is also local. */

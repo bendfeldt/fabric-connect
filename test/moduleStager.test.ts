@@ -45,13 +45,13 @@ test("Python module picker reports the selected transition", async () => {
     const stager = Object.create(ModuleStager.prototype) as {
       workspaceRoot: string;
       localPackages: () => Promise<Map<string, string>>;
-      mode: () => "local" | "remote";
+      mode: () => "local" | "wheel" | "remote";
       pickMode: () => Promise<unknown>;
-      prepare(target: unknown): Promise<string | undefined>;
+      prepare(target: unknown): Promise<unknown>;
     };
     stager.workspaceRoot = "/repo";
     stager.localPackages = async () => new Map();
-    stager.mode = () => setting as "local" | "remote";
+    stager.mode = () => setting as "local" | "wheel" | "remote";
 
     const transition = await stager.pickMode();
     assert.deepEqual(transition, {

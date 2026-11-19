@@ -203,7 +203,7 @@ The point of local-first: edit `src/salesutils/cleaning.py` in VS Code and
 use it on Fabric without publishing a wheel or deploying an item. The
 extension stages the source files for you.
 
-1. Run **Fabric: Python Modules (Local or Remote)** and pick **Local**.
+1. Run **Fabric: Python Modules (Local, Wheel, or Remote)** and pick **Local**.
    Source folders come from `fabric-connect.sourceRoots`, else supported
    `pyproject.toml` layouts, else an existing `src` directory. Set
    `"fabric-connect.sourceRoots": ["src"]` when explicit roots are needed.

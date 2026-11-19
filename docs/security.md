@@ -87,9 +87,11 @@ encoded separators and extra query strings cannot satisfy them.
 
 **OneLake writes** (upload, delete) are allowed only below
 `Files/.fabric-connect/` in a Lakehouse, with plain path segments. This
-scratch prefix holds Spark job files only; local Python modules are sent
-inside the Livy statement and never written to OneLake. Each window uses its
-own directory below the prefix. Job completion attempts
+scratch prefix holds transient Spark job files and selected local wheels;
+working-tree Python modules remain embedded in Livy statements. Wheel files
+are uploaded only under `Files/.fabric-connect/`, then deleted after install
+on a best-effort basis. Cleanup failures can leave scratch files behind.
+Each VS Code window uses its own run directory. Job completion attempts
 cleanup of its staged subfolder, which is kept when the extension loses
 track of a job, or Fabric refuses to cancel it, while it may still be
 running. Deletion is **best effort**, so failures
@@ -101,6 +103,12 @@ and GraphQL mutations you write, act on **data** with your permissions,
 exactly as they would in the Fabric portal. The guarantee is about
 workspace **items** — the extension itself never changes them.
 
+Wheel files are executable code: selecting one permits its code to run with
+the Fabric session's permissions. Review the wheel and its declared
+dependencies before use. Dependency resolution may contact package sources
+configured for that session; the extension does not add credentials or alter
+package-source settings.
+
 ## What is stored on your machine
 
 | Where                                                                    | What                                                                                                                                                                                                                                                                                                                      | Shared?                                                                      |
@@ -110,7 +118,7 @@ workspace **items** — the extension itself never changes them.
 | VS Code workspace state                                                  | Livy session IDs per host (to reattach after a reload)                                                                                                                                                                                                                                                                    | Local to VS Code                                                             |
 | VS Code global state                                                     | up to 10 recently used tenants (ID, name, domain), offered when switching tenant                                                                                                                                                                                                                                          | Local to VS Code                                                             |
 | VS Code secret storage                                                   | sign-in sessions (managed by VS Code, not by the extension)                                                                                                                                                                                                                                                               | Local to VS Code                                                             |
-| VS Code settings (`.vscode/settings.json` when saved at workspace scope) | module mode and source folders; notebook labels are supplied by manifest defaults                                                                                                                                                                                                                                         | Share deliberately; do not put secrets in settings                           |
+| VS Code settings (`.vscode/settings.json` when saved at workspace scope) | module mode, source folders and the workspace-relative wheel path; notebook labels are supplied by manifest defaults                                                                                                                                                                                                      | Share deliberately; do not put secrets in settings                           |
 
 Pulled items are written only into the folder you choose, only inside
 their `<name>.<Type>/` folder (definition part paths that would escape it
