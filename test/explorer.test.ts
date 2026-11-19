@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import { test } from "node:test";
 import { LocalFirstViolationError, PullError } from "../src/core/errors";
 import { FabricApiClient } from "../src/core/fabricApiClient";
@@ -7,6 +10,7 @@ import {
   getItemDefinition,
   itemFolderName,
   safePartPath,
+  writeItemDefinitionFolder,
 } from "../src/core/itemDefinition";
 import { LocalItemIndex } from "../src/core/localItemIndex";
 import { NameCache, guidAt } from "../src/core/nameCache";
@@ -194,6 +198,61 @@ test("definition parts can never escape the item folder", () => {
 test("item folders follow the git-integration naming, with unsafe characters replaced", () => {
   assert.equal(itemFolderName("Sales Load", "Notebook"), "Sales Load.Notebook");
   assert.equal(itemFolderName('a/b:c*"d', "Lakehouse"), "a_b_c__d.Lakehouse");
+});
+
+test("pulled definitions appear atomically and failed writes leave no folder", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "fabric-pull-"));
+  const bytes = (value: string) => new TextEncoder().encode(value);
+  try {
+    const folder = path.join(root, "Sales.Notebook");
+    await writeItemDefinitionFolder(
+      folder,
+      [{ path: "nested/notebook.py", data: bytes("print(1)\n") }],
+      bytes('{"metadata":{}}\n'),
+    );
+    assert.equal(
+      await fs.readFile(path.join(folder, "nested", "notebook.py"), "utf8"),
+      "print(1)\n",
+    );
+    assert.equal(
+      await fs.readFile(path.join(folder, ".platform"), "utf8"),
+      '{"metadata":{}}\n',
+    );
+
+    const failed = path.join(root, "Broken.Notebook");
+    await assert.rejects(
+      writeItemDefinitionFolder(
+        failed,
+        [
+          { path: "conflict", data: bytes("file") },
+          { path: "conflict/child", data: bytes("child") },
+        ],
+        bytes("{}\n"),
+      ),
+      PullError,
+    );
+    await assert.rejects(fs.stat(failed));
+    assert.equal(
+      (await fs.readdir(root)).some((entry) =>
+        entry.startsWith(".Broken.Notebook.fabric-connect-"),
+      ),
+      false,
+    );
+
+    const existing = path.join(root, "Existing.Notebook");
+    await fs.mkdir(existing);
+    await fs.writeFile(path.join(existing, "keep.txt"), "keep");
+    await assert.rejects(
+      writeItemDefinitionFolder(existing, [], bytes("{}\n")),
+      PullError,
+    );
+    assert.equal(
+      await fs.readFile(path.join(existing, "keep.txt"), "utf8"),
+      "keep",
+    );
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
 });
 
 test("the client surfaces operation headers for 202 responses", async () => {

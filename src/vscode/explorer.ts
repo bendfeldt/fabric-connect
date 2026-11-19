@@ -32,7 +32,11 @@ import {
   listWorkspaces,
   mergeCapacities,
 } from "../core/fabricCatalog";
-import { getItemDefinition, itemFolderName } from "../core/itemDefinition";
+import {
+  getItemDefinition,
+  itemFolderName,
+  writeItemDefinitionFolder,
+} from "../core/itemDefinition";
 import type { ILivySessionManager } from "../core/livySessionManager";
 import type { NameCache } from "../core/nameCache";
 import { type OneLakeClient, abfssUri } from "../core/oneLakeClient";
@@ -569,15 +573,10 @@ export class FabricExplorer
           node.item.id,
         ),
     );
-    await fs.mkdir(folder, { recursive: true });
-    for (const part of parts) {
-      const target = path.join(folder, ...part.path.split("/"));
-      await fs.mkdir(path.dirname(target), { recursive: true });
-      await fs.writeFile(target, part.data);
-    }
-    if (!parts.some((p) => p.path === ".platform")) {
-      await fs.writeFile(
-        path.join(folder, ".platform"),
+    await writeItemDefinitionFolder(
+      folder,
+      parts,
+      new TextEncoder().encode(
         JSON.stringify(
           {
             $schema:
@@ -591,8 +590,8 @@ export class FabricExplorer
           undefined,
           2,
         ) + "\n",
-      );
-    }
+      ),
+    );
     void vscode.window.showInformationMessage(
       `Pulled '${node.item.displayName}' into ${path.relative(this.workspaceRoot ?? parent, folder) || folder} (${parts.length} file${parts.length === 1 ? "" : "s"}). It is local now; nothing syncs back.`,
     );
