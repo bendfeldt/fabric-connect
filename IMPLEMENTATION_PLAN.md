@@ -44,8 +44,9 @@ includes them.
 - **Sign-in and shipping:** remembered repo account/tenant, tenant picker,
   walkthrough completion/advance, LF normalization, VSIX allowlist, native
   manifest/UI-consumer tests, build/test CI and manually initiated release PRs.
-  The release job has opt-in VS Code Marketplace publishing (GitHub OIDC
-  trusted publishing, `vsce publish --oidc`); see the evidence gap below.
+  The release job requires VS Code Marketplace publishing through GitHub OIDC
+  trusted publishing before creating the matching GitHub Release; see the
+  rollout evidence gap below.
 - **Execution diagnostics:** opt-in client phase timings in notebook and
   text/file paths. The specific Variable Library missing-notebook-state error
   retains its traceback and adds guidance, not a fallback or compatibility shim.
@@ -142,7 +143,7 @@ implementation; local link/formatting checks and independent review passed.
 No package build or extension installation was performed as part of this
 documentation correction.
 
-The packaging script now pins vsce 4.0.0, with Node 22 in Build and
+The packaging script now pins vsce 4.1.1, with Node 22 in Build and
 release-packaging CI. Node 22+ is required only for packaging; extension
 runtime requirements and the Node 18/20/22 test matrix are unchanged.
 Local packaging verified a normal release version and a development version
@@ -211,13 +212,11 @@ smoke step (docs/testing.md) was not run.
 
 ## Known limits and open evidence gaps
 
-- Marketplace publishing in the Release workflow has never run: no trusted
-  publisher setting, OIDC token exchange or Marketplace upload has been
-  exercised, and `vsce --oidc` is hidden from `--help` (likely preview). Only
-  the YAML parse and the vsce 4.0.0 source (`--oidc`, `--skip-duplicate`,
-  `--packagePath`, publisher read from the packaged manifest) were checked
-  locally. Versions released before the variable is set (including the
-  current one) need a one-time manual publish.
+- Marketplace publishing in the Release workflow has never run: the trusted
+  publisher policy, OIDC token exchange and Marketplace upload remain rollout
+  evidence gaps. The stable pinned vsce CLI exposes `--oidc`,
+  `--skip-duplicate` and `--packagePath`; existing releases are intentionally
+  not backfilled.
 - `extension.ts` command handlers are not reachable by the native tests:
   the Stop and Show Livy Sessions compute-host fallbacks are checked only
   through core `computeHost` and manual smoke steps.
@@ -280,3 +279,29 @@ smoke step (docs/testing.md) was not run.
 - Audit fixes: preserved the original wheel filename inside its unique scratch folder so pip can parse it; changed session setup persistence to one active key so A → B → A reinstalls A; and made pulled item definitions appear only after every file is written, cleaning temporary folders on failure. The previous `{ sessionId, keys }` setup cache is ignored and safely rebuilt.
 - Audit-fix evidence: `npm run compile` passed; focused wheel/Livy/Explorer/UI suites passed 99 tests; full `npm test` passed all 380 tests. Adversarial review found target collisions for numeric Livy IDs, stale active state after a failed setup switch, and hidden temporary-folder cleanup failures; setup cache identity now includes the full target, changed setup attempts clear the previous active marker before running, and cleanup failures report the leftover path and recovery action. The final independent adversarial review passed. Live Fabric validation remains unavailable.
 - Release gate: no live Fabric workspace was used. Direct Livy `%pip` compatibility, native-wheel driver/executor imports, dependency resolution, and scratch cleanup remain unverified. Do not ship Wheel mode until the authorized acceptance checks in `docs/testing.md` pass; on failure, report the platform limitation and do not downgrade native support silently.
+
+## Required Marketplace publishing (2026-11-19)
+
+- Removed the optional repository-variable bypass: every new release now
+  publishes the already packaged VSIX with GitHub OIDC before GitHub Release
+  creation. Missing policy or token-exchange failure leaves no partial GitHub
+  Release. Existing releases remain GitHub-only.
+- Pinned package and publish commands to stable vsce 4.1.1 and documented the
+  exact `bendfeldt/fabric-connect` trusted-publisher policy. Runtime code,
+  authentication and Fabric permissions are unchanged.
+- The release guard now distinguishes absent, complete and partial releases.
+  Only a nonempty `uploaded` VSIX is complete; a `starter` or zero-byte asset is
+  repaired on re-run. Non-404 GitHub API and malformed-response failures stop
+  the job instead of being mistaken for an absent release.
+- Evidence: vsce 4.1.1 `publish --help` exposes `--oidc` and
+  `--skip-duplicate`; the release-workflow regression test was observed failing
+  before the recovery fix and passing after it; `npm test` passed all 383 tests.
+  The focused version-consistency suite, YAML parsing and changed-file Prettier
+  checks passed. Packaging produced a 72-file allowlisted VSIX with identity
+  `bendfeldt.fabric-connect` and manifest version matching the checkout. The
+  first independent review rejected filename-only partial-release detection;
+  the final review passed after the tested state/size classifier replaced it.
+- Rollout remains blocked on the documented live local-wheel release gate,
+  Marketplace policy creation, the first OIDC upload, and verification of the
+  Marketplace listing. No branch push, policy, live Fabric call or release was
+  performed.

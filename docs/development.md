@@ -113,7 +113,7 @@ npm run package
 
 The output is `fabric-connect-<package.json version>.vsix` in the repo root.
 No tag, commit or release is created. The package script uses
-`@vscode/vsce@4.0.0`, whose [Node.js requirement](https://github.com/microsoft/vscode-vsce/blob/v4.0.0/package.json)
+`@vscode/vsce@4.1.1`, whose [Node.js requirement](https://github.com/microsoft/vscode-vsce/blob/v4.1.1/package.json)
 is **22+**. If unavailable locally, `npx` may download that tooling.
 Do not run it in a no-install/offline task unless the tool is already available.
 
@@ -153,24 +153,16 @@ commit in that PR changes `package.json`, `package-lock.json` and
 the manifest version.
 
 The same job publishes that `.vsix` to the VS Code Marketplace before creating
-the GitHub Release, once the `MARKETPLACE_TRUSTED_PUBLISHING` repository
-variable is `true`; until then it logs a warning and skips that step. It uses
-Marketplace trusted publishing (`vsce publish --oidc`): the job's GitHub OIDC
-token is exchanged with the Marketplace for a publish credential, so there is
-no Entra ID, Azure account or PAT to store or rotate. `--oidc` is hidden from
-`vsce --help` in vsce 4.0.0, so treat it as preview. Whether the Marketplace
-publisher page offers a setting to trust this repository's workflow, and what
-it requires, is not verified in this repository, and the path has not been run
-against a live publisher. If the Marketplace refuses the token exchange, vsce
-exits with an error and the job stops before creating the GitHub Release. The
-one-time steps are in the header comment of `.github/workflows/release.yml`.
+the GitHub Release. It uses Marketplace trusted publishing
+(`vsce publish --oidc`): the job's GitHub OIDC token is exchanged for a
+short-lived Marketplace publish credential, so there is no Entra ID, Azure
+account or PAT to store or rotate. Publishing is required; a missing publisher
+policy or failed token exchange stops the job before GitHub Release creation.
+The exact one-time policy fields are in the header comment of
+`.github/workflows/release.yml`.
 
-The "already released" guard skips the whole job, so a version whose GitHub
-Release already exists is never sent to the Marketplace by the workflow, even
-if the variable is set later. Publish that version once by hand with
-`npx @vscode/vsce@4.0.0 publish --packagePath <the release's .vsix>`,
-authenticated with a Marketplace PAT through `vsce login <publisher>` or the
-`VSCE_PAT` variable; `--oidc` works only inside GitHub Actions.
+The "already released" guard skips the whole job. Existing releases remain
+GitHub-only by design; Marketplace publishing starts with the next release.
 
 ## Keeping versions consistent
 
