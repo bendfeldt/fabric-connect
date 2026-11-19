@@ -203,7 +203,7 @@ The point of local-first: edit `src/salesutils/cleaning.py` in VS Code and
 use it on Fabric without publishing a wheel or deploying an item. The
 extension stages the source files for you.
 
-1. Run **Fabric: Python Modules (Local or Remote)** and pick **Local**.
+1. Run **Fabric: Python Modules (Local, Wheel, or Remote)** and pick **Local**.
    Source folders come from `fabric-connect.sourceRoots`, else supported
    `pyproject.toml` layouts, else an existing `src` directory. Set
    `"fabric-connect.sourceRoots": ["src"]` when explicit roots are needed.
@@ -220,11 +220,9 @@ extension stages the source files for you.
    used.
 
 Before Python code runs, Fabric Connect zips the `.py` files under your
-source roots, uploads the zip to `Files/.fabric-connect/` in the host
-Lakehouse, adds it to the session and reloads your packages only when the
-code changed. Stop/restart through the extension attempts to delete this
-window's scratch directory; cleanup is best effort. This is the only
-OneLake prefix the extension itself may write. After switching to Remote,
+source roots, sends the zip with the statement, adds it to the session and
+reloads your packages only when the code changed. Nothing is written to
+OneLake for this. After switching to Remote,
 restart the session to discard already-staged imports.
 
 ## 7. Run files and selections
@@ -310,9 +308,8 @@ Connection String**.
 Click the **Fabric** icon in the Activity Bar. Its **Configuration** view
 shows what the repo signs in as and its compute (switch the tenant from
 its Tenant row), **Repo** shows your working tree and runs it on the
-connected compute, **Lakehouses** attaches Lakehouses to a notebook, and
-**Connections** lists connections. The **Fabric** view in the Explorer
-side bar browses everything:
+connected compute, and **Lakehouses** attaches Lakehouses to a notebook.
+The **Fabric** view in the Explorer side bar browses everything:
 
 - **Capacities** → workspaces → items grouped by type;
 - **Workspaces without a capacity**;

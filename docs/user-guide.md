@@ -350,8 +350,10 @@ Session behavior:
 - **Reattachment** — after a VS Code reload, the extension reconnects to
   an existing live session by saved ID rather than always starting a new
   one. Reuse is keyed by tenant, workspace, Lakehouse and optional
-  Environment, not by statement language. Notebook/file runs on that same
-  target share session state; unrelated targets do not. A new session
+  Environment, plus the local notebook URI for notebooks. Notebook editor and
+  source-cell commands for the same notebook share that isolated session;
+  other notebooks and loose files do not. Loose files on the same target still
+  share their file-execution session. A new session
   replaces the saved one only when Fabric says it is gone (HTTP 404, an
   empty answer, or a session that has ended, such as `dead` or `killed`). If the saved session cannot be checked (another HTTP
   error, a network error), the run fails, the saved session is kept and no
@@ -467,18 +469,31 @@ The Databricks Connect workflow: edit locally, run on Fabric.
   Connect: Run** output channel.
 - **Your local modules: Local or Remote.** The **Python modules** row in
   the Configuration view (Fabric side bar), the _Modules_ status bar item,
-  or **`Fabric: Python Modules (Local or Remote)`** picks where `import` finds your
+  or **`Fabric: Python Modules (Local, Wheel, or Remote)`** picks where `import` finds your
   packages, saved per repo in `fabric-connect.pythonModules`. The row and
   the status bar always show the same mode:
   - **Remote** — what the Fabric environment has installed, e.g. your
     published wheel. Nothing is staged. This is the default unless
-    `fabric-connect.sourceRoots` is set. After switching from Local, run
-    **Fabric: Restart Livy Session**: a running session keeps the code it
-    already staged.
+    `fabric-connect.sourceRoots` is set. Choosing Remote from Local through
+    the picker automatically replaces an existing session, clearing Python
+    variables, Spark caches, and other session state. Editing the setting
+    directly does not restart a session. If the automatic restart fails,
+    Remote remains selected; retry with **Fabric: Restart Livy Session**.
   - **Local** — your working tree. The source folders are
     `fabric-connect.sourceRoots` if set, else the folders `pyproject.toml`
     names (setuptools `packages.find.where` or `package-dir`, Hatch wheel
     `packages`, Poetry `packages.from`), else `src`.
+
+  - **Wheel** — choose a readable `.whl` inside the workspace. The
+    resource-scoped `fabric-connect.localWheel` setting stores its relative
+    path. Before first use for each session and content hash, the extension
+    stages it below `Files/.fabric-connect/` and runs `%pip
+install --force-reinstall`; dependencies use the package sources
+    configured for the Fabric session. It deletes the scratch file after
+    setup on a best-effort basis. This never publishes or modifies a Fabric
+    Environment. Switching into or out of Wheel mode or selecting another
+    wheel replaces the active session and clears its in-memory state. Direct
+    Livy `%pip` and driver/executor behavior remain a live release gate.
 
   When an import fails on Remote for a package that is also in your repo
   (e.g. `cannot import name 'entity' from 'analytics'`, because the
@@ -486,11 +501,10 @@ The Databricks Connect workflow: edit locally, run on Fabric.
 
   On Local, every Python run — notebook cells included — first stages
   the `.py` files under those folders to the session: they are zipped,
-  uploaded to the host Lakehouse's scratch folder `Files/.fabric-connect/`,
-  added with `addPyFile`, and stale copies are dropped from `sys.modules`.
-  `import mypkg` then loads your working tree's code. Unchanged sources are
-  not re-uploaded. Stop/restart attempts best-effort cleanup of this
-  window's staged modules, not deletion of every window's files.
+  sent with the statement to the driver's temp folder (nothing is written
+  to OneLake), added with `addPyFile`, and stale copies are dropped from
+  `sys.modules`. `import mypkg` then loads your working tree's code.
+  Unchanged sources are not decoded again; the files end with the session.
 
 - **Spark Job Definitions.** Right-click a `*.SparkJobDefinition` folder →
   **`Fabric: Run Spark Job Definition`**. Settings (arguments, main class,
@@ -579,7 +593,6 @@ views:
   uses the display name on the next git sync.
 - **Lakehouses** — attach Lakehouses to a notebook and pick its default;
   see [Attach Lakehouses](#4-attach-lakehouses).
-- **Connections** — collapsed by default.
 
 **Explorer side bar.** The **Fabric** view in VS Code's Explorer side bar
 stays, with the same tree in one place. It browses the tenant the
@@ -645,13 +658,13 @@ refused before anything is sent.
 
 ## Files Fabric Connect reads and writes
 
-| File                                                     | Written by                                                                                             | Commit it?                   |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------- |
-| `.fabric/targets.json`                                   | you                                                                                                    | Yes                          |
-| `.fabric/local.json`                                     | you and the extension (`"signIn"`, `"compute"`, `"targets"`, `"queryBindings"`, `"lakehouseBindings"`) | **No** — add to `.gitignore` |
-| `*.Notebook/notebook-content.*`                          | you (saved in Fabric's format)                                                                         | Yes                          |
-| `<name>.<Type>/` from Pull into Repo                     | the extension, once, when you ask                                                                      | Yes                          |
-| `.vscode/settings.json` (`sourceRoots`, `pythonModules`) | you and the module-mode command                                                                        | Optional                     |
+| File                                                                   | Written by                                                                                             | Commit it?                   |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------- |
+| `.fabric/targets.json`                                                 | you                                                                                                    | Yes                          |
+| `.fabric/local.json`                                                   | you and the extension (`"signIn"`, `"compute"`, `"targets"`, `"queryBindings"`, `"lakehouseBindings"`) | **No** — add to `.gitignore` |
+| `*.Notebook/notebook-content.*`                                        | you (saved in Fabric's format)                                                                         | Yes                          |
+| `<name>.<Type>/` from Pull into Repo                                   | the extension, once, when you ask                                                                      | Yes                          |
+| `.vscode/settings.json` (`sourceRoots`, `pythonModules`, `localWheel`) | you and the module-mode command                                                                        | Optional                     |
 
 In OneLake, the extension writes only to `Files/.fabric-connect/` in the
 host Lakehouse (staged modules and job files). Cleanup removes only this
@@ -661,37 +674,37 @@ not guarantee cleanup; see [Security and data](security.md).
 
 ## Command reference
 
-| Command                                         | What it does                                                   |
-| ----------------------------------------------- | -------------------------------------------------------------- |
-| `Fabric: Sign In`                               | Sign this repo in with a Microsoft account (remembered)        |
-| `Fabric: Switch Tenant`                         | Sign this repo in to another tenant with the same account      |
-| `Fabric: Sign Out`                              | This repo forgets its sign-in                                  |
-| `Fabric: Account…`                              | Account menu (the status bar item)                             |
-| `Fabric: Name This Capacity…`                   | Save a local name when the real capacity name is not visible   |
-| `Fabric: Connect to This Capacity`              | Connect from a capacity row in the Explorer Fabric view        |
-| `Fabric: Open File as Fabric Notebook`          | Open any `.ipynb` with the Fabric notebook editor              |
-| `Fabric: Manage Lakehouses for Active Notebook` | Browse, attach/detach Lakehouses; set the default              |
-| `Fabric: Bind Notebook's Default Lakehouse…`    | Bind the default locally without editing notebook metadata     |
-| `Fabric: Unbind Notebook's Default Lakehouse`   | Remove this notebook's local binding                           |
-| `Fabric: Open as Notebook`                      | Switch a source-format notebook back from text                 |
-| `Fabric: Open as Text`                          | Reopen a notebook as editable text                             |
-| `Fabric: Open Changes as Text`                  | Show the HEAD/working-tree text diff including metadata        |
-| `Fabric: Run All Cells`                         | Run all source-text notebook cells                             |
-| `Fabric: Run Cell`                              | Run a source-text cell from its code lens                      |
-| `Fabric: Run All Above`                         | Run preceding source-text code cells and the current cell      |
-| `Fabric: Python Modules (Local or Remote)`      | Select working-tree or installed Python packages               |
-| `Fabric: Stop Livy Session`                     | Stop the active notebook's (or compute host's) Livy session    |
-| `Fabric: Restart Livy Session`                  | Stop and immediately start a fresh session                     |
-| `Fabric: Show Livy Sessions`                    | List active sessions on the host Lakehouse; stop selected ones |
-| `Fabric: Run File on Fabric`                    | Run the active (or selected) Python/SQL/Scala/R file           |
-| `Fabric: Run Selection on Fabric`               | Run the selection or current line                              |
-| `Fabric: Run Spark Job Definition`              | Run a local `*.SparkJobDefinition` folder as a Livy batch      |
-| `Fabric: Run Query File`                        | Run a `.kql` / `.dax` / `.graphql` file against its bound item |
-| `Fabric: Change Query Target`                   | Re-pick the item a query file runs against                     |
-| `Fabric: New API Notebook`                      | Open a new `.fabnb` REST API notebook                          |
-| `Fabric: Connect to Compute`                    | Pick the capacity to run on                                    |
-| `Fabric: Change Host Lakehouse…`                | Pick the host Lakehouse (→ Environment) on that capacity       |
-| `Fabric: Disconnect from Compute`               | Remove the saved compute connection                            |
+| Command                                            | What it does                                                   |
+| -------------------------------------------------- | -------------------------------------------------------------- |
+| `Fabric: Sign In`                                  | Sign this repo in with a Microsoft account (remembered)        |
+| `Fabric: Switch Tenant`                            | Sign this repo in to another tenant with the same account      |
+| `Fabric: Sign Out`                                 | This repo forgets its sign-in                                  |
+| `Fabric: Account…`                                 | Account menu (the status bar item)                             |
+| `Fabric: Name This Capacity…`                      | Save a local name when the real capacity name is not visible   |
+| `Fabric: Connect to This Capacity`                 | Connect from a capacity row in the Explorer Fabric view        |
+| `Fabric: Open File as Fabric Notebook`             | Open any `.ipynb` with the Fabric notebook editor              |
+| `Fabric: Manage Lakehouses for Active Notebook`    | Browse, attach/detach Lakehouses; set the default              |
+| `Fabric: Bind Notebook's Default Lakehouse…`       | Bind the default locally without editing notebook metadata     |
+| `Fabric: Unbind Notebook's Default Lakehouse`      | Remove this notebook's local binding                           |
+| `Fabric: Open as Notebook`                         | Switch a source-format notebook back from text                 |
+| `Fabric: Open as Text`                             | Reopen a notebook as editable text                             |
+| `Fabric: Open Changes as Text`                     | Show the HEAD/working-tree text diff including metadata        |
+| `Fabric: Run All Cells`                            | Run all source-text notebook cells                             |
+| `Fabric: Run Cell`                                 | Run a source-text cell from its code lens                      |
+| `Fabric: Run All Above`                            | Run preceding source-text code cells and the current cell      |
+| `Fabric: Python Modules (Local, Wheel, or Remote)` | Select working-tree, workspace-wheel, or installed packages    |
+| `Fabric: Stop Livy Session`                        | Stop the active notebook's (or compute host's) Livy session    |
+| `Fabric: Restart Livy Session`                     | Stop and immediately start a fresh session                     |
+| `Fabric: Show Livy Sessions`                       | List active sessions on the host Lakehouse; stop selected ones |
+| `Fabric: Run File on Fabric`                       | Run the active (or selected) Python/SQL/Scala/R file           |
+| `Fabric: Run Selection on Fabric`                  | Run the selection or current line                              |
+| `Fabric: Run Spark Job Definition`                 | Run a local `*.SparkJobDefinition` folder as a Livy batch      |
+| `Fabric: Run Query File`                           | Run a `.kql` / `.dax` / `.graphql` file against its bound item |
+| `Fabric: Change Query Target`                      | Re-pick the item a query file runs against                     |
+| `Fabric: New API Notebook`                         | Open a new `.fabnb` REST API notebook                          |
+| `Fabric: Connect to Compute`                       | Pick the capacity to run on                                    |
+| `Fabric: Change Host Lakehouse…`                   | Pick the host Lakehouse (→ Environment) on that capacity       |
+| `Fabric: Disconnect from Compute`                  | Remove the saved compute connection                            |
 
 View actions use shorter labels: Repo has **Refresh**, **Run on Fabric**,
 **Open .platform** and **Edit Item Metadata…**; Lakehouses has **Refresh**,
@@ -702,13 +715,47 @@ Explorer actions are **Refresh**, **Copy ID**, **Copy Name**,
 Their context menus pass the selected tree node; they are not standalone
 commands requiring a fabricated ID.
 
+### Variable Library picker and handoff
+
+Libraries that depend on deployed notebook state may not resolve through plain
+Lakehouse Livy. Use the **Variable library** row in Configuration or run
+**Fabric: Variable Library** to select a library and the non-secret variable
+names to forward to Python notebook cells. The picker displays names only,
+never values. It uses the active Fabric notebook's configured workspace, or
+the connected compute host workspace when no Fabric notebook is active. The
+selection is saved at workspace scope; choose **None / Clear selection** to
+remove it. Cancelling either picker leaves the current setting unchanged.
+
+The equivalent setting shape is:
+
+```json
+{
+  "fabric-connect.variableLibraries": {
+    "application_settings": ["source_namespace", "configuration_fingerprint"]
+  }
+}
+```
+
+The bridge reads the selected workspace's active value set, applies its overrides
+and forwards only the selected names in a private execution descriptor. It does
+not modify notebook sources, Fabric runtime context or the Variable Library.
+Missing libraries, variables, value sets or access fail before the user cell.
+Definition reads require existing item read/write permission and delegated
+scopes despite being read operations. No scopes are added automatically; review
+any authentication change separately. Empty settings make no library API calls.
+Values are not logged by the bridge, but user code and service errors can expose
+values; select only non-secret settings. A consumer library must explicitly
+support this descriptor; this does not emulate all Fabric notebook utilities.
+
 ## Settings
 
-| Setting                        | Default | Effect                                                                                                                                    |
-| ------------------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `fabric-connect.debugLogging`  | `false` | Log redacted Fabric API requests/responses (retries included) to the **Fabric Connect** output channel                                    |
-| `fabric-connect.sourceRoots`   | `[]`    | Explicit workspace-relative Python source folders; in Local mode an empty list uses supported `pyproject.toml` roots, else existing `src` |
-| `fabric-connect.pythonModules` | `auto`  | Resource-scoped `auto`, `local` or `remote`; `auto` selects Local only when `sourceRoots` is non-empty, otherwise Remote                  |
+| Setting                            | Default | Effect                                                                                                                                                                  |
+| ---------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fabric-connect.debugLogging`      | `false` | Log redacted Fabric API requests/responses (retries included) to the **Fabric Connect** output channel                                                                  |
+| `fabric-connect.sourceRoots`       | `[]`    | Explicit workspace-relative Python source folders; in Local mode an empty list uses supported `pyproject.toml` roots, else existing `src`                               |
+| `fabric-connect.pythonModules`     | `auto`  | Resource-scoped `auto`, `local`, `wheel` or `remote`; `auto` selects Local only when `sourceRoots` is non-empty, otherwise Remote                                       |
+| `fabric-connect.localWheel`        | `""`    | Resource-scoped workspace-relative `.whl` path used by Wheel mode                                                                                                       |
+| `fabric-connect.variableLibraries` | `{}`    | Workspace-scoped selection of one library mapped to explicit variable-name arrays; forward active workspace configuration through the private notebook execution bridge |
 
 HTTP paths are redacted and execution diagnostics use fixed labels, local
 sequence numbers, timings and outcomes. Runtime errors and ordinary cell
@@ -757,7 +804,7 @@ cases:
   `display()` setup did not run (e.g. the session was started elsewhere);
   run **Fabric: Restart Livy Session**.
 - **`import mypkg` imports an old version or fails** — on Remote you get
-  the Fabric environment's installed copy: run **Fabric: Python Modules (Local or Remote)**
+  the Fabric environment's installed copy: run **Fabric: Python Modules (Local, Wheel, or Remote)**
   and pick Local to use your working tree. On Local, check the source
   folder is the one that _contains_ the package (e.g. `src`, not
   `src/mypkg`), then run the cell again.

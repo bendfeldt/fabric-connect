@@ -6,6 +6,22 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+- **Marketplace publishing is required** — the release workflow now requires
+  official GitHub OIDC trusted publishing before it creates the matching GitHub
+  Release; existing v1.4.2 remains GitHub-only.
+
+- **Local wheel mode** — select a workspace `.whl`, install it ephemerally in Livy sessions, and deduplicate setup by session and file hash. Direct Livy `%pip` behavior on driver and executors is not live-validated; this feature must not ship until the acceptance gate in `docs/testing.md` passes.
+
+- **Switching Python modules to Remote restarts an existing session** — the picker clears packages previously staged from the working tree; notebook and Spark state is reset. Direct setting edits do not restart.
+
+- **Variable Library picker** — select a workspace library and explicit variable names from Configuration; values are not shown, and only selected active values reach notebook cells. Connections remain in the main Fabric Explorer instead of a duplicate Activity Bar view.
+
+- **Local Python modules no longer need OneLake** — the working-tree zip is
+  sent inside the Livy statement and written to the driver's temp folder, so
+  a network or permission problem reaching the host Lakehouse no longer stops
+  Local runs, and nothing is left behind to clean up. Spark job files are
+  still staged under `Files/.fabric-connect/`.
+
 ## 1.4.2 — 2026-10-23
 
 - **Stopping your session from Show Livy Sessions no longer fails the next

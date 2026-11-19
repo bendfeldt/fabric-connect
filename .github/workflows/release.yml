@@ -12,10 +12,10 @@
 #      changelog section, commits all of it on a bot/version-bump branch,
 #      opens a PR titled "chore(release): vX.Y.Z" and enables auto-merge by
 #      rebase. The PR merges itself once required checks pass.
-#   2. publish-release — the bump PR's rebased commit lands on main: package
-#      the .vsix, publish it to the VS Code Marketplace (when configured, see
-#      below) and publish a GitHub Release, which creates the vX.Y.Z tag at
-#      that commit. Every other push to main does nothing here.
+# 2. publish-release — when the bump PR's rebased commit lands on main: package
+#   the .vsix, publish it to the VS Code Marketplace through trusted
+#   publishing (see below), publish the GitHub Release, and create the vX.Y.Z
+#   tag at that commit. Every other push to main does nothing here.
 #
 # propose-bump always builds bot/version-bump from the live tip of main and
 # computes the bump over the full range since the last tag; running it again
@@ -33,31 +33,22 @@
 #     required human approval (the bot cannot approve its own PR; requiring
 #     approval means someone must also approve the bump PR).
 #
-# Optional VS Code Marketplace publishing (GitHub OIDC, no stored secret):
-#   publish-release runs `vsce publish --oidc` (Marketplace trusted
-#   publishing). vsce requests a GitHub OIDC token with audience
-#   marketplace.visualstudio.com and exchanges it at the Marketplace's
-#   /_apis/gallery/token endpoint for a publish credential scoped to the
-#   publisher in package.json. No Entra ID, Azure account or PAT is used.
-#   The flag is hidden from `vsce --help` in vsce 4.0.0, so treat it as
-#   preview: this workflow has not been run against a live publisher.
-#   It is skipped with a warning until it is enabled:
-#   - On the Marketplace publisher page (marketplace.visualstudio.com/manage),
-#     look for a setting that trusts this repository's GitHub Actions
-#     workflow for publishing. Whether the Marketplace offers it, and what
-#     it requires, is not verified here. If the Marketplace refuses the
-#     exchange, vsce exits with an error (oidc.js throws on any non-2xx
-#     answer), so this step fails and the later "Create GitHub Release"
-#     step does not run.
-#   - Repository variable (Settings -> Secrets and variables -> Actions ->
-#     Variables): MARKETPLACE_TRUSTED_PUBLISHING = true.
-#   The "already released" guard skips the whole job, so a version whose
-#   GitHub Release already exists (for example, one released before the
-#   variable was set) is never sent to the Marketplace by this workflow.
-#   Publish such a version once by hand with
-#   `npx @vscode/vsce@4.0.0 publish --packagePath <the release's .vsix>`,
-#   authenticated with a Marketplace PAT through `vsce login <publisher>`
-#   or the VSCE_PAT variable (--oidc works only inside GitHub Actions).
+# VS Code Marketplace publishing uses GitHub OIDC trusted publishing with no
+# stored Marketplace secret. Before the first release, create this policy at
+# marketplace.visualstudio.com/manage -> publisher `bendfeldt` -> Trusted
+# Publishing:
+# - Policy name: Fabric Connect release
+# - Repository owner: bendfeldt
+# - Repository: fabric-connect
+# - Workflow: release.yml
+# - Environment: blank
+# If this repository is private, run this workflow within 48 hours after policy
+# creation so the first successful token exchange activates it permanently.
+# vsce requests a GitHub OIDC token for marketplace.visualstudio.com and
+# exchanges it for a short-lived credential scoped to the package.json
+# publisher. Marketplace publishing is required and runs before GitHub Release
+# creation, so missing policy or failed token exchange leaves no partial GitHub
+# Release. Existing releases are intentionally not backfilled.
 name: Release
 
 on:
@@ -171,19 +162,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4 # the pushed SHA is the release commit
 
-      - name: Skip if this version is already released
+      - name: Check release completeness
         id: guard
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="$(node -p 'require("./package.json").version')"
+          asset="fabric-connect-$version.vsix"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release v$version already exists; nothing to publish."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
+
+          set +e
+          release_response="$(gh api \
+            "repos/$GITHUB_REPOSITORY/releases/tags/v$version" 2>&1)"
+          status=$?
+          set -e
+          disposition="$(printf '%s' "$release_response" | \
+            node scripts/releaseState.cjs "$status" "$asset")"
+
+          case "$disposition" in
+            complete)
+              echo "release_exists=true" >> "$GITHUB_OUTPUT"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "Release v$version already has a complete $asset; nothing to publish."
+              ;;
+            partial)
+              echo "release_exists=true" >> "$GITHUB_OUTPUT"
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              echo "::warning::Release v$version lacks a complete $asset; repairing it."
+              ;;
+            absent)
+              echo "release_exists=false" >> "$GITHUB_OUTPUT"
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
 
       - if: steps.guard.outputs.skip != 'true'
         uses: actions/setup-node@v4
@@ -205,45 +216,35 @@ jobs:
         # output can ship; .vscodeignore allowlists what goes in.
         run: npm run package
 
-      # Marketplace publishing runs before the GitHub Release so a failure
-      # here leaves no release behind and a re-run retries both. If the
-      # GitHub Release step fails instead, --skip-duplicate lets a re-run
-      # pass over the version the Marketplace already has. Once the GitHub
-      # Release exists, the guard above skips these steps too.
-      - name: Check Marketplace configuration
-        id: marketplace
-        if: steps.guard.outputs.skip != 'true'
-        env:
-          ENABLED: ${{ vars.MARKETPLACE_TRUSTED_PUBLISHING }}
-        run: |
-          if [ "$ENABLED" = "true" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::VS Code Marketplace publishing skipped:" \
-              "the MARKETPLACE_TRUSTED_PUBLISHING repository variable is not" \
-              "'true'. See the header comment in .github/workflows/release.yml."
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          fi
-
+      # Marketplace failures happen before GitHub Release creation. If the
+      # final step creates a release but fails to upload its VSIX, a re-run
+      # detects the missing asset, skips the duplicate Marketplace version,
+      # and repairs the release. A complete release is skipped.
       - name: Publish to VS Code Marketplace (trusted publishing)
-        if: steps.guard.outputs.skip != 'true' && steps.marketplace.outputs.enabled == 'true'
+        if: steps.guard.outputs.skip != 'true'
         # --oidc exchanges this job's GitHub OIDC token (id-token: write)
         # for a Marketplace credential; the .vsix is the one packaged above,
         # so nothing is rebuilt.
         run: >
-          npx --yes @vscode/vsce@4.0.0 publish
+          npx --yes @vscode/vsce@4.1.1 publish
           --oidc
           --skip-duplicate
           --packagePath 'fabric-connect-${{ steps.guard.outputs.version }}.vsix'
 
-      - name: Create GitHub Release
+      - name: Create or repair GitHub Release
         if: steps.guard.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version='${{ steps.guard.outputs.version }}'
-          gh release create "v$version" \
-            --target '${{ github.sha }}' \
-            --title "v$version" \
-            --generate-notes \
-            "fabric-connect-$version.vsix"
+          asset="fabric-connect-$version.vsix"
+          if [ '${{ steps.guard.outputs.release_exists }}' = 'true' ]; then
+            gh release upload "v$version" "$asset" \
+              --clobber
+          else
+            gh release create "v$version" \
+              --target '${{ github.sha }}' \
+              --title "v$version" \
+              --generate-notes \
+              "$asset"
+          fi

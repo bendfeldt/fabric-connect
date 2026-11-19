@@ -38,6 +38,7 @@ import {
 } from "../core/livyHost";
 import type {
   ILivySessionManager,
+  LivySessionSetup,
   LivyStatementResult,
   LivyTarget,
 } from "../core/livySessionManager";
@@ -79,7 +80,10 @@ export interface RunContext {
    * Python to run before Python code so `import` sees the working tree's
    * modules (undefined when nothing is configured to stage).
    */
-  readonly prepare?: (target: LivyTarget) => Promise<string | undefined>;
+  readonly prepare?: (
+    target: LivyTarget,
+  ) => Promise<LivySessionSetup | undefined>;
+  readonly context?: (target: LivyTarget) => Promise<string | undefined>;
   /**
    * A hint for a failed import whose package is also in the repo while
    * Python modules are Remote (undefined when there is nothing to add).
@@ -111,7 +115,7 @@ export async function resolveNotebookHost(
       ? undefined
       : await withSources(notebook.uri, getLakehouseAttachments(root), sources);
   const bound = attachments?.localBinding;
-  return resolveLivyHost({
+  const host = resolveLivyHost({
     entity: `notebook ${path.basename(path.dirname(notebook.uri.fsPath))}`,
     notebookDefault:
       bound === undefined
@@ -132,6 +136,10 @@ export async function resolveNotebookHost(
     signedInTenant: signedInTenant(),
     compute: await compute(),
   });
+  return {
+    ...host,
+    target: { ...host.target, sessionScope: notebook.uri.toString() },
+  };
 }
 
 /**
@@ -476,45 +484,38 @@ export class FabricNotebookController implements vscode.Disposable {
           return statement;
         },
       );
+      let setup: LivySessionSetup | undefined;
       if (kind === "pyspark") {
-        const prelude = await diagnostics.measure("modules.prepare", async () =>
+        setup = await diagnostics.measure("modules.prepare", async () =>
           this.run.prepare?.(target),
         );
-        if (prelude !== undefined) {
-          const staged = await this.livy.execute(
-            target,
-            prelude,
-            "pyspark",
-            execution.token,
-            diagnostics,
-            "module-setup",
-          );
-          if (staged.status !== "ok") {
-            outcome = staged.status;
-            // Staging the working tree's modules failed: show why, don't
-            // run the cell against stale or missing code.
-            if (staged.status === "cancelled") {
-              await diagnostics.measure("output.render", () =>
-                execution.clearOutput(),
-              );
-              execution.end(undefined, Date.now());
-            } else {
-              await diagnostics.measure("output.render", () =>
-                execution.replaceOutput(toCellOutputs(staged)),
-              );
-              execution.end(false, Date.now());
-            }
-            return;
-          }
-        }
       }
+      const context =
+        kind === "pyspark" ? await this.run.context?.(target) : undefined;
       const result = await this.livy.execute(
         target,
-        code,
+        context === undefined ? code : `${context}\n${code}`,
         kind,
         execution.token,
         diagnostics,
+        "user",
+        setup,
       );
+      if (result.setupFailed) {
+        outcome = result.status;
+        if (result.status === "cancelled") {
+          await diagnostics.measure("output.render", () =>
+            execution.clearOutput(),
+          );
+          execution.end(undefined, Date.now());
+        } else {
+          await diagnostics.measure("output.render", () =>
+            execution.replaceOutput(toCellOutputs(result)),
+          );
+          execution.end(false, Date.now());
+        }
+        return;
+      }
       outcome = result.status;
 
       if (result.status === "cancelled") {

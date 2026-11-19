@@ -3,11 +3,12 @@
  * Connect: `import mypkg` in a notebook cell or a run file resolves to the
  * code in your working tree, not to a wheel someone uploaded.
  *
- * The configured source roots are zipped (deterministically), uploaded to
- * the session host's scratch folder `Files/.fabric-connect/<run>/`, added
- * with `sc.addPyFile`, and stale copies of the same packages are dropped
- * from `sys.modules` so the new code is what gets imported. Unchanged
- * sources are not re-uploaded (content hash).
+ * The configured source roots are zipped (deterministically) and sent inside
+ * the statement itself: the driver writes the zip to its temp folder, adds it
+ * with `sc.addPyFile` (which also ships it to executors), and stale copies of
+ * the same packages are dropped from `sys.modules` so the new code is what
+ * gets imported. Nothing is written to OneLake, so the host Lakehouse needs
+ * no write access. Unchanged sources are not decoded again (content hash).
  */
 
 import { createHash } from "node:crypto";
@@ -138,39 +139,42 @@ export function stagedFileName(fileName: string): string {
   return /^[A-Za-z0-9_]/.test(safe) ? safe : `_${safe}`;
 }
 
-/**
- * The run's module bundles, kept apart from Spark job files so stopping a
- * session never deletes the files of a job that is still running.
- */
-export function modulesFolder(runId: string): string {
-  return `${scratchFolder(runId)}/modules`;
-}
-
-/** Where a bundle is staged; the hash in the name keeps versions apart. */
-export function bundlePath(runId: string, hash: string): string {
-  return `${modulesFolder(runId)}/modules-${hash.slice(0, 16)}.zip`;
+/** The staged file name of a bundle; the hash keeps versions apart. */
+export function bundleFileName(hash: string): string {
+  return `modules-${hash.slice(0, 16)}.zip`;
 }
 
 /**
- * Python that makes the staged bundle importable in the session and drops
- * stale copies of its packages so the next import loads the new code. It is
- * idempotent per session: re-sending the same bundle is a no-op, so module
- * state survives until the sources actually change.
+ * Python that writes the bundle to the driver's temp folder, makes it
+ * importable in the session and drops stale copies of its packages so the
+ * next import loads the new code. It is idempotent per session: re-sending
+ * the same bundle is a no-op, so module state survives until the sources
+ * actually change.
+ *
+ * ponytail: the whole bundle travels base64-encoded in every statement, so
+ * Livy's statement size limit is the ceiling for local sources; stage on
+ * OneLake again only if real projects outgrow it.
  */
 export function moduleImportCode(
-  abfss: string,
+  zipBase64: string,
+  fileName: string,
   topLevel: readonly string[],
 ): string {
   return [
-    "import sys as _fc_sys, importlib as _fc_importlib",
+    "import sys as _fc_sys, importlib as _fc_importlib, os as _fc_os, tempfile as _fc_tempfile, base64 as _fc_base64",
     "_fc_staged = globals().setdefault('_fc_staged', set())",
-    `if ${JSON.stringify(abfss)} not in _fc_staged:`,
-    `    spark.sparkContext.addPyFile(${JSON.stringify(abfss)})`,
+    `_fc_bundle = _fc_os.path.join(_fc_tempfile.gettempdir(), "fabric-connect", ${JSON.stringify(fileName)})`,
+    "if _fc_bundle not in _fc_staged:",
+    "    _fc_os.makedirs(_fc_os.path.dirname(_fc_bundle), exist_ok=True)",
+    "    with open(_fc_bundle, 'wb') as _fc_file:",
+    `        _fc_file.write(_fc_base64.b64decode(${JSON.stringify(zipBase64)}))`,
+    "    spark.sparkContext.addPyFile(_fc_bundle)",
     `    _fc_names = set(${JSON.stringify(topLevel)})`,
     "    for _fc_name in [m for m in _fc_sys.modules if m.split('.')[0] in _fc_names]:",
     "        del _fc_sys.modules[_fc_name]",
     "    _fc_importlib.invalidate_caches()",
-    `    _fc_staged.add(${JSON.stringify(abfss)})`,
+    "    _fc_staged.add(_fc_bundle)",
+    '_fabric_connect_sources = {"bundle": _fc_bundle}',
   ].join("\n");
 }
 
@@ -178,7 +182,7 @@ export function moduleImportCode(
  * Where `import` finds your packages: `local` stages the working tree,
  * `remote` uses what the Fabric environment has installed (e.g. a wheel).
  */
-export type PythonModuleMode = "local" | "remote";
+export type PythonModuleMode = "local" | "wheel" | "remote";
 
 /**
  * The effective mode. `auto` keeps the behaviour from before the setting
@@ -189,7 +193,7 @@ export function resolveModuleMode(
   setting: string | undefined,
   sourceRoots: readonly string[],
 ): PythonModuleMode {
-  if (setting === "local" || setting === "remote") {
+  if (setting === "local" || setting === "wheel" || setting === "remote") {
     return setting;
   }
   return sourceRoots.length > 0 ? "local" : "remote";
@@ -269,13 +273,14 @@ export interface ModulesDescription {
   readonly mode: PythonModuleMode;
   /** "Local · analytics", "Remote", "Remote · no local packages". */
   readonly label: string;
-  readonly icon: "file-code" | "cloud";
+  readonly icon: "file-code" | "cloud" | "package";
   readonly tooltip: string;
 }
 
 export function describeModules(
   mode: PythonModuleMode,
   packages: readonly string[],
+  wheelName?: string,
 ): ModulesDescription {
   if (mode === "local") {
     return {
@@ -286,6 +291,15 @@ export function describeModules(
         "Python imports use your working tree, staged to the session before Python runs.",
     };
   }
+  if (mode === "wheel") {
+    return {
+      mode,
+      label: `Wheel · ${wheelName ?? "not selected"}`,
+      icon: "package",
+      tooltip:
+        "The selected local wheel is staged temporarily and installed into the Livy session before Python runs.",
+    };
+  }
   return {
     mode,
     label: packages.length > 0 ? "Remote" : "Remote · no local packages",
@@ -293,6 +307,10 @@ export function describeModules(
     tooltip:
       "Python imports use what the Fabric environment has installed (e.g. your wheel).",
   };
+}
+
+export function wheelInstallCode(wheelUri: string): string {
+  return `%pip install --force-reinstall ${JSON.stringify(wheelUri)}`;
 }
 
 /** The hint added to an import error when the package is also local. */

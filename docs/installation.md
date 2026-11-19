@@ -1,8 +1,9 @@
 # Installing Fabric Connect
 
-Fabric Connect is distributed as a `.vsix` package attached to GitHub
-Releases — it is not published to the VS Code Marketplace. Pick one of the
-installation paths below, then verify the install and follow
+Install Fabric Connect from the VS Code Marketplace when the
+`bendfeldt.fabric-connect` listing is available. Every GitHub Release also
+carries the matching `.vsix`; use that path before the first Marketplace
+listing or as a fallback. Then verify the installation and follow
 [Getting started](getting-started.md).
 
 Guides describe the current source. Check [Unreleased](../CHANGELOG.md#unreleased)
@@ -16,10 +17,14 @@ before expecting a newer feature in the latest release.
   Fabric workspace. Sign-in uses VS Code's built-in Microsoft
   authentication provider, so no extra auth tooling is needed.
 - **Node.js 18+ and npm** for source compilation/native tests, or
-  **Node.js 22+** to package a VSIX with vsce 4.0.0. Installing a released
+  **Node.js 22+** to package a VSIX with vsce 4.1.1. Installing a released
   `.vsix` needs neither.
 
-## Option 1 — Install a released `.vsix` (recommended)
+## Option 1 — Install a published release (recommended)
+
+In VS Code's Extensions view, search for `bendfeldt.fabric-connect` and select
+**Install** when the Marketplace listing is available. Otherwise, or to install
+an exact release artifact:
 
 1. Download `fabric-connect-<version>.vsix` from the
    [latest release](https://github.com/bendfeldt/fabric-connect/releases/latest).
@@ -55,7 +60,8 @@ are not supplied by git.
   `Fabric:` — you should see the extension's commands (`Fabric: Sign In`,
   `Fabric: Connect to Compute`, …).
 - The **Fabric** view appears in the Explorer side bar and the **Fabric**
-  Activity Bar icon opens Configuration, Repo, Lakehouses and Connections.
+  Activity Bar icon opens Configuration, Repo and Lakehouses; Connections
+  remain in the main Fabric Explorer tree.
 - **Help → Welcome → Walkthroughs → Get started with Fabric Connect**
   opens the in-product walkthrough.
 

@@ -12,9 +12,8 @@ import {
 } from "../src/core/errors";
 import {
   bundleModules,
-  bundlePath,
+  bundleFileName,
   moduleImportCode,
-  scratchFolder,
   stagedFileName,
 } from "../src/core/moduleStaging";
 import {
@@ -135,21 +134,19 @@ test("staging errors: outside the workspace, unreadable root, overlaps", async (
   );
 });
 
-test("the import prelude is idempotent per bundle and purges stale modules", () => {
-  const code = moduleImportCode("abfss://w@onelake/l/Files/x.zip", [
+test("the import prelude carries the bundle and purges stale modules", () => {
+  const code = moduleImportCode("UEsFBg==", bundleFileName("a".repeat(64)), [
     "helper",
     "mypkg",
   ]);
-  assert.match(
-    code,
-    /if "abfss:\/\/w@onelake\/l\/Files\/x\.zip" not in _fc_staged:/,
-  );
-  assert.match(code, /addPyFile\("abfss:/);
+  assert.equal(bundleFileName("a".repeat(64)), `modules-${"a".repeat(16)}.zip`);
+  assert.match(code, /"fabric-connect", "modules-a{16}\.zip"\)/);
+  assert.match(code, /if _fc_bundle not in _fc_staged:/);
+  assert.match(code, /b64decode\("UEsFBg=="\)/);
+  assert.match(code, /addPyFile\(_fc_bundle\)/);
   assert.match(code, /_fc_names = set\(\["helper","mypkg"\]\)/);
-  assert.equal(
-    bundlePath("run-1", "a".repeat(64)),
-    `${scratchFolder("run-1")}/modules/modules-${"a".repeat(16)}.zip`,
-  );
+  assert.match(code, /_fabric_connect_sources = \{"bundle": _fc_bundle\}/);
+  assert.doesNotMatch(code, /abfss:/);
   assert.equal(
     abfssUri(WS, LH, "Files/x.zip"),
     `abfss://${WS}@onelake.dfs.fabric.microsoft.com/${LH}/Files/x.zip`,

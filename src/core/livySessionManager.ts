@@ -21,6 +21,7 @@ import {
   type StatementRole,
 } from "./executionDiagnostics";
 import { type ApiClientLogger, isNetworkFailure } from "./fabricApiClient";
+import { createHash } from "node:crypto";
 import type { CancelToken, IFabricApiClient } from "./types";
 
 export interface LivyTarget {
@@ -29,6 +30,7 @@ export interface LivyTarget {
   readonly lakehouseId: string;
   /** Fabric Environment (libraries, Spark settings); starter pool if absent. */
   readonly environmentId?: string;
+  readonly sessionScope?: string;
 }
 
 export interface LivyStatementResult {
@@ -41,9 +43,17 @@ export interface LivyStatementResult {
   readonly traceback?: string[];
   /** Static guidance for a narrowly recognized runtime-context failure. */
   readonly hint?: string;
+  readonly setupFailed?: boolean;
+}
+
+export interface LivySessionSetup {
+  readonly key: string;
+  readonly createStatement: () => Promise<{ code: string; kind: string }>;
+  readonly cleanup?: () => Promise<void>;
 }
 
 export interface ILivySessionManager {
+  hasSession(target: LivyTarget): boolean;
   execute(
     target: LivyTarget,
     code: string,
@@ -51,6 +61,7 @@ export interface ILivySessionManager {
     token: CancelToken,
     diagnostics?: ExecutionDiagnostics,
     role?: StatementRole,
+    setup?: LivySessionSetup,
   ): Promise<LivyStatementResult>;
   /** Starts (or reattaches to) the session now, e.g. right after a restart. */
   startSession(target: LivyTarget, token: CancelToken): Promise<void>;
@@ -174,6 +185,7 @@ export class LivySessionManager implements ILivySessionManager {
   private readonly sessions = new Map<string, Promise<string>>();
   /** Per-session promise chain: executions queue instead of racing. */
   private readonly queues = new Map<string, Promise<unknown>>();
+  private readonly activeSetups = new Map<string, string>();
   private readonly pollIntervalMs: number;
   private readonly sessionStartTimeoutMs: number;
   private readonly sleep: (ms: number) => Promise<void>;
@@ -194,6 +206,10 @@ export class LivySessionManager implements ILivySessionManager {
     this.bootstrap = options.bootstrap;
     this.logger = options.logger;
     this.now = options.now;
+  }
+
+  hasSession(target: LivyTarget): boolean {
+    return this.store.get(sessionKey(target)) !== undefined;
   }
 
   async startSession(target: LivyTarget, token: CancelToken): Promise<void> {
@@ -239,6 +255,7 @@ export class LivySessionManager implements ILivySessionManager {
     token: CancelToken,
     diagnostics?: ExecutionDiagnostics,
     role: StatementRole = "user",
+    setup?: LivySessionSetup,
   ): Promise<LivyStatementResult> {
     const trace =
       diagnostics ?? new ExecutionDiagnostics(this.logger, this.now);
@@ -258,6 +275,7 @@ export class LivySessionManager implements ILivySessionManager {
             token,
             trace,
             role,
+            setup,
           );
           outcome = result.status;
           return result;
@@ -279,6 +297,7 @@ export class LivySessionManager implements ILivySessionManager {
     const sessionId = this.store.get(key);
     this.sessions.delete(key);
     this.store.set(key, undefined);
+    this.clearSetupState(target, sessionId);
     if (sessionId === undefined) {
       return;
     }
@@ -302,6 +321,7 @@ export class LivySessionManager implements ILivySessionManager {
     // instead of orphaning a new session per reload.
     this.sessions.clear();
     this.queues.clear();
+    this.activeSetups.clear();
   }
 
   private async executeNow(
@@ -311,13 +331,65 @@ export class LivySessionManager implements ILivySessionManager {
     token: CancelToken,
     diagnostics: ExecutionDiagnostics,
     role: StatementRole,
+    setup?: LivySessionSetup,
   ): Promise<LivyStatementResult> {
     this.throwIfCancelled(token, target);
-    let session: Promise<string> | undefined;
-    const sessionId = await diagnostics.measure("session.acquire", () => {
-      session = this.getOrCreateSession(target, token, diagnostics);
-      return session;
-    });
+    const session = this.getOrCreateSession(target, token, diagnostics);
+    const sessionId = await diagnostics.measure(
+      "session.acquire",
+      () => session,
+    );
+    if (setup !== undefined) {
+      if (this.activeSetupFor(target, sessionId) !== setup.key) {
+        this.clearSetupState(target, sessionId);
+        let result: LivyStatementResult;
+        try {
+          const statement = await setup.createStatement();
+          result = await this.executeStatement(
+            target,
+            sessionId,
+            session,
+            statement.code,
+            statement.kind,
+            token,
+            diagnostics,
+            "module-setup",
+          );
+        } finally {
+          await setup.cleanup?.().catch(() => undefined);
+        }
+        if (result.status !== "ok") {
+          return { ...result, setupFailed: true };
+        }
+        this.activeSetups.set(this.setupCacheKey(target, sessionId), setup.key);
+        this.store.set(
+          `${sessionKey(target)}/setup-state`,
+          JSON.stringify({ sessionId, key: setup.key }),
+        );
+      }
+    }
+    return this.executeStatement(
+      target,
+      sessionId,
+      session,
+      code,
+      kind,
+      token,
+      diagnostics,
+      role,
+    );
+  }
+
+  private async executeStatement(
+    target: LivyTarget,
+    sessionId: string,
+    session: Promise<string>,
+    code: string,
+    kind: string,
+    token: CancelToken,
+    diagnostics: ExecutionDiagnostics,
+    role: StatementRole,
+  ): Promise<LivyStatementResult> {
     const base = livyBase(target);
 
     let statement: LivyStatement;
@@ -361,6 +433,48 @@ export class LivySessionManager implements ILivySessionManager {
       () => this.pollStatement(target, sessionId, statementId, token, session),
       (result) => result.status,
     );
+  }
+
+  private activeSetupFor(
+    target: LivyTarget,
+    sessionId: string,
+  ): string | undefined {
+    const cacheKey = this.setupCacheKey(target, sessionId);
+    const active = this.activeSetups.get(cacheKey);
+    if (active !== undefined) return active;
+    try {
+      const saved: unknown = JSON.parse(
+        this.store.get(`${sessionKey(target)}/setup-state`) ?? "null",
+      );
+      if (
+        typeof saved === "object" &&
+        saved !== null &&
+        "sessionId" in saved &&
+        saved.sessionId === sessionId &&
+        "key" in saved &&
+        typeof saved.key === "string"
+      ) {
+        this.activeSetups.set(cacheKey, saved.key);
+        return saved.key;
+      }
+    } catch {
+      // An invalid local setup cache only causes a safe reinstall.
+    }
+    return undefined;
+  }
+
+  private setupCacheKey(target: LivyTarget, sessionId: string): string {
+    return `${sessionKey(target)}\n${sessionId}`;
+  }
+
+  private clearSetupState(
+    target: LivyTarget,
+    sessionId: string | undefined,
+  ): void {
+    this.store.set(`${sessionKey(target)}/setup-state`, undefined);
+    if (sessionId !== undefined) {
+      this.activeSetups.delete(this.setupCacheKey(target, sessionId));
+    }
   }
 
   private async pollStatement(
@@ -632,6 +746,7 @@ export class LivySessionManager implements ILivySessionManager {
       this.throwIfSuperseded(target, acquisition);
       if (this.store.get(key) === persisted) {
         this.store.set(key, undefined);
+        this.clearSetupState(target, persisted);
       }
     }
 
@@ -699,6 +814,7 @@ export class LivySessionManager implements ILivySessionManager {
           this.store.get(key) === sessionId
         ) {
           this.store.set(key, undefined);
+          this.clearSetupState(target, sessionId);
         }
         const reason = sessionDiagnostics(session);
         throw new LivyError(
@@ -830,6 +946,7 @@ export class LivySessionManager implements ILivySessionManager {
         this.sessions.delete(key);
         if (this.store.get(key) === sessionId) {
           this.store.set(key, undefined);
+          this.clearSetupState(target, sessionId);
         }
       }
       const detail = cause.message.split(" Next step:")[0];
@@ -918,7 +1035,11 @@ function variableLibraryHint(
 function sessionKey(target: LivyTarget): string {
   const environment =
     target.environmentId === undefined ? "" : `/${target.environmentId}`;
-  return `livy-session/${target.tenantId}/${target.workspaceId}/${target.lakehouseId}${environment}`;
+  const scope =
+    target.sessionScope === undefined
+      ? ""
+      : `/notebook-${createHash("sha256").update(target.sessionScope).digest("hex")}`;
+  return `livy-session/${target.tenantId}/${target.workspaceId}/${target.lakehouseId}${environment}${scope}`;
 }
 
 /** Attaches the Environment the way Fabric documents it for Livy sessions. */

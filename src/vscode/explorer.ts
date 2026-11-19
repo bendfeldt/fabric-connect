@@ -7,9 +7,8 @@
  * tenant's connections. Every call is a GET (or the allowlisted
  * getDefinition read); nothing here changes a workspace.
  *
- * The whole tree is the "Fabric" view in VS Code's Explorer side bar; the
- * Fabric Activity Bar container shows its parts as separate views (see
- * `ExplorerRoot`).
+ * The whole tree is the "Fabric" view in VS Code's Explorer side bar and
+ * includes the Connections group.
  *
  * Actions: copy ID / name / OneLake path / SQL connection string, preview a
  * table (on the connected compute) or a file, pull an item into the repo,
@@ -33,7 +32,11 @@ import {
   listWorkspaces,
   mergeCapacities,
 } from "../core/fabricCatalog";
-import { getItemDefinition, itemFolderName } from "../core/itemDefinition";
+import {
+  getItemDefinition,
+  itemFolderName,
+  writeItemDefinitionFolder,
+} from "../core/itemDefinition";
 import type { ILivySessionManager } from "../core/livySessionManager";
 import type { NameCache } from "../core/nameCache";
 import { type OneLakeClient, abfssUri } from "../core/oneLakeClient";
@@ -68,11 +71,6 @@ type Node =
   | OneLakeNode
   | { kind: "connection"; label: string; description: string; id: string };
 
-/**
- * What a view shows at the top: the whole tree, or just the connections.
- */
-export type ExplorerRoot = "all" | "connections";
-
 /** Item types with a SQL connection string. */
 const SQL_ITEMS = new Set(["Lakehouse", "Warehouse", "SQLEndpoint"]);
 const PREVIEW_BYTES = 64 * 1024;
@@ -100,7 +98,6 @@ export class FabricExplorer
     private readonly selectedCapacity: () => Promise<string | undefined>,
     /** The compute with its host Lakehouse, asked for when missing. */
     private readonly requireHost: () => Promise<HostedCompute>,
-    private readonly root: ExplorerRoot = "all",
   ) {}
 
   dispose(): void {
@@ -244,16 +241,11 @@ export class FabricExplorer
           },
         ];
       }
-      switch (this.root) {
-        case "all":
-          return [
-            { kind: "group", group: "capacities" },
-            { kind: "group", group: "unassigned" },
-            { kind: "group", group: "connections" },
-          ];
-        default:
-          return this.children({ kind: "group", group: this.root });
-      }
+      return [
+        { kind: "group", group: "capacities" },
+        { kind: "group", group: "unassigned" },
+        { kind: "group", group: "connections" },
+      ];
     }
     const tenantId = await this.tenant();
     if (tenantId === undefined) {
@@ -581,15 +573,10 @@ export class FabricExplorer
           node.item.id,
         ),
     );
-    await fs.mkdir(folder, { recursive: true });
-    for (const part of parts) {
-      const target = path.join(folder, ...part.path.split("/"));
-      await fs.mkdir(path.dirname(target), { recursive: true });
-      await fs.writeFile(target, part.data);
-    }
-    if (!parts.some((p) => p.path === ".platform")) {
-      await fs.writeFile(
-        path.join(folder, ".platform"),
+    await writeItemDefinitionFolder(
+      folder,
+      parts,
+      new TextEncoder().encode(
         JSON.stringify(
           {
             $schema:
@@ -603,8 +590,8 @@ export class FabricExplorer
           undefined,
           2,
         ) + "\n",
-      );
-    }
+      ),
+    );
     void vscode.window.showInformationMessage(
       `Pulled '${node.item.displayName}' into ${path.relative(this.workspaceRoot ?? parent, folder) || folder} (${parts.length} file${parts.length === 1 ? "" : "s"}). It is local now; nothing syncs back.`,
     );

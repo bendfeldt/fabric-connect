@@ -313,34 +313,29 @@ export class CodeRunner implements vscode.Disposable {
     status: ExecutionOutcome;
     tables: DisplayTable[];
   }> {
-    if (kind === "pyspark") {
-      const prelude = await diagnostics.measure("modules.prepare", async () =>
-        this.run.prepare?.(host.target),
-      );
-      if (prelude !== undefined) {
-        const staged = await this.livy.execute(
-          host.target,
-          prelude,
-          "pyspark",
-          token,
-          diagnostics,
-          "module-setup",
-        );
-        if (staged.status !== "ok") {
-          await diagnostics.measure("output.render", async () => {
-            this.print(staged, "staging local modules");
-          });
-          return { ok: false, status: staged.status, tables: [] };
-        }
-      }
-    }
+    const setup =
+      kind === "pyspark"
+        ? await diagnostics.measure("modules.prepare", async () =>
+            this.run.prepare?.(host.target),
+          )
+        : undefined;
+    const context =
+      kind === "pyspark" ? await this.run.context?.(host.target) : undefined;
     const result = await this.livy.execute(
       host.target,
-      code,
+      context === undefined ? code : `${context}\n${code}`,
       kind,
       token,
       diagnostics,
+      "user",
+      setup,
     );
+    if (result.setupFailed) {
+      await diagnostics.measure("output.render", async () => {
+        this.print(result, "staging local modules");
+      });
+      return { ok: false, status: result.status, tables: [] };
+    }
     const tables = await diagnostics.measure("output.render", async () => {
       const tables = this.print(result, entity);
       if (result.status === "error") {

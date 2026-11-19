@@ -9,6 +9,7 @@
  * `awaitOperation` follows it through `/operations/{id}`.
  */
 
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { PullError } from "./errors";
 import type { FabricResponse, IFabricApiClient } from "./types";
@@ -17,6 +18,79 @@ export interface DefinitionPart {
   /** Path inside the item folder, e.g. `notebook-content.py`. */
   readonly path: string;
   readonly data: Uint8Array;
+}
+
+/** Writes a complete pulled definition without leaving a partial item folder. */
+export async function writeItemDefinitionFolder(
+  folder: string,
+  parts: readonly DefinitionPart[],
+  fallbackPlatform: Uint8Array,
+): Promise<void> {
+  let staging: string | undefined;
+  try {
+    staging = await fs.mkdtemp(
+      path.join(
+        path.dirname(folder),
+        `.${path.basename(folder)}.fabric-connect-`,
+      ),
+    );
+    for (const part of parts) {
+      const target = path.join(staging, ...part.path.split("/"));
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(target, part.data);
+    }
+    if (!parts.some((part) => part.path === ".platform")) {
+      await fs.writeFile(path.join(staging, ".platform"), fallbackPlatform);
+    }
+    if (await pathExists(folder)) {
+      throw new PullError(
+        `Cannot pull into '${path.basename(folder)}': the folder already exists.`,
+        {
+          operation: "pull item",
+          entity: `folder ${folder}`,
+          remediation:
+            "Local is the source of truth: pick another folder, or delete/rename the existing one first.",
+        },
+      );
+    }
+    await fs.rename(staging, folder);
+    staging = undefined;
+  } catch (cause) {
+    let cleanupCause: unknown;
+    if (staging !== undefined) {
+      try {
+        await fs.rm(staging, { recursive: true, force: true });
+      } catch (error) {
+        cleanupCause = error;
+      }
+    }
+    if (cleanupCause !== undefined) {
+      throw new PullError(
+        `Failed to write pulled item '${path.basename(folder)}' and remove its temporary folder.`,
+        {
+          operation: "pull item",
+          entity: `folder ${folder}`,
+          remediation: `Remove '${staging}' manually, then check available disk space and folder permissions before retrying.`,
+          cause: new AggregateError([cause, cleanupCause]),
+        },
+      );
+    }
+    if (cause instanceof PullError) throw cause;
+    throw new PullError(
+      `Failed to write pulled item '${path.basename(folder)}'.`,
+      {
+        operation: "pull item",
+        entity: `folder ${folder}`,
+        remediation:
+          "Check available disk space and folder permissions, then retry.",
+        cause,
+      },
+    );
+  }
+}
+
+async function pathExists(file: string): Promise<boolean> {
+  return (await fs.stat(file).catch(() => undefined)) !== undefined;
 }
 
 export interface OperationOptions {

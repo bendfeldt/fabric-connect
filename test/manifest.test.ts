@@ -303,13 +303,38 @@ test("a Fabric Activity Bar container holds the views, next to the Explorer's", 
       "fabricConnect.configuration",
       "fabricConnect.repo",
       "fabricConnect.lakehouses",
-      "fabricConnect.connections",
     ],
   );
   assert.deepEqual(
     (manifest.contributes.views["explorer"] ?? []).map((v) => v.id),
     ["fabricConnect.explorer"],
     "the Explorer side bar keeps its Fabric view",
+  );
+});
+
+test("Variable Library picker is declared and the duplicate Connections view is absent", () => {
+  const commands = manifest.contributes.commands.map(
+    (command) => command.command,
+  );
+  assert.ok(commands.includes("fabric-connect.variableLibrary"));
+  const setting = manifest.contributes.configuration.properties[
+    "fabric-connect.variableLibraries"
+  ] as { maxProperties?: number };
+  assert.equal(setting.maxProperties, 1);
+  const viewIds = Object.values(manifest.contributes.views)
+    .flat()
+    .map((view) => view.id);
+  assert.ok(!viewIds.includes("fabricConnect.connections"));
+  for (const entry of manifest.contributes.menus["view/item/context"] ?? []) {
+    assert.ok(!entry.when?.includes("fabricConnect.connections"));
+    assert.ok(!entry.when?.includes("explorer|connections"));
+  }
+  assert.ok(
+    manifest.contributes.menus["view/item/context"].some(
+      (entry) =>
+        entry.command === "fabric-connect.variableLibrary" &&
+        entry.when?.includes("fabricConfigVariableLibrary"),
+    ),
   );
 });
 

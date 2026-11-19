@@ -61,7 +61,7 @@ test("real execution consumers preserve failures and render hints separately acr
       return request === "vscode" ? vscode : load.call(this, request, parent, isMain);
     };
     const root = ${JSON.stringify(path.resolve(__dirname, "../src"))};
-    const { FabricNotebookController, toCellOutputs } = require(root + "/vscode/notebookController.js");
+    const { FabricNotebookController, toCellOutputs, resolveNotebookHost } = require(root + "/vscode/notebookController.js");
     const { CodeRunner } = require(root + "/vscode/codeRunner.js");
     const { LivySessionManager } = require(root + "/core/livySessionManager.js");
     const { ExecutionDiagnostics } = require(root + "/core/executionDiagnostics.js");
@@ -94,7 +94,10 @@ test("real execution consumers preserve failures and render hints separately acr
     const livy = new LivySessionManager(api, { get() {}, set() {} }, { logger });
     const run = {
       diagnostics: () => new ExecutionDiagnostics(logger),
-      prepare: async () => "module prelude",
+    prepare: async () => ({
+      key: "test-modules",
+      createStatement: async () => ({ code: "module prelude", kind: "pyspark" }),
+    }),
       importHint: async () => "Existing import guidance"
     };
     const compute = async () => { if (failHost) throw new Error("host failed"); return target; };
@@ -104,7 +107,8 @@ test("real execution consumers preserve failures and render hints separately acr
     const notebook = { uri: notebookUri, metadata: {}, notebookType: "fabric-notebook-source" };
     const cell = { index: 0, document };
     const controller = new FabricNotebookController(livy, targets, compute, run, () => target.tenantId, withHost, async () => ({}));
-    const runner = new CodeRunner(api, livy, targets, compute, run, {}, () => target.tenantId, withHost, async () => host, { show() {} });
+    const runner = new CodeRunner(api, livy, targets, compute, run, {}, () => target.tenantId, withHost,
+      async uri => resolveNotebookHost({ ...notebook, uri }, targets, compute, () => target.tenantId), { show() {} });
     (async () => {
       await controllers[0].executeHandler([cell], notebook);
       const rendered = outputs.find(entry => entry.value).value;
@@ -149,6 +153,20 @@ test("real execution consumers preserve failures and render hints separately acr
       const logCount = logs.length;
       await runner.runSelection();
       assert.equal(logs.length, logCount);
+      const contexts = [];
+      run.context = async scopedTarget => {
+        contexts.push(scopedTarget);
+        return "_private_setup = 1";
+      };
+      await controllers[0].executeHandler([cell], notebook);
+      await runner.runNotebookCells(notebookUri, "all");
+      assert.equal(contexts.length, 2);
+      assert.ok(contexts.every(item => item.sessionScope === notebookUri.toString()));
+      assert.ok(submitted.slice(-4).filter(code => code.startsWith("_private_setup = 1\\n")).length === 2);
+      run.context = async () => { throw new Error("configuration unavailable"); };
+      const beforeContextFailure = submitted.length;
+      await runner.runNotebookCells(notebookUri, "all");
+      assert.equal(submitted.length, beforeContextFailure, "failed context setup submits no additional statements after cached module setup");
       runner.dispose();
       controller.dispose();
     })().catch(error => { console.error(error); process.exitCode = 1; });

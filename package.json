@@ -207,7 +207,12 @@
       },
       {
         "command": "fabric-connect.pythonModules",
-        "title": "Fabric: Python Modules (Local or Remote)",
+        "title": "Fabric: Python Modules (Local, Wheel, or Remote)",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "fabric-connect.variableLibrary",
+        "title": "Fabric: Variable Library",
         "icon": "$(edit)"
       },
       {
@@ -331,21 +336,44 @@
           "default": [],
           "description": "Workspace-relative folders whose Python modules are staged to the Spark session before Python code runs, so `import` uses your working tree (e.g. [\"src\"]). When empty, Local mode uses the folders pyproject.toml names, else `src`."
         },
+        "fabric-connect.variableLibraries": {
+          "type": "object",
+          "maxProperties": 1,
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "default": {},
+          "scope": "resource",
+          "description": "Explicit Variable Library names mapped to selected variable names. Notebook cells receive these active workspace values through a private execution bridge. Definition reads require existing item read/write permission; values are not logged. Empty disables library reads."
+        },
         "fabric-connect.pythonModules": {
           "type": "string",
           "enum": [
             "auto",
             "local",
+            "wheel",
             "remote"
           ],
           "enumDescriptions": [
             "Local when 'fabric-connect.sourceRoots' is set, otherwise Remote.",
             "Import your working tree: its packages are staged to the session before Python code runs.",
+            "Install a selected workspace wheel temporarily in the Livy session.",
             "Import what the Fabric environment has installed (e.g. your published wheel). Nothing is staged."
           ],
           "default": "auto",
           "scope": "resource",
           "description": "Where Python `import` finds your packages. Change it with 'Fabric: Python Modules' or the status bar."
+        },
+        "fabric-connect.localWheel": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Workspace-relative .whl path selected by 'Fabric: Python Modules'. Installed temporarily into Livy sessions; never published or attached to a Fabric Environment."
         }
       }
     },
@@ -487,7 +515,7 @@
       "view/title": [
         {
           "command": "fabric-connect.explorer.refresh",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/",
+          "when": "view == fabricConnect.explorer",
           "group": "navigation"
         },
         {
@@ -514,47 +542,47 @@
         },
         {
           "command": "fabric-connect.explorer.pullItem",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem =~ /fabricItem/",
+          "when": "view == fabricConnect.explorer && viewItem =~ /fabricItem/",
           "group": "1_pull"
         },
         {
           "command": "fabric-connect.explorer.copySqlConnectionString",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem =~ /\\bsql\\b/",
+          "when": "view == fabricConnect.explorer && viewItem =~ /\\bsql\\b/",
           "group": "2_copy"
         },
         {
           "command": "fabric-connect.explorer.copyId",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem =~ /fabric(Item|Workspace|Capacity|Connection)/",
+          "when": "view == fabricConnect.explorer && viewItem =~ /fabric(Item|Workspace|Capacity|Connection)/",
           "group": "2_copy"
         },
         {
           "command": "fabric-connect.explorer.copyName",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem =~ /fabric/",
+          "when": "view == fabricConnect.explorer && viewItem =~ /fabric/",
           "group": "2_copy"
         },
         {
           "command": "fabric-connect.explorer.copyOneLakePath",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem =~ /fabric(Table|Folder|File|Item)/",
+          "when": "view == fabricConnect.explorer && viewItem =~ /fabric(Table|Folder|File|Item)/",
           "group": "2_copy"
         },
         {
           "command": "fabric-connect.explorer.previewTable",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem == fabricTable",
+          "when": "view == fabricConnect.explorer && viewItem == fabricTable",
           "group": "inline"
         },
         {
           "command": "fabric-connect.explorer.previewTable",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem == fabricTable",
+          "when": "view == fabricConnect.explorer && viewItem == fabricTable",
           "group": "0_preview"
         },
         {
           "command": "fabric-connect.explorer.previewFile",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem == fabricFile",
+          "when": "view == fabricConnect.explorer && viewItem == fabricFile",
           "group": "0_preview"
         },
         {
           "command": "fabric-connect.explorer.openInFabric",
-          "when": "view =~ /^fabricConnect\\.(explorer|connections)$/ && viewItem =~ /fabric(Item|Workspace)/",
+          "when": "view == fabricConnect.explorer && viewItem =~ /fabric(Item|Workspace)/",
           "group": "3_open"
         },
         {
@@ -640,6 +668,11 @@
         {
           "command": "fabric-connect.pythonModules",
           "when": "view == fabricConnect.configuration && viewItem == fabricConfigModules",
+          "group": "inline"
+        },
+        {
+          "command": "fabric-connect.variableLibrary",
+          "when": "view == fabricConnect.configuration && viewItem == fabricConfigVariableLibrary",
           "group": "inline"
         },
         {
@@ -791,11 +824,6 @@
         {
           "id": "fabricConnect.lakehouses",
           "name": "Lakehouses"
-        },
-        {
-          "id": "fabricConnect.connections",
-          "name": "Connections",
-          "visibility": "collapsed"
         }
       ],
       "explorer": [
@@ -863,7 +891,7 @@
           {
             "id": "runFiles",
             "title": "Run local files and your own modules",
-            "description": "Run a .py/.sql/.scala/.r file or selection on Fabric. Choose Local or Remote Python modules; auto uses Local when explicit source roots are set.\n[Python module mode](command:fabric-connect.pythonModules)\n[Set source roots](command:workbench.action.openSettings?%5B%22fabric-connect.sourceRoots%22%5D)",
+            "description": "Run a .py/.sql/.scala/.r file or selection on Fabric. Choose Local, Wheel, or Remote Python modules; auto uses Local when explicit source roots are set.\n[Python module mode](command:fabric-connect.pythonModules)\n[Set source roots](command:workbench.action.openSettings?%5B%22fabric-connect.sourceRoots%22%5D)",
             "media": {
               "markdown": "media/walkthrough/run-files.md"
             },
@@ -909,7 +937,7 @@
     "watch": "tsc -watch -p ./",
     "test": "npm run clean && tsc -p ./ && node --test out/test/*.test.js",
     "vscode:prepublish": "npm run clean && npm run compile",
-    "package": "npx --yes @vscode/vsce@4.0.0 package",
+    "package": "npx --yes @vscode/vsce@4.1.1 package",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

@@ -1,8 +1,8 @@
 /**
- * Stages the working tree's Python modules to the session host before
- * Python code runs (Python modules: Local), and removes this window's
- * scratch folder when a session stops. With Python modules: Remote nothing
- * is staged and `import` uses what the Fabric environment has installed.
+ * Sends the working tree's Python modules to the session before Python
+ * code runs (Python modules: Local), and stages Spark job files in this
+ * window's OneLake scratch folder. With Python modules: Remote nothing is
+ * sent and `import` uses what the Fabric environment has installed.
  */
 
 import * as crypto from "node:crypto";
@@ -10,30 +10,28 @@ import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import type { LivyTarget } from "../core/livySessionManager";
+import type { LivySessionSetup, LivyTarget } from "../core/livySessionManager";
 import { StagingError } from "../core/errors";
 import {
   bundleModules,
-  bundlePath,
+  bundleFileName,
   describeModules,
   failedImportPackage,
   localModuleHint,
   type ModulesDescription,
   moduleImportCode,
-  modulesFolder,
   type PythonModuleMode,
   resolveModuleMode,
   scratchFolder,
   sourceRootsFromPyproject,
   stagedFileName,
+  wheelInstallCode,
 } from "../core/moduleStaging";
 import { type OneLakeClient, abfssUri } from "../core/oneLakeClient";
 
 export class ModuleStager {
   /** One scratch folder per VS Code window, so windows never collide. */
   readonly runId = `run-${new Date().toISOString().slice(0, 10)}-${crypto.randomBytes(4).toString("hex")}`;
-  /** Bundle hashes already uploaded, per host Lakehouse. */
-  private readonly uploaded = new Map<string, Set<string>>();
   private readonly statusBar: vscode.StatusBarItem;
   private readonly changed = new vscode.EventEmitter<void>();
   private readonly watchers: vscode.Disposable[] = [];
@@ -64,7 +62,8 @@ export class ModuleStager {
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (
           e.affectsConfiguration("fabric-connect.pythonModules") ||
-          e.affectsConfiguration("fabric-connect.sourceRoots")
+          e.affectsConfiguration("fabric-connect.sourceRoots") ||
+          e.affectsConfiguration("fabric-connect.localWheel")
         ) {
           this.changed.fire();
         }
@@ -83,9 +82,11 @@ export class ModuleStager {
 
   /** The mode and local packages, as both the status bar and the view show them. */
   async describe(): Promise<ModulesDescription> {
-    return describeModules(this.mode(), [
-      ...(await this.localPackages()).keys(),
-    ]);
+    return describeModules(
+      this.mode(),
+      [...(await this.localPackages()).keys()],
+      this.selectedWheelName(),
+    );
   }
 
   /** Where `import` finds your packages, from the settings. */
@@ -97,14 +98,134 @@ export class ModuleStager {
     );
   }
 
+  selectedWheelName(): string | undefined {
+    const selected = vscode.workspace
+      .getConfiguration("fabric-connect")
+      .get<string>("localWheel", "");
+    return selected.length === 0 ? undefined : path.basename(selected);
+  }
+
+  private async prepareWheel(target: LivyTarget): Promise<LivySessionSetup> {
+    if (this.workspaceRoot === undefined) {
+      throw new StagingError("Select a workspace before using a local wheel.", {
+        operation: "stage local wheel",
+        remediation:
+          "Open the repository folder, then select a wheel with 'Fabric: Python Modules'.",
+      });
+    }
+    const relative = vscode.workspace
+      .getConfiguration("fabric-connect")
+      .get<string>("localWheel", "");
+    if (relative.length === 0) {
+      throw new StagingError("No local wheel is selected.", {
+        operation: "stage local wheel",
+        remediation: "Run 'Fabric: Python Modules' and choose 'Local wheel…'.",
+      });
+    }
+    const candidate = path.resolve(this.workspaceRoot, relative);
+    let filePath: string;
+    let bytes: Uint8Array;
+    try {
+      const rootPath = await fs.realpath(this.workspaceRoot);
+      filePath = await fs.realpath(candidate);
+      const rel = path.relative(rootPath, filePath);
+      if (
+        rel === ".." ||
+        rel.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(rel)
+      ) {
+        throw new Error("The selected wheel resolves outside the workspace.");
+      }
+      if (path.extname(filePath).toLowerCase() !== ".whl") {
+        throw new Error("The selected file is not a .whl wheel.");
+      }
+      if (!(await fs.stat(filePath)).isFile()) {
+        throw new Error("The selected wheel is not a regular file.");
+      }
+      bytes = new Uint8Array(await fs.readFile(filePath));
+    } catch (cause) {
+      throw new StagingError(`Cannot read selected wheel '${relative}'.`, {
+        operation: "stage local wheel",
+        entity: relative,
+        remediation:
+          "Restore a readable .whl file inside this workspace, then select it again with 'Fabric: Python Modules'.",
+        cause,
+      });
+    }
+    const hash = crypto.createHash("sha256").update(bytes).digest("hex");
+    const scratchName = `wheel-${crypto.randomBytes(8).toString("hex")}`;
+    const relPath = `${this.stagedFolder(scratchName)}/${stagedFileName(path.basename(filePath))}`;
+    return {
+      key: `wheel:${hash}`,
+      createStatement: async () => {
+        await this.oneLake.uploadFile(
+          {
+            tenantId: target.tenantId,
+            workspaceId: target.workspaceId,
+            itemId: target.lakehouseId,
+          },
+          relPath,
+          bytes,
+        );
+        return {
+          code: wheelInstallCode(
+            abfssUri(target.workspaceId, target.lakehouseId, relPath),
+          ),
+          kind: "pyspark",
+        };
+      },
+      cleanup: () => this.deleteStaged(target, scratchName),
+    };
+  }
+
+  private async validateWheelSelection(file: string): Promise<string> {
+    if (this.workspaceRoot === undefined) {
+      throw new StagingError("The selected wheel must be inside a workspace.", {
+        operation: "select local wheel",
+        remediation:
+          "Open the repository folder, then choose a wheel inside it.",
+      });
+    }
+    try {
+      const root = await fs.realpath(this.workspaceRoot);
+      const resolved = await fs.realpath(file);
+      const relative = path.relative(root, resolved);
+      if (
+        relative.length === 0 ||
+        relative === ".." ||
+        relative.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(relative)
+      ) {
+        throw new Error("The wheel must be a file inside the workspace.");
+      }
+      if (path.extname(resolved).toLowerCase() !== ".whl") {
+        throw new Error("Choose a file with the .whl extension.");
+      }
+      if (!(await fs.stat(resolved)).isFile()) {
+        throw new Error("The selected wheel is not a regular file.");
+      }
+      await fs.access(resolved, fs.constants.R_OK);
+      return relative.split(path.sep).join("/");
+    } catch (cause) {
+      throw new StagingError(`Cannot use '${file}' as a local wheel.`, {
+        operation: "select local wheel",
+        entity: file,
+        remediation:
+          "Choose a readable .whl file inside the workspace. The selected file is stored as a workspace-relative path.",
+        cause,
+      });
+    }
+  }
+
   /**
    * Python to run before the user's code so `import` sees the local
    * sources, or undefined when Python modules are Remote.
    */
-  async prepare(target: LivyTarget): Promise<string | undefined> {
-    if (this.workspaceRoot === undefined || this.mode() === "remote") {
-      return undefined;
-    }
+  async prepare(target: LivyTarget): Promise<LivySessionSetup | undefined> {
+    const mode = this.mode();
+    if (mode === "remote") return undefined;
+    if (mode === "wheel") return this.prepareWheel(target);
+    if (this.workspaceRoot === undefined) return undefined;
     const roots = await this.sourceRoots();
     if (roots.length === 0) {
       throw new StagingError(
@@ -128,26 +249,17 @@ export class ModuleStager {
     if (bundle === undefined) {
       return undefined;
     }
-    const relPath = bundlePath(this.runId, bundle.hash);
-    const key = hostKey(target);
-    const done = this.uploaded.get(key) ?? new Set<string>();
-    if (!done.has(bundle.hash)) {
-      await this.oneLake.uploadFile(
-        {
-          tenantId: target.tenantId,
-          workspaceId: target.workspaceId,
-          itemId: target.lakehouseId,
-        },
-        relPath,
-        bundle.zip,
-      );
-      done.add(bundle.hash);
-      this.uploaded.set(key, done);
-    }
-    return moduleImportCode(
-      abfssUri(target.workspaceId, target.lakehouseId, relPath),
-      bundle.topLevel,
-    );
+    return {
+      key: `local:${bundle.hash}`,
+      createStatement: async () => ({
+        code: moduleImportCode(
+          Buffer.from(bundle.zip).toString("base64"),
+          bundleFileName(bundle.hash),
+          bundle.topLevel,
+        ),
+        kind: "pyspark",
+      }),
+    };
   }
 
   /**
@@ -230,8 +342,15 @@ export class ModuleStager {
     return local === undefined ? undefined : localModuleHint(name, local);
   }
 
-  /** Lets you pick Local or Remote; saved in this repo's settings. */
-  async pickMode(): Promise<void> {
+  /** Lets you pick a module source; saved in this workspace's settings. */
+  async pickMode(): Promise<
+    | {
+        previous: PythonModuleMode;
+        selected: PythonModuleMode;
+        wheelChanged?: boolean;
+      }
+    | undefined
+  > {
     const packages = [...(await this.localPackages()).values()];
     const current = this.mode();
     const picked = await vscode.window.showQuickPick(
@@ -239,38 +358,84 @@ export class ModuleStager {
         {
           label: "Local",
           mode: "local" as const,
-          description: current === "local" ? "current" : undefined,
+          description:
+            current === "local"
+              ? "current"
+              : current === "wheel"
+                ? "switching resets the active Livy session"
+                : undefined,
           detail:
             packages.length > 0
-              ? `Import your working tree (${packages.join(", ")}), staged to the session's Lakehouse before Python runs.`
-              : "Import your working tree, staged to the session's Lakehouse before Python runs.",
+              ? `Import your working tree (${packages.join(", ")}), sent to the session before Python runs.`
+              : "Import your working tree, sent to the session before Python runs.",
         },
         {
           label: "Remote",
           mode: "remote" as const,
-          description: current === "remote" ? "current" : undefined,
+          description:
+            current === "remote"
+              ? "current"
+              : current === "wheel"
+                ? "switching resets the active Livy session"
+                : undefined,
           detail:
-            "Import what the Fabric environment has installed (e.g. your published wheel). Nothing is staged; a running session keeps code staged earlier until you restart it.",
+            "Import what the Fabric environment has installed (e.g. your published wheel). Choosing Remote from Local or switching from Wheel replaces a running session and clears its state.",
+        },
+        {
+          label: "Local wheel…",
+          mode: "wheel" as const,
+          description: current === "wheel" ? "current" : undefined,
+          detail:
+            "Install a workspace .whl temporarily in each Livy session; choosing it replaces a running session and clears its state.",
         },
       ],
       { title: "Python modules: where should import find your packages?" },
     );
     if (picked === undefined) {
-      return;
+      return undefined;
     }
-    await vscode.workspace
-      .getConfiguration("fabric-connect")
-      .update(
-        "pythonModules",
-        picked.mode,
-        vscode.ConfigurationTarget.Workspace,
-      );
+    const config = vscode.workspace.getConfiguration("fabric-connect");
+    const previousWheel = config.get<string>("localWheel", "");
+    let selectedWheel = previousWheel;
+    if (picked.mode === "wheel") {
+      const selected = await vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectFolders: false,
+        canSelectMany: false,
+        filters: { "Python wheels": ["whl"] },
+      });
+      if (selected === undefined || selected.length === 0) return undefined;
+      selectedWheel = await this.validateWheelSelection(selected[0].fsPath);
+      if (selectedWheel !== previousWheel) {
+        await config.update(
+          "localWheel",
+          selectedWheel,
+          vscode.ConfigurationTarget.Workspace,
+        );
+      }
+    }
+    await config.update(
+      "pythonModules",
+      picked.mode,
+      vscode.ConfigurationTarget.Workspace,
+    );
+    return {
+      previous: current,
+      selected: picked.mode,
+      ...(picked.mode === "wheel"
+        ? { wheelChanged: selectedWheel !== previousWheel }
+        : {}),
+    };
   }
 
   /** Shows the mode in the status bar when the repo has Python packages. */
   async refreshStatus(): Promise<void> {
     const packages = [...(await this.localPackages()).keys()];
-    const shown = describeModules(this.mode(), packages);
+    const shown = describeModules(
+      this.mode(),
+      packages,
+      this.selectedWheelName(),
+    );
     if (
       this.workspaceRoot === undefined ||
       (packages.length === 0 && shown.mode === "remote")
@@ -322,26 +487,6 @@ export class ModuleStager {
       // Best effort: a leftover scratch folder is harmless and small.
     }
   }
-
-  /**
-   * Deletes this window's module bundles on the host (best effort). Spark
-   * job files are left alone: their own run deletes them when the job ends.
-   */
-  async cleanup(target: LivyTarget): Promise<void> {
-    this.uploaded.delete(hostKey(target));
-    try {
-      await this.oneLake.deleteDirectory(
-        {
-          tenantId: target.tenantId,
-          workspaceId: target.workspaceId,
-          itemId: target.lakehouseId,
-        },
-        modulesFolder(this.runId),
-      );
-    } catch {
-      // Best effort: leftover module bundles are harmless and small.
-    }
-  }
 }
 
 async function isDirectory(p: string): Promise<boolean> {
@@ -350,10 +495,6 @@ async function isDirectory(p: string): Promise<boolean> {
 
 async function isFile(p: string): Promise<boolean> {
   return (await fs.stat(p).catch(() => undefined))?.isFile() === true;
-}
-
-function hostKey(target: LivyTarget): string {
-  return `${target.tenantId}/${target.workspaceId}/${target.lakehouseId}`;
 }
 
 async function listFilesRecursive(dir: string): Promise<string[]> {

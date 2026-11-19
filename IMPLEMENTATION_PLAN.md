@@ -10,6 +10,15 @@ includes them.
 
 ## Implemented
 
+- **Local notebook execution bridge:** notebook-scoped Livy sessions and module
+  scratch paths; a private module-level execution descriptor in notebook and
+  source-cell paths; opt-in selected active Variable Library values using the
+  existing definition-read helper. Source uploads record their actual bundle.
+  No notebook-context impersonation, deployment, write-policy broadening or
+  authentication changes. Coordinated consumer changes are in `fabric-aqv`.
+  Live VS Code/Fabric acceptance and installation remain unverified and require
+  separate approval.
+
 - **Local-first policy:** non-GET API requests require the tested allowlist;
   OneLake writes are restricted to `Files/.fabric-connect/`. No workspace item
   provisioning, deployment, remote scheduler runs or pipeline execution.
@@ -35,8 +44,9 @@ includes them.
 - **Sign-in and shipping:** remembered repo account/tenant, tenant picker,
   walkthrough completion/advance, LF normalization, VSIX allowlist, native
   manifest/UI-consumer tests, build/test CI and manually initiated release PRs.
-  The release job has opt-in VS Code Marketplace publishing (GitHub OIDC
-  trusted publishing, `vsce publish --oidc`); see the evidence gap below.
+  The release job requires VS Code Marketplace publishing through GitHub OIDC
+  trusted publishing before creating the matching GitHub Release; see the
+  rollout evidence gap below.
 - **Execution diagnostics:** opt-in client phase timings in notebook and
   text/file paths. The specific Variable Library missing-notebook-state error
   retains its traceback and adds guidance, not a fallback or compatibility shim.
@@ -98,6 +108,15 @@ The native `node:test` suites exercise core behavior through scripted seams,
 and manifest/consumer tests use VS Code API stand-ins. They do not replace a
 running VS Code host or live Fabric verification.
 
+Local notebook execution bridge validation: TypeScript compilation, all 357
+native tests, changed-file Prettier checks and the required independent
+adversarial review passed. The coordinated analytics runtime/configuration
+regressions also passed. Its full repository gate remains blocked by preserved
+pre-existing notebook binding and Load-cell edits, not waived or repaired by this
+feature. No extension installation, remote session, authentication change,
+deployment or business write was performed; live Local/Remote execution and
+deployed Fabric compatibility remain unqualified.
+
 Terminal-session recovery was reproduced locally through real client/manager
 code with scripted service responses. It does not establish why Fabric ended
 the original session or prove recovery on the original live operation.
@@ -124,7 +143,7 @@ implementation; local link/formatting checks and independent review passed.
 No package build or extension installation was performed as part of this
 documentation correction.
 
-The packaging script now pins vsce 4.0.0, with Node 22 in Build and
+The packaging script now pins vsce 4.1.1, with Node 22 in Build and
 release-packaging CI. Node 22+ is required only for packaging; extension
 runtime requirements and the Node 18/20/22 test matrix are unchanged.
 Local packaging verified a normal release version and a development version
@@ -193,13 +212,11 @@ smoke step (docs/testing.md) was not run.
 
 ## Known limits and open evidence gaps
 
-- Marketplace publishing in the Release workflow has never run: no trusted
-  publisher setting, OIDC token exchange or Marketplace upload has been
-  exercised, and `vsce --oidc` is hidden from `--help` (likely preview). Only
-  the YAML parse and the vsce 4.0.0 source (`--oidc`, `--skip-duplicate`,
-  `--packagePath`, publisher read from the packaged manifest) were checked
-  locally. Versions released before the variable is set (including the
-  current one) need a one-time manual publish.
+- Marketplace publishing in the Release workflow has never run: the trusted
+  publisher policy, OIDC token exchange and Marketplace upload remain rollout
+  evidence gaps. The stable pinned vsce CLI exposes `--oidc`,
+  `--skip-duplicate` and `--packagePath`; existing releases are intentionally
+  not backfilled.
 - `extension.ts` command handlers are not reachable by the native tests:
   the Stop and Show Livy Sessions compute-host fallbacks are checked only
   through core `computeHost` and manual smoke steps.
@@ -237,3 +254,54 @@ smoke step (docs/testing.md) was not run.
 - `describeWorkspaceCapacity` is a tested core helper without a UI caller
   since the remote Workspaces view was replaced. Removal would be a separate,
   deliberate code cleanup.
+
+## Variable Library picker and Connections pane cleanup (2026-11-17)
+
+- Added the Configuration Variable library row and `fabric-connect.variableLibrary` picker. It resolves the active notebook target, falls back to the connected host only when no Fabric notebook is active, shows variable names only, preselects saved names, preserves values on cancellation, supports explicit clearing, and rejects empty selections.
+- The existing `fabric-connect.variableLibraries` workspace setting remains the private bridge input and is restricted to one library. The execution descriptor and active-value-set resolution are unchanged; only selected active values continue into notebook execution.
+- Removed the duplicate Activity Bar Connections view and its obsolete root mode/menu conditions. The main Fabric Explorer retains the Connections group and read-only listing/actions.
+- Updated manifest, user and testing documentation, installation notes, changelog and this handoff.
+- Evidence: `npm run compile -- --pretty false` passed. The full `npm test` suite passed (367 tests) after rerunning with local socket permission because one existing fetch-contract test binds `127.0.0.1`. Focused picker, target, manifest, Configuration-row and Explorer-Connections tests also passed.
+- Evidence gap: no live VS Code/Fabric picker smoke test was run; it requires an authorized tenant/VS Code host. Prettier checks passed for the changed TypeScript and Markdown files.
+
+## Notebook target resolution and Remote module switching (2026-11-17)
+
+- Variable Library listing now resolves the active Fabric notebook with the execution host resolver and uses configured compute only when no notebook is active. Invalid/unbound notebook targets still fail instead of falling back to an unrelated workspace.
+- The Local → Remote picker transition now restarts only a tracked session on the active notebook host or existing compute host; no session is created when none is tracked. Direct settings edits do not trigger restart.
+- Evidence: `npm run compile -- --pretty false` passed; the focused target/session/module-picker suites passed (114 tests); the full `npm test` suite passed (372 tests); Prettier checks passed for changed task files.
+- Independent adversarial review passed. Live VS Code/Fabric smoke test remains unavailable and is needed to validate picker-driven session replacement against a real Fabric notebook.
+
+## Select a local Python wheel (2026-11-18)
+
+- Added `wheel` mode, resource-scoped `fabric-connect.localWheel`, a workspace-only `.whl` picker, consistent wheel labels, content hashing, scratch upload/install/cleanup, and keyed session setup that blocks user code on installation failure. Switching into or out of Wheel mode or choosing another wheel restarts only the tracked Livy session.
+- Updated user, security, architecture, testing, README and Unreleased release documentation. Existing `plan.md` was preserved because it belongs to the prior task; the supplied approved plan was the goal contract.
+- Evidence: `npm run compile` passed. `npm test` ran 377 tests: 376 passed; the unrelated local-listener test fails with sandbox `EPERM` on `127.0.0.1`. Explicit Prettier checks pass for changed files; repository-wide `npm run format:check` reports only the pre-existing untracked `.serena/project.yml`. Independent review found the live platform gate is a release blocker.
+- Audit fixes: preserved the original wheel filename inside its unique scratch folder so pip can parse it; changed session setup persistence to one active key so A → B → A reinstalls A; and made pulled item definitions appear only after every file is written, cleaning temporary folders on failure. The previous `{ sessionId, keys }` setup cache is ignored and safely rebuilt.
+- Audit-fix evidence: `npm run compile` passed; focused wheel/Livy/Explorer/UI suites passed 99 tests; full `npm test` passed all 380 tests. Adversarial review found target collisions for numeric Livy IDs, stale active state after a failed setup switch, and hidden temporary-folder cleanup failures; setup cache identity now includes the full target, changed setup attempts clear the previous active marker before running, and cleanup failures report the leftover path and recovery action. The final independent adversarial review passed. Live Fabric validation remains unavailable.
+- Release gate: no live Fabric workspace was used. Direct Livy `%pip` compatibility, native-wheel driver/executor imports, dependency resolution, and scratch cleanup remain unverified. Do not ship Wheel mode until the authorized acceptance checks in `docs/testing.md` pass; on failure, report the platform limitation and do not downgrade native support silently.
+
+## Required Marketplace publishing (2026-11-19)
+
+- Removed the optional repository-variable bypass: every new release now
+  publishes the already packaged VSIX with GitHub OIDC before GitHub Release
+  creation. Missing policy or token-exchange failure leaves no partial GitHub
+  Release. Existing releases remain GitHub-only.
+- Pinned package and publish commands to stable vsce 4.1.1 and documented the
+  exact `bendfeldt/fabric-connect` trusted-publisher policy. Runtime code,
+  authentication and Fabric permissions are unchanged.
+- The release guard now distinguishes absent, complete and partial releases.
+  Only a nonempty `uploaded` VSIX is complete; a `starter` or zero-byte asset is
+  repaired on re-run. Non-404 GitHub API and malformed-response failures stop
+  the job instead of being mistaken for an absent release.
+- Evidence: vsce 4.1.1 `publish --help` exposes `--oidc` and
+  `--skip-duplicate`; the release-workflow regression test was observed failing
+  before the recovery fix and passing after it; `npm test` passed all 383 tests.
+  The focused version-consistency suite, YAML parsing and changed-file Prettier
+  checks passed. Packaging produced a 72-file allowlisted VSIX with identity
+  `bendfeldt.fabric-connect` and manifest version matching the checkout. The
+  first independent review rejected filename-only partial-release detection;
+  the final review passed after the tested state/size classifier replaced it.
+- Rollout remains blocked on the documented live local-wheel release gate,
+  Marketplace policy creation, the first OIDC upload, and verification of the
+  Marketplace listing. No branch push, policy, live Fabric call or release was
+  performed.
