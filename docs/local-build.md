@@ -109,7 +109,9 @@ Increment the development suffix and keep the version and filename aligned.
 For example, the next build/install pair is:
 
 ```sh
-N=$((N + 1)); DEV="$BASE-dev.$N"
+BASE="$(node -p "const [a,b,c]=require('./package.json').version.split('.'); a+'.'+b+'.'+(Number(c)+1)")"
+N=6   # replace with the next unused build number
+DEV="$BASE-dev.$N"
 npm run package -- "$DEV" \
   --no-git-tag-version \
   --no-update-package-json \
@@ -117,8 +119,8 @@ npm run package -- "$DEV" \
   code --install-extension "fabric-connect-$DEV.vsix" --force
 ```
 
-(`BASE` and `N` live in your shell session. In a new shell, run the first
-block again with a higher `N`.)
+`BASE`, `N`, and `DEV` live only in the current shell session. Set `N` to the
+next unused build number each time; the example uses `6` only as an illustration.
 
 For fixed-name builds, repeat the alternative build command and install
 `fabric-connect-local.vsix --force`. Older packages can coexist without making
