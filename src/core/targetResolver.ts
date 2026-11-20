@@ -58,7 +58,7 @@ export class TargetResolver implements ITargetResolver {
   /**
    * Like `resolveTarget`, but returns `undefined` when the folder simply is
    * not configured (no targets file, or no mapping covers the folder) — for
-   * code that can also run on the connected compute. A configuration that
+   * code that can also run on the selected execution host. A configuration that
    * exists but is broken still throws: that is never silently skipped.
    */
   async resolveTargetIfMapped(

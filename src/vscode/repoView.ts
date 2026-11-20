@@ -338,7 +338,7 @@ export class RepoView
     };
   }
 
-  /** Runs a node on the connected compute through the existing commands. */
+  /** Runs a node on the selected execution host through existing commands. */
   async run(node: RepoNode): Promise<void> {
     const kind = runKindOf(node);
     // Only items and folders run; Lakehouse rows and messages do not.

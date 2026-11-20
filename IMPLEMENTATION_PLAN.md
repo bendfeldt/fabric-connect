@@ -314,3 +314,27 @@ smoke step (docs/testing.md) was not run.
   Marketplace policy creation, the first OIDC upload, and verification of the
   Marketplace listing. No branch push, policy, live Fabric call or release was
   performed.
+
+## Lakehouse-first execution host (2026-11-20)
+
+- Replaced capacity-first selection with one atomic workspace → Lakehouse →
+  optional Environment flow. Capacity identity, name and SKU are derived from
+  the selected workspace; a known inactive capacity is rejected.
+- Treats only complete host profiles as connected. Existing capacity-only
+  `"compute"` values remain readable for compatibility but do not set connected
+  context or enable host-dependent execution.
+- Kept the `"compute"` storage key and existing command IDs as hidden aliases;
+  visible commands, Configuration, status, walkthrough and recovery text use
+  execution-host terminology.
+- Lakehouses now browse and bind across all accessible workspaces after sign-in,
+  independent of execution-host selection. Notebook defaults and local bindings
+  continue to run without a saved host.
+- Added regression coverage for atomic host selection, legacy local state,
+  Configuration context, hidden command compatibility, all-workspace browsing
+  and logical Lakehouse binding.
+- Evidence: the focused host/configuration/manifest/workspace suite passed all
+  69 tests; `npm test` passed all 392 tests after allowing the existing
+  loopback-only fetch-contract test to bind `127.0.0.1`; changed-file Prettier
+  and `git diff --check` passed; the independent adversarial review passed.
+- Evidence gap: no live VS Code/Fabric picker or execution smoke test was run;
+  it requires an authorized tenant and extension host.

@@ -49,7 +49,7 @@ export class LakehouseError extends FabricConnectError {}
 export class ComputeError extends FabricConnectError {}
 
 /**
- * Code without a Lakehouse of its own needs the connected capacity's host
+ * Code without a Lakehouse of its own needs the selected execution host
  * Lakehouse, and none is picked yet. The editor layer answers it by asking
  * for one and retrying.
  */

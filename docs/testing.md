@@ -204,7 +204,7 @@ can check with `git diff` that saving changes nothing unexpected.
 - [ ] From the walkthrough, click **Sign In** and press Escape.
       **Expect:** the step stays unticked.
 - [ ] Click **Sign In** again and finish it. **Expect:** the step ticks
-      and the walkthrough moves to **Connect this repo to Fabric compute**;
+      and the walkthrough moves to **Select an execution host**;
       finishing that one ticks it and moves to the notebooks step. After
       **Developer: Reload Window** both steps are still ticked.
 - [ ] The **Fabric** view is in the Explorer side bar. Before you sign in
@@ -269,29 +269,29 @@ versions ask you to type a tenant GUID instead.
       Sign back in.
 - [ ] Press **Esc** at each step. **Expect:** nothing changes and no error.
 
-## 3. Connect to compute
+## 3. Select an execution host
 
-- [ ] Run **Fabric: Connect to Compute**. **Expect:** no tenant prompt
-      (the repo's sign-in is used); capacities with SKU, region and state.
-- [ ] Pick the capacity. **Expect:** no workspace or Lakehouse prompt; the
-      status bar shows the capacity; `.fabric/local.json` has a `"compute"`
-      section with only tenant and capacity; Configuration → Compute →
-      Host Lakehouse says _picked when needed_.
-- [ ] Run a plain `.py` file (**Run File on Fabric**). **Expect:** a pick
-      of the capacity's Lakehouses grouped by workspace (and an Environment
-      when the workspace has any); pick `fc_validation`. The file runs; the
-      status bar and Configuration show the host. Run it again. **Expect:**
-      no prompt.
-- [ ] Configuration → Host Lakehouse → pencil (**Change Host
-      Lakehouse…**). **Expect:** the same pick; the new host is saved.
-- [ ] Connect another capacity. **Expect:** a message that the old host was
-      dropped; Host Lakehouse is _picked when needed_ again.
-- [ ] On a capacity whose workspaces have no Lakehouse, run a `.py` file.
-      **Expect:** an error saying to create a Lakehouse in the Fabric
-      portal — _Fabric Connect never creates items_. Nothing is created.
+- [ ] Run **Fabric: Select Execution Host…**. **Expect:** no tenant prompt
+      (the repo's sign-in is used); accessible workspaces show their derived
+      capacity, SKU and state.
+- [ ] Pick a workspace, `fc_validation`, and optionally an Environment.
+      **Expect:** the status bar and Configuration show the complete host;
+      `.fabric/local.json` has a `"compute"` section with tenant, workspace,
+      Lakehouse and derived capacity metadata.
+- [ ] Run a plain `.py` file (**Run File on Fabric**). **Expect:** it runs on
+      `fc_validation` without another host prompt.
+- [ ] Select a different execution host. **Expect:** the new workspace,
+      Lakehouse, optional Environment and derived capacity replace the old
+      host atomically.
+- [ ] In a tenant with no accessible Lakehouse, select an execution host.
+      **Expect:** no usable host can be selected and nothing is created in
+      Fabric — _Fabric Connect never creates items_.
+- [ ] With a legacy `.fabric/local.json` that has only tenant and capacity,
+      reload. **Expect:** Configuration says the execution host is not
+      selected and running host-dependent code asks for a complete host.
 - [ ] `git status`. **Expect:** `.fabric/local.json` is **not** listed
       (it is gitignored).
-- [ ] Remove the `.gitignore` line, run **Connect to Compute** again.
+- [ ] Remove the `.gitignore` line, run **Select Execution Host** again.
       **Expect:** a warning that `.fabric/local.json` does not appear in
       your root `.gitignore`. Put the line back.
 
@@ -346,11 +346,11 @@ versions ask you to type a tenant GUID instead.
       `fc_validation`, make it the default, save. **Expect:** the status bar
       shows that Lakehouse; `git diff` shows only the notebook's metadata
       changing, as the portal writes it.
-- [ ] Connect a capacity, then click a notebook in **Repo**. **Expect:**
+- [ ] With no execution host selected, click a notebook in **Repo**. **Expect:**
       the **Lakehouses** view title names it; _Attached to this notebook_
       lists its Lakehouses (default starred); each workspace on the
-      connected capacity — and only those — is a group. Disconnect.
-      **Expect:** _Connect to a capacity to see its Lakehouses_.
+      accessible workspace is a group; host selection is not required.
+      **Expect:** browsing and binding remain available.
 - [ ] Lakehouses → expand `fc_validation` → **Tables**. **Expect:** its
       tables (`fc_validation_t`), or schemas then tables. The inline
       preview on a table shows its rows in _Fabric Results_.
@@ -417,12 +417,12 @@ versions ask you to type a tenant GUID instead.
       session starts.
 - [ ] **Fabric: Stop Livy Session**. **Expect:** the session stops (also
       gone from **Show Livy Sessions**).
-- [ ] With an Environment on the compute host, run a plain `.py` file, close
+- [ ] With an Environment on the execution host, run a plain `.py` file, close
       every notebook, then stop that session from **Fabric: Show Livy
       Sessions**. **Expect:** the next file run starts a new session without
       an "expired or was stopped" error.
 - [ ] Run a plain `.py` file, close every notebook, then run **Fabric: Stop
-      Livy Session**. **Expect:** the compute host's session stops; the next
+      Livy Session**. **Expect:** the execution host's session stops; the next
       file run starts a new session.
 - [ ] If a real session expires and the service returns HTTP 404 or the
       recognized matching HTTP 400 terminal/dead-session rejection:
@@ -446,7 +446,7 @@ versions ask you to type a tenant GUID instead.
       **Expect:** the ImportError plus _'pkg' is also in your repo
       (src/pkg) … pick Local_.
 - [ ] Configuration view. **Expect:** a **Python modules** row,
-      _Remote_, next to Compute.
+      _Remote_, next to Execution host.
 - [ ] Click the row (or its pencil) → **Local**. **Expect:** the row shows
       _Local · pkg_ and the status bar _Modules: Local · pkg_ at the same
       time; `.vscode/settings.json` has
@@ -526,21 +526,19 @@ For each item you have:
 
 - [ ] Expand **Capacities → your capacity → workspace → items**.
       **Expect:** items grouped by type.
-- [ ] Configuration → Compute → Capacity. **Expect:** the capacity's real
+- [ ] Configuration → Execution host → Capacity. **Expect:** the capacity's real
       name. _(As a workspace member without capacity rights)_ if it reads
       `Capacity <id prefix>`, the tooltip says why; the pencil (**Name
       This Capacity…**) sets a name that shows in Configuration and the
       status bar, and `.fabric/local.json` gains `"capacityLabel"`.
-- [ ] Explorer side bar → Fabric → Capacities → right-click a capacity →
-      **Connect to This Capacity**. **Expect:** no further prompts;
-      Configuration and the status bar show it.
-- [ ] **Fabric: Connect to Compute**. **Expect:** the connected capacity is
-      first in the list, marked _connected_.
+- [ ] Explorer side bar → Fabric → Capacities. **Expect:** browsing remains
+      read-only; the execution host's derived capacity is marked, but a
+      capacity row has no connect action.
 - [ ] Repo → right-click a notebook → **Open .platform**. **Expect:** JSON
       highlighting (language mode _JSON_), same text as in the repo.
 - [ ] Open a notebook from Repo. **Expect:** the tab reads
       `<name>.Notebook`, not `notebook-content.py`.
-- [ ] Signed in, with no compute connected, run a cell of a notebook that
+- [ ] Signed in, with no execution host selected, run a cell of a notebook that
       has a default Lakehouse. **Expect:** it runs (no "which tenant"
       error).
 - [ ] Expand the Lakehouse → **Tables** → right-click `fc_validation_t` →
@@ -560,7 +558,7 @@ For each item you have:
 - [ ] In the Explorer side bar, expand Fabric → **Connections**. **Expect:**
       the tenant's connections remain browsable in the main Fabric tree.
 - [ ] Fabric side bar → **Configuration**. **Expect:** Account, Tenant and
-      Compute rows. Compute expands to Capacity (name · SKU), Workspace,
+      Execution host rows. Execution host expands to Capacity (name · SKU), Workspace,
       Lakehouse and, when set, Environment. The inline buttons sign in,
       sign out, switch tenant, connect and disconnect; each change shows
       up in the view straight away.
@@ -578,13 +576,13 @@ For each item you have:
       either picker; **Expect:** the setting is unchanged. Choose no variable;
       **Expect:** a warning and no change. Choose **None / Clear selection**;
       **Expect:** the setting is removed.
-- [ ] Close Fabric notebooks, keep a connected compute host, and open the
+- [ ] Close Fabric notebooks, keep a selected execution host, and open the
       picker. **Expect:** the host workspace's libraries are listed.
 - [ ] **Repo**. **Expect:** only folders that contain Fabric items, in
       your repo's structure; no loose files and no folders without items
       (e.g. `docs/`); `<name>.Notebook` folders show as the notebook's
       display name with _Notebook_, their own files under them and no
-      `.platform` child; the title shows the connected compute. Click a notebook. **Expect:** it opens in the
+      `.platform` child; the title shows the selected execution host. Click a notebook. **Expect:** it opens in the
       Fabric notebook editor.
 - [ ] Repo → play button on a notebook. **Expect:** it opens and all cells
       run on Fabric. Play on a `.SparkJobDefinition` item. **Expect:** the
@@ -623,14 +621,14 @@ For each item you have:
 - [ ] _(Optional, targets)_ Add `.fabric/targets.json` mapping `notebooks`
       to a target whose `tenantId` is **another** tenant, and run a cell.
       **Expect:** _Refusing to run … belongs to a different tenant than the
-      connected compute._ Delete the file afterwards.
+      selected execution host._ Delete the file afterwards.
 
 ## 12. Clean up
 
 - [ ] Drop the test table (`%%sql` `DROP TABLE fc_validation_t`) and
       delete any pulled folders.
-- [ ] **Fabric: Disconnect from Compute**. **Expect:** the status bar shows
-      _connect compute_ and the `"compute"` section is removed.
+- [ ] **Fabric: Disconnect Execution Host**. **Expect:** the status bar asks
+      for an execution host and the `"compute"` section is removed.
 - [ ] **Fabric: Sign Out** so the test repo forgets the sign-in. To remove
       the account from VS Code as well, use the **Accounts** menu (bottom
       left) → your Microsoft account → **Sign Out**.

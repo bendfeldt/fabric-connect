@@ -58,8 +58,8 @@ export class LakehousePanel {
 
   async show(notebookUri: vscode.Uri): Promise<void> {
     const folder = path.dirname(notebookUri.fsPath);
-    // The folder's target workspace; for an unmapped folder, the connected
-    // capacity's host workspace. Neither → the target resolver's specific
+    // The folder's target workspace; for an unmapped folder, the selected
+    // execution host's workspace. Neither → the target resolver's specific
     // error.
     const compute = await this.compute();
     const hosted = compute === undefined ? undefined : hostOf(compute);

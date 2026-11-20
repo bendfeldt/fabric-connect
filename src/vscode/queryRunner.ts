@@ -156,7 +156,7 @@ export class QueryRunner {
         .map((w) => ({
           label: w.displayName,
           description:
-            w.id === profile?.workspaceId ? "connected compute" : undefined,
+            w.id === profile?.workspaceId ? "execution host" : undefined,
           w,
         }))
         .sort((a, b) => (a.description ? -1 : b.description ? 1 : 0)),

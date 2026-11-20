@@ -6,6 +6,14 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+- **Lakehouse-first execution hosts** — selecting Spark execution now starts
+  with an accessible workspace and Lakehouse, with an optional Environment;
+  the workspace capacity and SKU are derived context rather than a separate
+  choice. Lakehouse browsing and logical-default binding cover all accessible
+  workspaces without requiring a host. Legacy capacity-only local state remains
+  readable but is incomplete until a host is selected; existing `"compute"`
+  storage and internal command IDs remain compatible.
+
 - **Marketplace publishing is required** — the release workflow now requires
   official GitHub OIDC trusted publishing before it creates the matching GitHub
   Release; existing v1.4.2 remains GitHub-only.

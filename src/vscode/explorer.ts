@@ -1,7 +1,7 @@
 /**
  * Read-only Fabric explorer: capacities → workspaces → items by type;
  * capacities include those only known from a workspace's `capacityId`
- * (see `capacitiesFromWorkspaces`), and the connected capacity is checked,
+ * (see `capacitiesFromWorkspaces`), and the execution host's capacity is checked,
  * expanded and its workspaces highlighted;
  * Lakehouses expand into their OneLake `Files` and `Tables`; plus the
  * tenant's connections. Every call is a GET (or the allowlisted
@@ -11,7 +11,7 @@
  * includes the Connections group.
  *
  * Actions: copy ID / name / OneLake path / SQL connection string, preview a
- * table (on the connected compute) or a file, pull an item into the repo,
+ * table (on the selected execution host) or a file, pull an item into the repo,
  * open it in the Fabric portal.
  */
 
@@ -58,7 +58,7 @@ type Node =
   | {
       kind: "workspace";
       workspace: WorkspaceInfo;
-      /** On the connected capacity. */
+      /** On the execution host's capacity. */
       onSelected?: boolean;
     }
   | {
@@ -94,7 +94,7 @@ export class FabricExplorer
     private readonly names: NameCache,
     private readonly results: ResultsPanel,
     private readonly workspaceRoot: string | undefined,
-    /** The connected capacity, if any. */
+    /** The execution host's derived capacity, if any. */
     private readonly selectedCapacity: () => Promise<string | undefined>,
     /** The compute with its host Lakehouse, asked for when missing. */
     private readonly requireHost: () => Promise<HostedCompute>,
@@ -166,7 +166,7 @@ export class FabricExplorer
       case "workspace": {
         const item = new vscode.TreeItem(node.workspace.displayName, collapsed);
         item.description = node.onSelected
-          ? "on connected capacity"
+          ? "execution host capacity"
           : undefined;
         item.iconPath = node.onSelected
           ? new vscode.ThemeIcon(
@@ -444,12 +444,12 @@ export class FabricExplorer
     }
   }
 
-  /** Shows the first rows of a Delta table, read on the connected compute. */
+  /** Shows the first rows of a Delta table on the selected execution host. */
   async previewTable(node: Node): Promise<void> {
     if (node.kind !== "onelake" || !node.isTable) {
       return;
     }
-    // Previews run on the connected capacity's host Lakehouse; one is
+    // Previews run on the selected execution host; one is
     // asked for when none is picked yet.
     const compute = await this.requireHost();
     const uri = abfssUri(node.item.workspaceId, node.item.id, node.path);
@@ -482,7 +482,7 @@ export class FabricExplorer
           operation: "preview table",
           entity: `table ${node.path}`,
           remediation:
-            "Check that the connected compute can read this Lakehouse.",
+            "Check that the selected execution host can read this Lakehouse.",
         },
       );
     }
@@ -601,7 +601,7 @@ export class FabricExplorer
 
   private async tenant(): Promise<string | undefined> {
     if (this.tenantId === undefined) {
-      // The tenant the user selected wins; the compute connection's tenant
+      // The tenant the user selected wins; the execution host's tenant
       // is the fallback before anything has been selected.
       this.tenantId = this.selectedTenant() ?? (await this.compute())?.tenantId;
     }
@@ -613,7 +613,7 @@ export class FabricExplorer
     if (tenantId === undefined) {
       throw new ExplorerError("No tenant is signed in.", {
         operation: "browse Fabric",
-        remediation: "Run 'Fabric: Sign In' or 'Fabric: Connect to Compute'.",
+        remediation: "Run 'Fabric: Sign In' or select an execution host.",
       });
     }
     return tenantId;
@@ -651,7 +651,7 @@ export class FabricExplorer
     return this.capacities;
   }
 
-  /** The connected capacity's ID in lower case; an invalid local.json connects none. */
+  /** The execution host capacity ID in lower case; invalid local.json selects none. */
   private async selectedCapacityLower(): Promise<string | undefined> {
     try {
       return (await this.selectedCapacity())?.toLowerCase();

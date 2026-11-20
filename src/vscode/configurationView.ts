@@ -4,9 +4,8 @@
  *
  * - Account: the Microsoft account; switch it or sign out.
  * - Tenant: the tenant the repo signs in to; switch it.
- * - Compute: the connected capacity; connect (change) or disconnect. Its
- *   host Lakehouse (and Environment) for code without a Lakehouse of its
- *   own, or "picked when needed"; change it.
+ * - Execution host: workspace, Lakehouse and optional Environment for code
+ *   without a Lakehouse of its own; capacity is derived read-only context.
  * - Python modules: whether `import` uses your working tree (Local) or the
  *   Fabric environment's installed packages (Remote); change it. Same
  *   state and text as the status bar item (`ModuleStager`).
@@ -99,9 +98,10 @@ export class ConfigurationView
       }
       case "compute": {
         const profile = node.profile;
+        const hosted = profile === undefined ? undefined : hostOf(profile);
         const item = new vscode.TreeItem(
-          "Compute",
-          profile === undefined
+          "Execution host",
+          hosted === undefined
             ? none
             : vscode.TreeItemCollapsibleState.Expanded,
         );
@@ -109,22 +109,21 @@ export class ConfigurationView
           item.description = "invalid";
           item.tooltip = node.error;
           item.iconPath = new vscode.ThemeIcon("warning");
-        } else if (profile === undefined) {
-          item.description = "not connected";
-          item.tooltip = "Pick the capacity your code runs on.";
+        } else if (hosted === undefined) {
+          item.description = "not selected";
+          item.tooltip =
+            "Pick the workspace and Lakehouse that host code without its own Lakehouse.";
           item.iconPath = new vscode.ThemeIcon("plug");
           item.command = {
-            title: "Connect to Compute",
+            title: "Select Execution Host",
             command: "fabric-connect.connectCompute",
           };
         } else {
-          item.description = [capacityDisplayName(profile), profile.sku]
-            .filter(Boolean)
-            .join(" · ");
+          item.description = `${hosted.workspaceName ?? "workspace"} / ${hosted.lakehouseName ?? "Lakehouse"}`;
           item.iconPath = new vscode.ThemeIcon("server-environment");
         }
         item.contextValue =
-          profile === undefined
+          hosted === undefined
             ? "fabricConfigCompute"
             : "fabricConfigCompute connected";
         return item;
@@ -204,37 +203,20 @@ export class ConfigurationView
       return [];
     }
     const p = node.profile;
+    const hosted = hostOf(p);
+    if (hosted === undefined) {
+      return [];
+    }
     const unnamed = "(name not saved)";
     const details: Node[] = [
       {
         kind: "detail",
-        label: "Capacity",
-        value: [capacityDisplayName(p) ?? unnamed, p.sku]
-          .filter(Boolean)
-          .join(" · "),
-        icon: "server",
-        contextValue: "fabricConfigCapacity",
-        tooltip: this.capacityTooltip(p),
-      },
-    ];
-    const hosted = hostOf(p);
-    if (hosted === undefined) {
-      details.push({
-        kind: "detail",
         label: "Host Lakehouse",
-        value: "picked when needed",
+        value: `${hosted.lakehouseName ?? unnamed} · ${hosted.workspaceName ?? unnamed}`,
         icon: "database",
         contextValue: "fabricConfigHost",
-      });
-      return details;
-    }
-    details.push({
-      kind: "detail",
-      label: "Host Lakehouse",
-      value: `${hosted.lakehouseName ?? unnamed} · ${hosted.workspaceName ?? unnamed}`,
-      icon: "database",
-      contextValue: "fabricConfigHost",
-    });
+      },
+    ];
     if (hosted.environmentId !== undefined) {
       details.push({
         kind: "detail",
@@ -243,6 +225,16 @@ export class ConfigurationView
         icon: "package",
       });
     }
+    details.push({
+      kind: "detail",
+      label: "Capacity",
+      value: [capacityDisplayName(p) ?? unnamed, p.sku]
+        .filter(Boolean)
+        .join(" · "),
+      icon: "server",
+      contextValue: "fabricConfigCapacity",
+      tooltip: this.capacityTooltip(p),
+    });
     return details;
   }
 }

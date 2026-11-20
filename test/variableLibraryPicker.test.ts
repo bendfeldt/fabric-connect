@@ -138,7 +138,7 @@ test("cancelling or accepting no variables never overwrites saved settings", asy
   assert.match(empty.warnings[0], /at least one variable/);
 });
 
-test("uses the notebook target when active and the compute host otherwise", async () => {
+test("uses the notebook target when active and the execution host otherwise", async () => {
   let notebookCalls = 0;
   let hostCalls = 0;
   const notebook = await resolveVariableLibraryTarget(

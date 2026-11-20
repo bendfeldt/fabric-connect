@@ -1,7 +1,7 @@
 # Browse Fabric
 
 Click the **Fabric** icon in the Activity Bar: **Configuration** (account,
-tenant, compute), **Repo** (your working tree, runnable on Fabric),
+tenant, execution host), **Repo** (your working tree, runnable on Fabric),
 **Lakehouses** (attach them to a notebook) and **Connections**. The
 **Fabric** view in the Explorer side bar browses capacities, workspaces
 and items. Browsing is

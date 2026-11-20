@@ -1,7 +1,7 @@
 {
   "name": "fabric-connect",
   "displayName": "Fabric Connect",
-  "description": "Local-first Microsoft Fabric development: run notebooks, files, Spark jobs and KQL/DAX/GraphQL queries from your git repo on Fabric compute — Databricks Connect-style, and it never deploys.",
+  "description": "Local-first Microsoft Fabric development: run notebooks, files, Spark jobs and KQL/DAX/GraphQL queries from your git repo; it never deploys.",
   "version": "1.4.2",
   "publisher": "bendfeldt",
   "license": "MIT",
@@ -33,7 +33,6 @@
     "kql",
     "dax",
     "graphql",
-    "databricks connect",
     "local-first"
   ],
   "icon": "media/icon.png",
@@ -43,7 +42,9 @@
   },
   "main": "./out/src/extension.js",
   "activationEvents": [
-    "workspaceContains:.fabric/local.json"
+    "workspaceContains:.fabric/local.json",
+    "onCommand:fabric-connect.changeHost",
+    "onCommand:fabric-connect.selectCapacity"
   ],
   "contributes": {
     "notebooks": [
@@ -118,28 +119,18 @@
       },
       {
         "command": "fabric-connect.connectCompute",
-        "title": "Fabric: Connect to Compute",
+        "title": "Fabric: Select Execution Host…",
         "icon": "$(plug)"
       },
       {
         "command": "fabric-connect.disconnectCompute",
-        "title": "Fabric: Disconnect from Compute",
+        "title": "Fabric: Disconnect Execution Host",
         "icon": "$(debug-disconnect)"
-      },
-      {
-        "command": "fabric-connect.changeHost",
-        "title": "Fabric: Change Host Lakehouse…",
-        "icon": "$(edit)"
       },
       {
         "command": "fabric-connect.nameCapacity",
         "title": "Fabric: Name This Capacity…",
         "icon": "$(edit)"
-      },
-      {
-        "command": "fabric-connect.selectCapacity",
-        "title": "Fabric: Connect to This Capacity",
-        "icon": "$(plug)"
       },
       {
         "command": "fabric-connect.repo.refresh",
@@ -531,16 +522,6 @@
       ],
       "view/item/context": [
         {
-          "command": "fabric-connect.selectCapacity",
-          "when": "view == fabricConnect.explorer && viewItem == fabricCapacity",
-          "group": "inline"
-        },
-        {
-          "command": "fabric-connect.selectCapacity",
-          "when": "view == fabricConnect.explorer && viewItem =~ /fabricCapacity|onCapacity/",
-          "group": "0_select"
-        },
-        {
           "command": "fabric-connect.explorer.pullItem",
           "when": "view == fabricConnect.explorer && viewItem =~ /fabricItem/",
           "group": "1_pull"
@@ -659,11 +640,6 @@
           "command": "fabric-connect.lakehouses.detach",
           "when": "view == fabricConnect.lakehouses && viewItem =~ /\\battached\\b/",
           "group": "0_attach@3"
-        },
-        {
-          "command": "fabric-connect.changeHost",
-          "when": "view == fabricConnect.configuration && viewItem == fabricConfigHost",
-          "group": "inline"
         },
         {
           "command": "fabric-connect.pythonModules",
@@ -840,7 +816,7 @@
       },
       {
         "view": "fabricConnect.repo",
-        "contents": "Open your repo folder to see its Fabric items and run them on Fabric compute.\n[Open Folder](command:vscode.openFolder)",
+        "contents": "Open your repo folder to see its Fabric items and run them from VS Code.\n[Open Folder](command:vscode.openFolder)",
         "when": "workspaceFolderCount == 0"
       },
       {
@@ -853,7 +829,7 @@
       {
         "id": "gettingStarted",
         "title": "Get started with Fabric Connect",
-        "description": "Connect your repo to Fabric compute once, then run notebooks, files, jobs and queries from VS Code. Nothing is ever deployed.",
+        "description": "Spark code without its own Lakehouse can use a selected execution host; notebooks with a default and query files keep their own targets.",
         "steps": [
           {
             "id": "signIn",
@@ -868,8 +844,8 @@
           },
           {
             "id": "connectCompute",
-            "title": "Connect this repo to Fabric compute",
-            "description": "Pick the capacity (SKU) your code runs on. A host Lakehouse for code without its own is asked when first needed. Saved in your gitignored .fabric/local.json.\n[Connect to Compute](command:fabric-connect.connectCompute?%5B%22walkthrough%22%5D)",
+            "title": "Select an execution host",
+            "description": "Pick the workspace and Lakehouse that host code without its own Lakehouse, plus an optional Environment. Capacity details are derived from the workspace. Saved in your gitignored .fabric/local.json.\n[Select Execution Host](command:fabric-connect.connectCompute?%5B%22walkthrough%22%5D)",
             "media": {
               "markdown": "media/walkthrough/connect-compute.md"
             },

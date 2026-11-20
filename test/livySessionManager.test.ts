@@ -1474,7 +1474,7 @@ test("stopping our compute-host session by ID forgets it when the host has an En
   const store = memoryStore();
   const livy = manager(api, store);
   await livy.startSession(target, NEVER_CANCELLED);
-  // As Show Livy Sessions does for the compute host.
+  // As Show Livy Sessions does for the execution host.
   await livy.stopSessionById(target, "8");
   assert.equal(store.data.size, 0);
   const result = await livy.execute(target, "x", "pyspark", NEVER_CANCELLED);

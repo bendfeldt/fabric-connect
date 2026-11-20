@@ -2,10 +2,10 @@
 
 [![Build](https://github.com/bendfeldt/fabric-connect/actions/workflows/build.yml/badge.svg)](https://github.com/bendfeldt/fabric-connect/actions/workflows/build.yml) [![Test](https://github.com/bendfeldt/fabric-connect/actions/workflows/test.yml/badge.svg)](https://github.com/bendfeldt/fabric-connect/actions/workflows/test.yml)
 
-**Local-first Microsoft Fabric development in VS Code** — a "Databricks
-Connect for Fabric". Your notebooks, Python modules, Spark jobs and queries
-live in your git repo. Connect the repo once to a Fabric capacity and run
-everything from the editor. This README describes the **current source**;
+**Local-first Microsoft Fabric development in VS Code.** Your notebooks,
+Python modules, Spark jobs and queries live in your git repo. Select a
+Lakehouse execution host for Spark code that has no Lakehouse of its own, and
+run from the editor. This README describes the **current source**;
 features under [Unreleased](https://github.com/bendfeldt/fabric-connect/blob/main/CHANGELOG.md#unreleased)
 may not be in the latest released `.vsix`.
 
@@ -17,9 +17,9 @@ deployment pipelines, CI).
 
 ## Features
 
-- **Connect to compute** — pick a capacity once per repo. A host Lakehouse
-  and optional Environment are picked when code without its own Lakehouse
-  first needs them; the status bar shows the actual execution host.
+- **Lakehouse execution host** — pick a workspace and Lakehouse (plus an
+  optional Environment) for Spark code that has no Lakehouse of its own. Its
+  capacity and SKU are derived from the workspace.
 - **Notebooks** — Fabric's git format (`notebook-content.py`, `.scala`,
   `.sql`, `.r`) and `.ipynb`, saved byte-for-byte compatible with the
   portal; notebook/text editing and text diffs; local `%run`, cell magics
@@ -48,11 +48,13 @@ deployment pipelines, CI).
 2. Open your repo and add `.fabric/local.json` to its `.gitignore`.
 3. **Fabric: Sign In** with your Microsoft account — remembered for this
    repo, like a Tabular Editor `.tmuo` file.
-4. **Fabric: Connect to Compute** → pick the capacity.
+4. If you will run Spark code without its own Lakehouse, use **Fabric: Select
+   Execution Host…** → pick a workspace and Lakehouse. A notebook with a
+   default Lakehouse or local binding does not need this step.
 5. Open a `*.Notebook/notebook-content.py` (or `.ipynb`), pick the
    **Fabric Livy** kernel and run a cell. If its default Lakehouse is
    _not bound_, use **Fabric: Bind Notebook's Default Lakehouse…**. Without
-   a default, pick the compute host when prompted.
+   a default, select the execution host when prompted.
 
 The full walkthrough — modules, files, jobs, queries, explorer, API
 notebooks — is in **[Getting started](https://github.com/bendfeldt/fabric-connect/blob/main/docs/getting-started.md)**, and in

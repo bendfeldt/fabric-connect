@@ -156,7 +156,7 @@ function parseForWrite(localText: string | undefined): Record<string, unknown> {
     parsed = JSON.parse(localText);
   } catch (cause) {
     throw invalid(
-      "the file is not valid JSON, so the compute connection cannot be saved without losing its contents",
+      "the file is not valid JSON, so the execution host cannot be saved without losing its contents",
       cause,
     );
   }
@@ -175,7 +175,7 @@ export function describeCompute(profile: ComputeProfile): string {
   if (hostOf(profile) === undefined) {
     return capacity;
   }
-  return `${capacity} · ${profile.workspaceName ?? "workspace"} / ${profile.lakehouseName ?? "lakehouse"}`;
+  return `${profile.workspaceName ?? "workspace"} / ${profile.lakehouseName ?? "lakehouse"} · ${capacity}`;
 }
 
 const MAX_LABEL = 100;
@@ -225,12 +225,12 @@ export function withoutHost(profile: ComputeProfile): ComputeProfile {
 
 function invalid(why: string, cause?: unknown): TargetConfigError {
   return new TargetConfigError(
-    `The compute connection in '${LOCAL_OVERRIDE_FILE}' is invalid: ${why}.`,
+    `The execution host in '${LOCAL_OVERRIDE_FILE}' is invalid: ${why}.`,
     {
-      operation: "read compute connection",
+      operation: "read execution host",
       entity: `file ${LOCAL_OVERRIDE_FILE}`,
       remediation:
-        "Run 'Fabric: Connect to Compute' to write a fresh connection, or fix the \"compute\" section by hand.",
+        "Run 'Fabric: Select Execution Host…' to write a fresh connection, or fix the \"compute\" section by hand.",
       cause,
     },
   );

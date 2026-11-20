@@ -52,7 +52,7 @@ export function toStatement(
           entity,
           remediation:
             magic === "%%configure"
-              ? "Session settings come from the connected Environment ('Fabric: Connect to Compute'); remove the %%configure cell."
+              ? "Session settings come from the selected execution host's Environment; remove the %%configure cell."
               : "Remove the magic line, or use one of %%pyspark, %%sql, %%spark, %%sparkr.",
         },
       );

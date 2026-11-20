@@ -6,7 +6,7 @@ Files from Fabric's git integration open in the Fabric notebook editor:
 - `*.Notebook/notebook-content.ipynb`
 
 Pick the **Fabric Livy** kernel and run cells. They run on the notebook's
-default Lakehouse/local binding, or on the compute host when it has none — the
+default Lakehouse/local binding, or on the execution host when it has none — the
 status bar shows which.
 
 - A git-synced default marked _not bound_ needs **Bind Lakehouse…**.

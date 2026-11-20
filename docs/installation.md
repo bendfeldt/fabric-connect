@@ -58,7 +58,7 @@ are not supplied by git.
 
 - Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and type
   `Fabric:` — you should see the extension's commands (`Fabric: Sign In`,
-  `Fabric: Connect to Compute`, …).
+  `Fabric: Select Execution Host…`, …).
 - The **Fabric** view appears in the Explorer side bar and the **Fabric**
   Activity Bar icon opens Configuration, Repo and Lakehouses; Connections
   remain in the main Fabric Explorer tree.
@@ -85,5 +85,5 @@ stores no tokens on disk.
 
 ## Next step
 
-Follow the [getting-started guide](getting-started.md): sign in, connect
-to compute and run your first notebook.
+Follow the [getting-started guide](getting-started.md): sign in, then run your
+first notebook or select an execution host for Spark code without a Lakehouse.
