@@ -6,6 +6,8 @@ workflow; each GitHub Release carries the matching `.vsix`.
 
 ## Unreleased
 
+## 1.5.0 — 2026-11-20
+
 - **Notebook-only repos can use Local mode** — when no Python package source root exists, module staging is skipped while local `%run` references continue to expand from Fabric source notebooks.
 - **Lakehouse-first execution hosts** — selecting Spark execution now starts
   with an accessible workspace and Lakehouse, with an optional Environment;
