@@ -110,7 +110,7 @@ For example, the next build/install pair is:
 
 ```sh
 BASE="$(node -p "const [a,b,c]=require('./package.json').version.split('.'); a+'.'+b+'.'+(Number(c)+1)")"
-N=6   # replace with the next unused build number
+N=1   # replace with the next unused build number
 DEV="$BASE-dev.$N"
 npm run package -- "$DEV" \
   --no-git-tag-version \

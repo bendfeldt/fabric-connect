@@ -352,7 +352,7 @@
           ],
           "enumDescriptions": [
             "Local when 'fabric-connect.sourceRoots' is set, otherwise Remote.",
-            "Import your working tree: its packages are staged to the session before Python code runs.",
+            "Import your working tree when a package source root exists; otherwise stage nothing while local notebook %run remains available.",
             "Transfer and install a pure-Python wheelhouse through Livy without writing wheel bytes to OneLake.",
             "Import what the Fabric environment has installed (e.g. your published wheel). Nothing is staged."
           ],

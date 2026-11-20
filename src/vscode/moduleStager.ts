@@ -291,17 +291,7 @@ export class ModuleStager {
     if (mode === "wheel") return this.prepareWheel();
     if (this.workspaceRoot === undefined) return undefined;
     const roots = await this.sourceRoots();
-    if (roots.length === 0) {
-      throw new StagingError(
-        "Cannot stage local modules: no source folder was found in this repo.",
-        {
-          operation: "stage local modules",
-          entity: `workspace folder ${path.basename(this.workspaceRoot)}`,
-          remediation:
-            "Set 'fabric-connect.sourceRoots' (e.g. [\"src\"]), or run 'Fabric: Python Modules' and pick Remote.",
-        },
-      );
-    }
+    if (roots.length === 0) return undefined;
     const bundle = await bundleModules(
       {
         listFiles: listFilesRecursive,
@@ -433,7 +423,7 @@ export class ModuleStager {
           detail:
             packages.length > 0
               ? `Import your working tree (${packages.join(", ")}), sent to the session before Python runs.`
-              : "Import your working tree, sent to the session before Python runs.",
+              : "No local packages found; local notebook %run still uses the working tree.",
         },
         {
           label: "Remote",

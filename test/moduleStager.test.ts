@@ -3,7 +3,7 @@ import Module from "node:module";
 import { test } from "node:test";
 import { restartTrackedSessionAfterModeChange } from "../src/vscode/moduleModeTransition";
 
-test("Python module picker reports the selected transition", async () => {
+test("Python module mode supports notebook-only Local and reports transitions", async () => {
   const originalLoad = (
     Module as unknown as {
       _load: (request: string, parent: unknown, isMain: boolean) => unknown;
@@ -46,12 +46,16 @@ test("Python module picker reports the selected transition", async () => {
       workspaceRoot: string;
       localPackages: () => Promise<Map<string, string>>;
       mode: () => "local" | "wheel" | "remote";
+      sourceRoots: () => Promise<string[]>;
       pickMode: () => Promise<unknown>;
       prepare(target: unknown): Promise<unknown>;
     };
     stager.workspaceRoot = "/repo";
     stager.localPackages = async () => new Map();
+    stager.sourceRoots = async () => [];
     stager.mode = () => setting as "local" | "wheel" | "remote";
+
+    assert.equal(await stager.prepare({}), undefined);
 
     const transition = await stager.pickMode();
     assert.deepEqual(transition, {

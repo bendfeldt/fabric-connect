@@ -10,6 +10,7 @@ includes them.
 
 ## Implemented
 
+- **Notebook-only Local mode:** explicit Local Python module mode no longer fails when source-root discovery finds no package folders; staging becomes a no-op and existing recursive local `%run` expansion remains responsible for referenced Fabric source notebooks. Explicit invalid source roots still fail validation. Live VS Code/Fabric validation remains unverified.
 - **Local notebook execution bridge:** notebook-scoped Livy sessions and module
   scratch paths; a private module-level execution descriptor in notebook and
   source-cell paths; opt-in selected active Variable Library values using the
@@ -107,6 +108,12 @@ milestone or outstanding stacked-PR merge instruction in this tracker.
 The native `node:test` suites exercise core behavior through scripted seams,
 and manifest/consumer tests use VS Code API stand-ins. They do not replace a
 running VS Code host or live Fabric verification.
+
+Notebook-only Local mode validation: the focused regression failed first with
+the reported no-source-folder error, then passed after the fix. TypeScript
+compilation, all 392 native tests, changed-file Prettier checks,
+`git diff --check`, and the independent adversarial review passed. A live
+VS Code/Fabric run of the Aquavilla notebook was not performed.
 
 Local notebook execution bridge validation: TypeScript compilation, all 357
 native tests, changed-file Prettier checks and the required independent

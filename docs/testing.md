@@ -439,6 +439,10 @@ versions ask you to type a tenant GUID instead.
 
 ## 5. Your own Python modules
 
+- [ ] In a repo with Fabric source notebooks but no configured, `pyproject.toml`,
+      or `src` source root, select **Local** and run a Python cell containing
+      `%run OtherNotebook`. **Expect:** no module-staging error; referenced local
+      notebook cells execute.
 - [ ] In a repo with a `pyproject.toml` (`where = ["src"]`) whose package
       is also installed, older, in the Fabric environment, and
       `fabric-connect.sourceRoots` unset: **Expect:** the status bar shows

@@ -472,7 +472,9 @@ The Databricks Connect workflow: edit locally, run on Fabric.
   - **Local** — your working tree. The source folders are
     `fabric-connect.sourceRoots` if set, else the folders `pyproject.toml`
     names (setuptools `packages.find.where` or `package-dir`, Hatch wheel
-    `packages`, Poetry `packages.from`), else `src`.
+    `packages`, Poetry `packages.from`), else `src`. If none exists, no package
+    bundle is staged; local notebook `%run` references still expand from the
+    working tree.
 
   - **Wheel** — select a readable `.whl` inside the workspace. Fabric Connect treats every direct sibling `.whl` as its offline wheelhouse. It streams these files to the Livy driver in sequential 256 KiB chunks, verifies size and SHA-256 remotely, and installs with pip restricted to that wheelhouse; missing transitive wheels fail before your code runs. Only pure-Python wheels with `Root-Is-Purelib: true` and platform tag `any` are supported. Native modules and `.pth` files are rejected. The installed target is zipped and distributed with Spark `addPyFile`; ZIP imports do not support packages that require unpacked filesystem resources. Wheel bytes never go to OneLake but are retained in driver-local temporary storage for the session lifetime. This transfer has no total-size cap. Remote mode continues to use only the published Fabric Environment.
 
