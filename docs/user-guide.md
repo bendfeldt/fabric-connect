@@ -484,16 +484,7 @@ The Databricks Connect workflow: edit locally, run on Fabric.
     names (setuptools `packages.find.where` or `package-dir`, Hatch wheel
     `packages`, Poetry `packages.from`), else `src`.
 
-  - **Wheel** — choose a readable `.whl` inside the workspace. The
-    resource-scoped `fabric-connect.localWheel` setting stores its relative
-    path. Before first use for each session and content hash, the extension
-    stages it below `Files/.fabric-connect/` and runs `%pip
-install --force-reinstall`; dependencies use the package sources
-    configured for the Fabric session. It deletes the scratch file after
-    setup on a best-effort basis. This never publishes or modifies a Fabric
-    Environment. Switching into or out of Wheel mode or selecting another
-    wheel replaces the active session and clears its in-memory state. Direct
-    Livy `%pip` and driver/executor behavior remain a live release gate.
+  - **Wheel** — select a readable `.whl` inside the workspace. Fabric Connect treats every direct sibling `.whl` as its offline wheelhouse. It streams these files to the Livy driver in sequential 256 KiB chunks, verifies size and SHA-256 remotely, and installs with pip restricted to that wheelhouse; missing transitive wheels fail before your code runs. Only pure-Python wheels with `Root-Is-Purelib: true` and platform tag `any` are supported. Native modules and `.pth` files are rejected. The installed target is zipped and distributed with Spark `addPyFile`; ZIP imports do not support packages that require unpacked filesystem resources. Wheel bytes never go to OneLake but are retained in driver-local temporary storage for the session lifetime. This transfer has no total-size cap. Remote mode continues to use only the published Fabric Environment.
 
   When an import fails on Remote for a package that is also in your repo
   (e.g. `cannot import name 'entity' from 'analytics'`, because the

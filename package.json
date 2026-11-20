@@ -362,7 +362,7 @@
           "enumDescriptions": [
             "Local when 'fabric-connect.sourceRoots' is set, otherwise Remote.",
             "Import your working tree: its packages are staged to the session before Python code runs.",
-            "Install a selected workspace wheel temporarily in the Livy session.",
+            "Transfer and install a pure-Python wheelhouse through Livy without writing wheel bytes to OneLake.",
             "Import what the Fabric environment has installed (e.g. your published wheel). Nothing is staged."
           ],
           "default": "auto",
@@ -373,7 +373,7 @@
           "type": "string",
           "default": "",
           "scope": "resource",
-          "description": "Workspace-relative .whl path selected by 'Fabric: Python Modules'. Installed temporarily into Livy sessions; never published or attached to a Fabric Environment."
+          "description": "Workspace-relative selected .whl; direct sibling wheels form a Livy-transferred offline wheelhouse. Pure-Python only; wheel bytes are never written to OneLake."
         }
       }
     },

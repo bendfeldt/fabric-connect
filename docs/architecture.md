@@ -106,10 +106,8 @@ as a Livy batch, separate from interactive notebook state.
   bundle. A content-hashed name makes resending unchanged sources a no-op in
   the session. Remote mode stages nothing; switching to it does not undo
   prior staging in an already-running session.
-- Local wheel mode hashes the workspace file and stages it beneath the
-  OneLake scratch prefix. Livy installs it before user code; setup is keyed
-  by session ID and content hash, and failures block that cell. Direct Livy
-  `%pip` plus driver/executor behavior remains a live release gate.
+- Local Wheel mode discovers direct sibling wheels as a strict offline wheelhouse, streams their bytes through sequential Livy statements in 256 KiB chunks, reconstructs and hash-verifies them in driver-local temporary storage, and installs the selected pure-Python wheel with pip restricted to that wheelhouse. The driver adds the installed target to `sys.path`, packages it as a ZIP, and distributes it with `SparkContext.addPyFile`; one Spark task checks a unique manifest sentinel. This preflight does not visit every executor: Spark `addPyFile` behavior covers reused and future workers. Wheel bytes are never written to OneLake. Temporary wheel files remain for the Livy session lifetime. Remote mode continues using the attached Fabric Environment and never uses the local wheelhouse. Setup failure or cancellation blocks user code and leaves setup inactive; a later attempt replaces the session. Pure-Python wheels only; native extensions, meaningful `.pth` files, unpacked-resource assumptions, network dependency resolution and total transfer caps are unsupported. shortcut: wheelhouse transfer is unbounded, add a cap after live Fabric limits are measured.
+
 - Module bundles live on the driver and end with the session; Spark job files are removed by their own run
   once the job has ended, its cancellation was accepted (a 404 on the
   cancel counts as accepted: the batch is gone) or Fabric provably did

@@ -476,20 +476,17 @@ versions ask you to type a tenant GUID instead.
 
 ### Local wheel live release gate
 
-Run this only with an authorized disposable Fabric workspace and a reviewed
-pure-Python wheel plus a native wheel with a small dependency set.
+Run only in an authorized disposable Fabric workspace with a reviewed pure-Python wheelhouse.
 
-- [ ] Select **Local wheel…** for each wheel and run an import on the driver,
-      then import it inside Spark executor/UDF work. Confirm dependencies come
-      from the session's configured package sources.
-- [ ] Replace wheel bytes at the same path and filename without changing its
-      package version. Confirm the changed content hash triggers reinstall.
-- [ ] Restart Livy and repeat both imports. Confirm setup runs for the new
-      session and the staged file under `Files/.fabric-connect/` is removed
-      after installation (cleanup remains best effort).
-- [ ] If direct Livy `%pip` is rejected, or imports fail on either driver or
-      executors, stop: do not ship or silently downgrade native-wheel support.
-      Record the Fabric platform limitation instead.
+- [ ] Select a wheel with at least one sibling dependency and enough bytes to produce multiple Livy chunks. Confirm the selected package and dependency import on the driver.
+- [ ] Import the package in a Spark UDF/task. The one-task sentinel preflight confirms Spark ZIP distribution, not every executor; verify the requested worker import separately.
+- [ ] Replace selected or sibling wheel bytes at the same path without changing its filename/version. Confirm the manifest changes and a new tracked session installs it.
+- [ ] Restart Livy and repeat driver and executor imports.
+- [ ] Cancel setup or force a setup failure. Confirm user code does not run and the next attempt starts a fresh session.
+- [ ] Confirm no wheel appears under `Files/.fabric-connect/`. Local Wheel uses Livy transport and driver-local session storage; Spark job staging remains separate.
+- [ ] Record Fabric version, wheelhouse sizes, observed Livy statement limits and failures. Transfer has no configured total-size cap; keep live platform limits as an explicit release risk.
+
+Native wheels, `.pth` behavior and packages requiring unpacked executor resources are unsupported and must not be claimed.
 
 ## 6. Run files and selections
 

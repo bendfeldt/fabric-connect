@@ -26,8 +26,8 @@ deployment pipelines, CI).
   and `display()` tables; restart, list and stop Livy sessions. Bind a
   git-synced default Lakehouse locally without changing notebook metadata.
 - **Python modules: Local, Wheel, or Remote** — choose working-tree
-  packages, a workspace wheel installed temporarily in the Livy session, or
-  packages already installed in Fabric.
+  packages from the working tree, a pure-Python workspace wheelhouse transferred through Livy, or
+  packages already installed in the published Fabric Environment. Local Wheel does not write wheel bytes to OneLake.
 - **Run files and jobs** — run a `.py`/`.sql`/`.scala`/`.r` file or a
   selection on Fabric; run a Spark Job Definition as a Livy batch from its
   local files.
@@ -83,7 +83,7 @@ Use the Command Palette's **Fabric:** actions or the Fabric views. The
 owns the full command reference.
 
 Settings are `fabric-connect.pythonModules` (`auto`, `local`, `wheel`,
-`remote`), `fabric-connect.localWheel` (workspace-relative wheel path),
+`remote`), `fabric-connect.localWheel` (workspace-relative wheel path; direct sibling wheels form the offline wheelhouse),
 `fabric-connect.sourceRoots` (local Python source folders) and
 `fabric-connect.debugLogging` (opt-in redacted HTTP and execution-phase
 diagnostics). Runtime errors/output can contain sensitive values; review

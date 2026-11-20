@@ -32,13 +32,13 @@ is requested for that account, so a repo never uses another account's
 session. Scopes requested, per service, and
 only when a feature needs them:
 
-| Service                      | Scope                                               | Used for                                    |
-| ---------------------------- | --------------------------------------------------- | ------------------------------------------- |
-| Fabric REST API (incl. Livy) | `https://api.fabric.microsoft.com/.default`         | everything below except the next three rows |
-| OneLake (ADLS Gen2 API)      | `https://storage.azure.com/.default`                | browsing files, previews, scratch staging   |
-| Power BI REST API            | `https://analysis.windows.net/powerbi/api/.default` | `.dax` queries and capacity name lookup     |
-| Kusto (Eventhouse / KQL DB)  | `https://kusto.kusto.windows.net/.default`          | `.kql` queries                              |
-| Azure Resource Manager       | `https://management.azure.com/.default`             | listing your tenants (see below)            |
+| Service                      | Scope                                               | Used for                                            |
+| ---------------------------- | --------------------------------------------------- | --------------------------------------------------- |
+| Fabric REST API (incl. Livy) | `https://api.fabric.microsoft.com/.default`         | everything below except the next three rows         |
+| OneLake (ADLS Gen2 API)      | `https://storage.azure.com/.default`                | browsing files and previews; Spark job-file staging |
+| Power BI REST API            | `https://analysis.windows.net/powerbi/api/.default` | `.dax` queries and capacity name lookup             |
+| Kusto (Eventhouse / KQL DB)  | `https://kusto.kusto.windows.net/.default`          | `.kql` queries                                      |
+| Azure Resource Manager       | `https://management.azure.com/.default`             | listing your tenants (see below)                    |
 
 The first DAX or KQL query may show a consent prompt, because those
 services use permissions separate from the Fabric API.
@@ -55,7 +55,7 @@ a token is requested.
 | Host                                      | When                                                                                                                  |
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `api.fabric.microsoft.com`                | listing capacities/workspaces/items, Livy sessions and batches, GraphQL queries, item definition reads, API notebooks |
-| `onelake.dfs.fabric.microsoft.com`        | explorer file listings and previews; uploading/deleting the scratch folder                                            |
+| `onelake.dfs.fabric.microsoft.com`        | explorer file listings and previews; staging Spark job files                                                          |
 | `api.powerbi.com`                         | `.dax` queries and read-only capacity name lookup                                                                     |
 | `*.kusto.fabric.microsoft.com`            | `.kql` queries — the origin is validated before a token is attached; any other host is refused, even for reads        |
 | `management.azure.com`                    | `GET /tenants` only, when you ask to find your tenants while switching tenant                                         |
@@ -86,11 +86,8 @@ encoded separators and extra query strings cannot satisfy them.
 | Kusto    | `POST /v1/rest/query`                                       | run a KQL query file (control commands, which use `/v1/rest/mgmt`, stay blocked) |
 
 **OneLake writes** (upload, delete) are allowed only below
-`Files/.fabric-connect/` in a Lakehouse, with plain path segments. This
-scratch prefix holds transient Spark job files and selected local wheels;
-working-tree Python modules remain embedded in Livy statements. Wheel files
-are uploaded only under `Files/.fabric-connect/`, then deleted after install
-on a best-effort basis. Cleanup failures can leave scratch files behind.
+`Files/.fabric-connect/` in a Lakehouse, with plain path segments. This scratch prefix holds transient Spark job files only. Local Wheel never uploads wheel bytes to OneLake: it transfers wheel data through Livy statements and stores reconstructed files in driver-local temporary storage for the session lifetime. Livy statement code may expose those wheel bytes through Fabric statement APIs; no retention guarantee is claimed. Wheel selection permits the wheel and its dependencies to execute with the Fabric session permissions. Dependencies resolve strictly from the selected wheel and direct sibling `.whl` files; no network or Fabric Environment fallback is used. Only pure-Python wheels are supported.
+
 Each VS Code window uses its own run directory. Job completion attempts
 cleanup of its staged subfolder, which is kept when the extension loses
 track of a job, or Fabric refuses to cancel it, while it may still be

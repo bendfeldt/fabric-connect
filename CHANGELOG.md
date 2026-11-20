@@ -10,7 +10,7 @@ workflow; each GitHub Release carries the matching `.vsix`.
   official GitHub OIDC trusted publishing before it creates the matching GitHub
   Release; existing v1.4.2 remains GitHub-only.
 
-- **Local wheel mode** — select a workspace `.whl`, install it ephemerally in Livy sessions, and deduplicate setup by session and file hash. Direct Livy `%pip` behavior on driver and executors is not live-validated; this feature must not ship until the acceptance gate in `docs/testing.md` passes.
+- **Local wheel mode** — transfers the selected wheel and all direct sibling wheels in sequential 256 KiB Livy statements, verifies the reconstructed offline wheelhouse, installs pure-Python packages on the driver, and distributes an installed ZIP through Spark `addPyFile`. Wheel bytes never enter OneLake; Remote mode continues using the published Fabric Environment. Total transfer size is unbounded, and live Fabric acceptance remains required.
 
 - **Switching Python modules to Remote restarts an existing session** — the picker clears packages previously staged from the working tree; notebook and Spark state is reset. Direct setting edits do not restart.
 
