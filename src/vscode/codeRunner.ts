@@ -1,6 +1,6 @@
 /**
  * Run a file, a selection, a notebook's cells (from its text file), or a
- * Spark Job Definition from the working tree on the connected compute —
+ * Spark Job Definition from the working tree on the selected execution host —
  * the Databricks Connect workflow: edit locally, run remotely, see the
  * result in the editor. Output goes to the "Fabric Connect: Run" output
  * channel (tables rendered as text); notebook cells also show their tables

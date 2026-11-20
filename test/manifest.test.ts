@@ -19,8 +19,9 @@ const manifest = JSON.parse(
 ) as {
   main: string;
   icon?: string;
+  activationEvents?: string[];
   contributes: {
-    commands: Array<{ command: string }>;
+    commands: Array<{ command: string; title: string }>;
     notebooks: Array<{ type: string; priority?: string }>;
     viewsContainers?: {
       activitybar?: Array<{ id: string; icon: string }>;
@@ -204,11 +205,18 @@ function activateOnce(): Recorded {
 
 const sorted = (values: Iterable<string>) => [...new Set(values)].sort();
 
-test("every declared command is registered on activation, and nothing else", () => {
+test("every declared command and only the hidden compatibility aliases are registered", () => {
   const recorded = activateWithStub();
+  const compatibilityAliases = [
+    "fabric-connect.changeHost",
+    "fabric-connect.selectCapacity",
+  ];
   assert.deepEqual(
     sorted(recorded.commands),
-    sorted(manifest.contributes.commands.map((c) => c.command)),
+    sorted([
+      ...manifest.contributes.commands.map((c) => c.command),
+      ...compatibilityAliases,
+    ]),
   );
 });
 
@@ -267,6 +275,40 @@ test("menus and walkthroughs only reference declared commands and existing media
         step.media.markdown,
       );
     }
+  }
+});
+
+test("the manifest exposes execution-host actions without a capacity-connect menu", () => {
+  const titles = new Map(
+    manifest.contributes.commands.map((command) => [
+      command.command,
+      command.title,
+    ]),
+  );
+  assert.equal(
+    titles.get("fabric-connect.connectCompute"),
+    "Fabric: Select Execution Host…",
+  );
+  assert.equal(
+    titles.get("fabric-connect.disconnectCompute"),
+    "Fabric: Disconnect Execution Host",
+  );
+  assert.equal(titles.has("fabric-connect.changeHost"), false);
+  assert.equal(titles.has("fabric-connect.selectCapacity"), false);
+  for (const command of [
+    "fabric-connect.changeHost",
+    "fabric-connect.selectCapacity",
+  ]) {
+    assert.ok(manifest.activationEvents?.includes(`onCommand:${command}`));
+  }
+  for (const entries of Object.values(manifest.contributes.menus)) {
+    assert.ok(
+      !entries.some((entry) =>
+        ["fabric-connect.changeHost", "fabric-connect.selectCapacity"].includes(
+          entry.command,
+        ),
+      ),
+    );
   }
 });
 

@@ -6,7 +6,7 @@
  * tenants side by side.
  *
  * The profile lives under `"signIn"` in the gitignored `.fabric/local.json`
- * next to the compute connection. It holds no secret: tokens stay in VS
+ * next to the execution host. It holds no secret: tokens stay in VS
  * Code's secret storage, managed by its Microsoft account provider.
  *
  * Also here: reading the tenant ID out of an access token, so a plain

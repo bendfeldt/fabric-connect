@@ -96,7 +96,9 @@ test("real execution consumers preserve failures and render hints separately acr
       diagnostics: () => new ExecutionDiagnostics(logger),
     prepare: async () => ({
       key: "test-modules",
-      createStatement: async () => ({ code: "module prelude", kind: "pyspark" }),
+      createStatements: async function* () {
+        yield { code: "module prelude", kind: "pyspark" };
+      },
     }),
       importHint: async () => "Existing import guidance"
     };

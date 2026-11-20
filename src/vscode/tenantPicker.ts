@@ -31,7 +31,7 @@ export class TenantPicker {
   constructor(
     private readonly api: IFabricApiClient,
     private readonly state: vscode.Memento,
-    /** Tenants known from elsewhere, e.g. the saved compute connection. */
+    /** Tenants known from elsewhere, e.g. the saved execution host. */
     private readonly otherTenants: () => Promise<TenantInfo[]>,
   ) {}
 

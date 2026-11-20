@@ -96,7 +96,7 @@ export interface RunContext {
 
 /**
  * Which Lakehouse hosts a notebook's Livy session: its own default
- * Lakehouse, else the connected compute (see core/livyHost.ts).
+ * Lakehouse, else the selected execution host (see core/livyHost.ts).
  */
 export async function resolveNotebookHost(
   notebook: vscode.NotebookDocument,
@@ -356,7 +356,7 @@ export class FabricNotebookController implements vscode.Disposable {
       this.hostStatus.tooltip =
         host.source === "notebook"
           ? "Cells run on the notebook's default Lakehouse; relative paths (Files/…) and unqualified tables resolve there."
-          : "The notebook has no default Lakehouse, so cells run on the connected capacity's host Lakehouse; relative paths resolve there.";
+          : "The notebook has no default Lakehouse, so cells run on the selected execution host; relative paths resolve there.";
     } catch (error) {
       if (error instanceof DefaultLakehouseUnboundError) {
         this.hostStatus.text = "$(warning) Livy: default Lakehouse not bound";
@@ -371,7 +371,7 @@ export class FabricNotebookController implements vscode.Disposable {
       } else if (error instanceof HostLakehouseNeededError) {
         this.hostStatus.text = "$(database) Livy: host picked on first run";
         this.hostStatus.tooltip =
-          "The notebook has no default Lakehouse and no host Lakehouse is picked for the connected capacity: running a cell asks for one. Or set a default Lakehouse in the Lakehouses view.";
+          "The notebook has no default Lakehouse and no execution host is selected: running a cell asks for one. Or set a default Lakehouse in the Lakehouses view.";
       } else {
         this.hostStatus.text = "$(warning) Livy: no host";
         this.hostStatus.tooltip =

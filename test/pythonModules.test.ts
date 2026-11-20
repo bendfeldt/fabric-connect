@@ -148,9 +148,28 @@ test("the modules description is one text for the status bar and the side bar", 
   assert.equal(describeModules("wheel", [], "analytics.whl").icon, "package");
 });
 
-test("wheel install uses the selected staged path and forces reinstall", () => {
-  assert.equal(
-    wheelInstallCode("abfss://workspace@fabric/lakehouse/Files/wheel.whl"),
-    '%pip install --force-reinstall "abfss://workspace@fabric/lakehouse/Files/wheel.whl"',
+test("wheel install verifies a pure wheelhouse and distributes a ZIP", () => {
+  const wheel = "sample-1.0-py3-none-any.whl";
+  const code = wheelInstallCode(wheel, "sha256-content", [
+    { fileName: wheel, size: 23, sha256: "wheel-sha256" },
+  ]);
+  assert.doesNotMatch(code, /%pip|abfss|notebookutils|sitecustomize/);
+  assert.match(code, /Root-Is-Purelib/);
+  assert.match(code, /platform tag 'any'/);
+  assert.match(
+    code,
+    /size != item\["size"\].*digest\.hexdigest\(\) != item\["sha256"\]/s,
   );
+  assert.match(
+    code,
+    /"--no-index", "--find-links", str\(wheelhouse\), "--target", str\(target\), "--ignore-installed"/,
+  );
+  assert.match(code, /\.so.*\.pyd.*\.dll.*\.dylib.*\.pth/s);
+  assert.match(code, /spark\.sparkContext\.addPyFile/);
+  assert.match(
+    code,
+    /parallelize\(\[0\], 1\)\.map\(_fabric_connect_preflight\)\.collect\(\)/,
+  );
+  assert.match(code, /sample-1\.0-py3-none-any\.whl/);
+  assert.match(code, /sha256-content/);
 });

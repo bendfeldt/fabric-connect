@@ -231,9 +231,12 @@ test("session setup follows the active key and runs again after replacement", as
   let created = 0;
   const setup = {
     key: "wheel:sha256-a",
-    createStatement: async () => {
-      created++;
-      return { code: "%pip install wheel.whl", kind: "pyspark" };
+    requiresFreshSession: true,
+    createStatements: async function* () {
+      yield await (async () => {
+        created++;
+        return { code: "install-wheel", kind: "pyspark" };
+      })();
     },
   };
 
@@ -301,11 +304,141 @@ test("session setup follows the active key and runs again after replacement", as
     setup,
   );
   assert.equal(created, 4);
+  assert.equal(api.started, 4);
 
   const setupStatements = api.calls.filter(
-    (call) => call.method === "POST" && call.code === "%pip install wheel.whl",
+    (call) => call.method === "POST" && call.code === "install-wheel",
   );
   assert.equal(setupStatements.length, 4);
+});
+
+test("setup statements execute sequentially before user code", async () => {
+  const api = recoveryApi(() => undefined);
+  const livy = manager(api.client, memoryStore());
+  const result = await livy.execute(
+    TARGET,
+    "user-code",
+    "pyspark",
+    NEVER_CANCELLED,
+    undefined,
+    "user",
+    {
+      key: "wheel:ordered",
+      createStatements: async function* () {
+        yield { code: "initialize", kind: "pyspark" };
+        yield { code: "transfer-chunk", kind: "pyspark" };
+        yield { code: "install", kind: "pyspark" };
+      },
+    },
+  );
+
+  assert.equal(result.status, "ok");
+  assert.deepEqual(
+    api.calls
+      .filter(
+        (call) => call.method === "POST" && call.path.endsWith("/statements"),
+      )
+      .map((call) => call.code),
+    ["initialize", "transfer-chunk", "install", "user-code"],
+  );
+});
+
+test("cancellation between setup statements blocks user code and retries fresh", async () => {
+  let cancelled = false;
+  const api = recoveryApi((call) => {
+    if (call.method === "GET" && call.path.endsWith("/statements/0"))
+      cancelled = true;
+    return undefined;
+  });
+  const livy = manager(api.client, memoryStore());
+  const token: CancelToken = {
+    get isCancellationRequested() {
+      return cancelled;
+    },
+    onCancellationRequested: () => ({ dispose: () => undefined }),
+  };
+  const cancelledSetup = {
+    key: "wheel:cancelled",
+    requiresFreshSession: true,
+    createStatements: async function* () {
+      yield { code: "cancelled-first-statement", kind: "pyspark" };
+      yield { code: "must-not-run-after-cancellation", kind: "pyspark" };
+    },
+  };
+
+  await assert.rejects(
+    livy.execute(
+      TARGET,
+      "must-not-run",
+      "pyspark",
+      token,
+      undefined,
+      "user",
+      cancelledSetup,
+    ),
+    (error) => error instanceof LivyError && error.kind === "cancelled",
+  );
+  cancelled = false;
+  await livy.execute(
+    TARGET,
+    "user-code",
+    "pyspark",
+    NEVER_CANCELLED,
+    undefined,
+    "user",
+    {
+      ...cancelledSetup,
+      createStatements: async function* () {
+        yield { code: "retry-first", kind: "pyspark" };
+        yield { code: "retry-second", kind: "pyspark" };
+      },
+    },
+  );
+
+  assert.equal(api.started, 2);
+  assert.deepEqual(
+    api.calls
+      .filter(
+        (call) => call.method === "POST" && call.path.endsWith("/statements"),
+      )
+      .map((call) => call.code),
+    ["cancelled-first-statement", "retry-first", "retry-second", "user-code"],
+  );
+});
+
+test("a fresh setup replaces a tracked session without setup state", async () => {
+  const api = recoveryApi(() => undefined);
+  const store = memoryStore();
+  const livy = manager(api.client, store);
+  await livy.startSession(TARGET, NEVER_CANCELLED);
+  await livy.dispose();
+  const reattached = manager(api.client, store);
+
+  await reattached.execute(
+    TARGET,
+    "user-code",
+    "pyspark",
+    NEVER_CANCELLED,
+    undefined,
+    "user",
+    {
+      key: "wheel:sha256-a",
+      requiresFreshSession: true,
+      createStatements: async function* () {
+        yield await (async () => ({
+          code: "install-wheel",
+          kind: "pyspark",
+        }))();
+      },
+    },
+  );
+
+  assert.equal(api.started, 2);
+  assert.equal(api.calls.filter((call) => call.method === "DELETE").length, 1);
+  assert.deepEqual(
+    api.calls.filter((call) => call.code).map((call) => call.code),
+    ["install-wheel", "user-code"],
+  );
 });
 
 test("setup cache separates targets even when Livy reuses a numeric session ID", async () => {
@@ -327,9 +460,11 @@ test("setup cache separates targets even when Livy reuses a numeric session ID",
   let created = 0;
   const setup = {
     key: "wheel:same-hash",
-    createStatement: async () => {
-      created++;
-      return { code: "%pip install wheel.whl", kind: "pyspark" };
+    createStatements: async function* () {
+      yield await (async () => {
+        created++;
+        return { code: "install-wheel", kind: "pyspark" };
+      })();
     },
   };
   const other = {
@@ -397,9 +532,11 @@ test("a failed setup switch invalidates the previous active key", async () => {
   let createdA = 0;
   const setupA = {
     key: "wheel:a",
-    createStatement: async () => {
-      createdA++;
-      return { code: "setup-a", kind: "pyspark" };
+    createStatements: async function* () {
+      yield await (async () => {
+        createdA++;
+        return { code: "setup-a", kind: "pyspark" };
+      })();
     },
   };
 
@@ -421,7 +558,9 @@ test("a failed setup switch invalidates the previous active key", async () => {
     "user",
     {
       key: "wheel:b",
-      createStatement: async () => ({ code: "setup-b", kind: "pyspark" }),
+      createStatements: async function* () {
+        yield await (async () => ({ code: "setup-b", kind: "pyspark" }))();
+      },
     },
   );
   assert.equal(failed.setupFailed, true);
@@ -438,7 +577,7 @@ test("a failed setup switch invalidates the previous active key", async () => {
   assert.equal(createdA, 2);
 });
 
-test("failed session setup blocks user code and still cleans scratch content", async () => {
+test("failed session setup blocks user code and retries in a fresh session", async () => {
   const api = recoveryApi((call) =>
     call.method === "GET" && call.path.endsWith("/statements/0")
       ? new Response(
@@ -456,7 +595,6 @@ test("failed session setup blocks user code and still cleans scratch content", a
       : undefined,
   );
   const livy = manager(api.client, memoryStore());
-  let cleaned = 0;
   const result = await livy.execute(
     TARGET,
     "must-not-run",
@@ -466,18 +604,15 @@ test("failed session setup blocks user code and still cleans scratch content", a
     "user",
     {
       key: "wheel:bad",
-      createStatement: async () => ({
-        code: "%pip install bad.whl",
-        kind: "pyspark",
-      }),
-      cleanup: async () => {
-        cleaned++;
+      requiresFreshSession: true,
+      createStatements: async function* () {
+        yield { code: "install-bad-wheel", kind: "pyspark" };
+        yield { code: "must-not-run-after-failure", kind: "pyspark" };
       },
     },
   );
 
   assert.equal(result.setupFailed, true);
-  assert.equal(cleaned, 1);
   const retried = await livy.execute(
     TARGET,
     "still-must-not-run",
@@ -487,24 +622,22 @@ test("failed session setup blocks user code and still cleans scratch content", a
     "user",
     {
       key: "wheel:bad",
-      createStatement: async () => ({
-        code: "%pip install bad.whl",
-        kind: "pyspark",
-      }),
-      cleanup: async () => {
-        cleaned++;
+      requiresFreshSession: true,
+      createStatements: async function* () {
+        yield { code: "install-bad-wheel", kind: "pyspark" };
+        yield { code: "must-not-run-after-failure", kind: "pyspark" };
       },
     },
   );
   assert.equal(retried.setupFailed, true);
-  assert.equal(cleaned, 2);
+  assert.equal(api.started, 2);
   assert.deepEqual(
     api.calls
       .filter(
         (call) => call.method === "POST" && call.path.endsWith("/statements"),
       )
       .map((call) => call.code),
-    ["%pip install bad.whl", "%pip install bad.whl"],
+    ["install-bad-wheel", "install-bad-wheel"],
   );
 });
 
@@ -1341,7 +1474,7 @@ test("stopping our compute-host session by ID forgets it when the host has an En
   const store = memoryStore();
   const livy = manager(api, store);
   await livy.startSession(target, NEVER_CANCELLED);
-  // As Show Livy Sessions does for the compute host.
+  // As Show Livy Sessions does for the execution host.
   await livy.stopSessionById(target, "8");
   assert.equal(store.data.size, 0);
   const result = await livy.execute(target, "x", "pyspark", NEVER_CANCELLED);

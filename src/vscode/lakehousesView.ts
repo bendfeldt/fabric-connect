@@ -4,9 +4,9 @@
  * notebook editor, or the notebook last selected in the Repo view.
  *
  * - Attached: the notebook's Lakehouses, the default first (starred).
- * - One group per workspace on the connected capacity, each listing its
- *   Lakehouses with Attach / Set as Default / Detach. Not connected → a
- *   prompt to connect instead of a list.
+ * - One group per accessible workspace, each listing its
+ *   Lakehouses with Attach / Set as Default / Detach. Signed out → a
+ *   prompt to sign in instead of a list.
  *
  * Every action edits the notebook file's metadata (and saves it); the
  * extension never creates a Lakehouse (decision D3).
@@ -22,6 +22,8 @@ import {
   listWorkspaces,
   findLakehousesByName,
   type LakehouseInWorkspace,
+  describeWorkspaceCapacity,
+  listUsableCapacities,
 } from "../core/fabricCatalog";
 import {
   type LakehouseAttachment,
@@ -90,6 +92,8 @@ export class LakehousesView
   private target: vscode.Uri | undefined;
   /** Lakehouse ID (lower case) → name and workspace, from listings. */
   private readonly known = new Map<string, Known>();
+  /** Workspace ID (lower case) → derived capacity display. */
+  private readonly workspaceCapacity = new Map<string, string>();
   /** The last "Attached to this notebook" node shown, to refresh it alone. */
   private attachedGroup: Node | undefined;
   private readonly targetChanged = new vscode.EventEmitter<
@@ -101,7 +105,6 @@ export class LakehousesView
   constructor(
     private readonly api: IFabricApiClient,
     private readonly tenant: () => Promise<string | undefined>,
-    private readonly selectedCapacity: () => Promise<string | undefined>,
     private readonly bindings: LakehouseBindingStore,
     /** Logical IDs from the repo and this machine's bindings. */
     private readonly sources?: AttachmentSources,
@@ -169,16 +172,6 @@ export class LakehousesView
     this.refresh();
   }
 
-  /** The connected capacity; an invalid local.json connects none. */
-  private async selectedCapacityOrNone(): Promise<string | undefined> {
-    try {
-      return await this.selectedCapacity();
-    } catch {
-      // The status bar and Configuration view report the invalid file.
-      return undefined;
-    }
-  }
-
   /**
    * The Lakehouse as an item whose Tables and Files can be browsed, when
    * its workspace is known (older metadata may not name it).
@@ -219,6 +212,9 @@ export class LakehousesView
         const item = new vscode.TreeItem(
           node.workspace.displayName,
           vscode.TreeItemCollapsibleState.Collapsed,
+        );
+        item.description = this.workspaceCapacity.get(
+          node.workspace.id.toLowerCase(),
         );
         item.iconPath = new vscode.ThemeIcon("folder-library");
         return item;
@@ -276,23 +272,20 @@ export class LakehousesView
         });
         return nodes;
       }
-      const capacityId = await this.selectedCapacityOrNone();
-      if (capacityId === undefined) {
-        nodes.push({
-          kind: "message",
-          label: "Connect to a capacity to see its Lakehouses",
-          command: {
-            title: "Connect to Compute",
-            command: "fabric-connect.connectCompute",
-          },
-        });
-        return nodes;
+      const { capacities, workspaces } = await listUsableCapacities(
+        this.api,
+        tenantId,
+      );
+      for (const workspace of workspaces) {
+        this.workspaceCapacity.set(
+          workspace.id.toLowerCase(),
+          describeWorkspaceCapacity(workspace, capacities),
+        );
       }
-      const workspaces = await listWorkspaces(this.api, tenantId, capacityId);
       if (workspaces.length === 0) {
         nodes.push({
           kind: "message",
-          label: "No workspaces you can access are on the connected capacity",
+          label: "No workspaces you can access in this tenant",
         });
       }
       return [
@@ -400,7 +393,7 @@ export class LakehousesView
   /**
    * Binds a notebook's unbound default Lakehouse by the name its metadata
    * keeps (as Fabric's Lakehouse auto-binding does): looks for Lakehouses
-   * with that name in the connected capacity's workspaces and saves the one
+   * with that name in the accessible workspaces and saves the one
    * picked as this notebook's binding on this machine (`.fabric/local.json`).
    * The notebook file is not changed, so binding causes no git diff and
    * Fabric's logical IDs stay in place. Never creates a Lakehouse.
@@ -422,15 +415,13 @@ export class LakehousesView
       return;
     }
     const tenantId = await this.tenant();
-    const capacityId = await this.selectedCapacityOrNone();
-    if (tenantId === undefined || capacityId === undefined) {
+    if (tenantId === undefined) {
       throw new LakehouseError(
-        `Cannot bind Lakehouse '${name}': no capacity is connected, so there are no workspaces to search.`,
+        `Cannot bind Lakehouse '${name}': no Fabric tenant is selected.`,
         {
           operation: "bind default lakehouse",
           entity: `notebook ${notebookName(target)}`,
-          remediation:
-            "Connect to a capacity (Configuration → Compute), then try again.",
+          remediation: "Sign in to Fabric, then try again.",
         },
       );
     }
@@ -439,11 +430,11 @@ export class LakehousesView
         location: vscode.ProgressLocation.Notification,
         title: `Looking for Lakehouse '${name}'…`,
       },
-      () => this.lakehousesNamed(tenantId, capacityId, name),
+      () => this.lakehousesNamed(tenantId, name),
     );
     if (matches.length === 0) {
       void vscode.window.showWarningMessage(
-        `No Lakehouse named '${name}' is in a workspace on the connected capacity. Pick another Lakehouse in the Lakehouses view, or connect the capacity that holds it.`,
+        `No Lakehouse named '${name}' was found in an accessible workspace. Pick another Lakehouse in the Lakehouses view.`,
       );
       return;
     }
@@ -497,19 +488,20 @@ export class LakehousesView
     this.refresh();
   }
 
-  /** Lakehouses with this name in the capacity's workspaces. */
+  /** Lakehouses with this name in all accessible workspaces. */
   private async lakehousesNamed(
     tenantId: string,
-    capacityId: string,
     name: string,
   ): Promise<LakehouseInWorkspace[]> {
-    const workspaces = await listWorkspaces(this.api, tenantId, capacityId);
+    const workspaces = await listWorkspaces(this.api, tenantId);
     const lists = await Promise.all(
-      workspaces.map((w) => listLakehouses(this.api, tenantId, w.id)),
+      workspaces.map((workspace) =>
+        listLakehouses(this.api, tenantId, workspace.id),
+      ),
     );
-    const candidates = workspaces.flatMap((workspace, i) => {
-      this.remember(lists[i], workspace.id);
-      return lists[i].map((lakehouse) => ({ lakehouse, workspace }));
+    const candidates = workspaces.flatMap((workspace, index) => {
+      this.remember(lists[index], workspace.id);
+      return lists[index].map((lakehouse) => ({ lakehouse, workspace }));
     });
     return findLakehousesByName(name, candidates);
   }
@@ -521,7 +513,7 @@ export class LakehousesView
     this.refresh();
     if (node.isDefault) {
       void vscode.window.showInformationMessage(
-        `Detached the default Lakehouse from '${notebookName(node.notebook)}'. Set another attached Lakehouse as default; until then the notebook runs on the connected compute's Lakehouse.`,
+        `Detached the default Lakehouse from '${notebookName(node.notebook)}'. Set another attached Lakehouse as default; until then the notebook uses the selected execution host.`,
       );
     }
   }
@@ -529,7 +521,7 @@ export class LakehousesView
   /**
    * Adds the name and workspace a default needs (Fabric writes both). An
    * attached Lakehouse only carries its ID, so it is looked up in the
-   * listings, then in every workspace on the connected capacity.
+   * listings, then in every accessible workspace.
    */
   private async complete(
     lakehouse: LakehouseAttachment,
@@ -540,17 +532,8 @@ export class LakehousesView
     const id = lakehouse.id.toLowerCase();
     let known = this.known.get(id);
     const tenantId = await this.tenant();
-    const capacityId = await this.selectedCapacityOrNone();
-    if (
-      known === undefined &&
-      tenantId !== undefined &&
-      capacityId !== undefined
-    ) {
-      for (const workspace of await listWorkspaces(
-        this.api,
-        tenantId,
-        capacityId,
-      )) {
+    if (known === undefined && tenantId !== undefined) {
+      for (const workspace of await listWorkspaces(this.api, tenantId)) {
         this.remember(
           await listLakehouses(this.api, tenantId, workspace.id),
           workspace.id,
@@ -563,12 +546,12 @@ export class LakehousesView
     }
     if (known === undefined) {
       throw new LakehouseError(
-        "Cannot set the default Lakehouse: it is not in any workspace on the connected capacity.",
+        "Cannot set the default Lakehouse: it is not in any accessible workspace.",
         {
           operation: "set default lakehouse",
           entity: `lakehouse ${lakehouse.id}`,
           remediation:
-            "Connect the capacity whose workspace holds it, or detach it and attach a Lakehouse listed in the Lakehouses view.",
+            "Sign in to the tenant that holds it, or detach it and attach a Lakehouse listed in the Lakehouses view.",
         },
       );
     }
@@ -735,7 +718,7 @@ export function unboundDefaultTreeItem(
     "warning",
     new vscode.ThemeColor("list.warningForeground"),
   );
-  item.tooltip = `${notebookName(node.notebook)} declares this default Lakehouse with placeholder IDs, as Fabric stores attached Lakehouses in git. It cannot run until bound: Bind Lakehouse… finds it by name on the connected capacity and binds it on this machine only (no change to the notebook file); Set as Default writes a Lakehouse into the notebook instead.`;
+  item.tooltip = `${notebookName(node.notebook)} declares this default Lakehouse with placeholder IDs, as Fabric stores attached Lakehouses in git. It cannot run until bound: Bind Lakehouse… finds it by name in accessible workspaces and binds it on this machine only (no change to the notebook file); Set as Default writes a Lakehouse into the notebook instead.`;
   item.contextValue = "fabricUnboundLakehouse";
   return item;
 }

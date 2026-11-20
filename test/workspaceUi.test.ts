@@ -12,13 +12,14 @@ const load = Module._load;
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "fabric-workspace-ui-"));
 const tenantId = "11111111-1111-1111-1111-111111111111";
 const capacityId = "22222222-2222-2222-2222-222222222222";
+const legacyCapacityId = "88888888-8888-8888-8888-888888888888";
 const workspaceId = "33333333-3333-3333-3333-333333333333";
 const lakehouseId = "44444444-4444-4444-4444-444444444444";
 const nextLakehouseId = "55555555-5555-5555-5555-555555555555";
 const environmentId = "66666666-6666-6666-6666-666666666666";
 const nextEnvironmentId = "77777777-7777-7777-7777-777777777777";
 const localFile = path.join(temp, ".fabric", "local.json");
-const errors = [];
+const errors = [], executedCommands = [], quickPickTitles = [];
 let messageHandler, applied = true, saved = true;
 const notebookUri = {
   fsPath: path.join(temp, "Example.Notebook", "notebook-content.ipynb"),
@@ -39,14 +40,23 @@ const vscode = {
   StatusBarAlignment: { Left: 1 },
   ProgressLocation: { Notification: 1 },
   QuickPickItemKind: { Separator: -1 },
+  TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+  TreeItem: class {
+    constructor(label, collapsibleState) {
+      this.label = label; this.collapsibleState = collapsibleState;
+    }
+  },
+  ThemeIcon: class { constructor(id) { this.id = id; } },
   ViewColumn: { Beside: 2 },
   WorkspaceEdit: class {
     set(uri, edits) { this.uri = uri; this.edits = edits; }
   },
   NotebookEdit: { updateNotebookMetadata: metadata => ({ metadata }) },
-  commands: { async executeCommand() {} },
+  commands: { async executeCommand(...args) { executedCommands.push(args); } },
   workspace: {
     notebookDocuments: [notebook], textDocuments: [],
+    onDidSaveTextDocument: () => disposable(),
+    onDidChangeNotebookDocument: () => disposable(),
     async applyEdit(edit) {
       if (applied) notebook.metadata = edit.edits[0].metadata;
       return applied;
@@ -54,12 +64,15 @@ const vscode = {
   },
   window: {
     visibleNotebookEditors: [{ notebook }],
+    onDidChangeActiveNotebookEditor: () => disposable(),
+    onDidChangeActiveTextEditor: () => disposable(),
     createStatusBarItem: () => ({ show() {}, hide() {}, dispose() {} }),
-    async showInformationMessage() {},
+    async showInformationMessage(_message, ...items) { return items.at(-1); },
     async showWarningMessage() {},
     async showErrorMessage(message) { errors.push(message); },
     async showInputBox() { return "My capacity"; },
-    async showQuickPick(items) {
+    async showQuickPick(items, options = {}) {
+      quickPickTitles.push(options.title ?? options.placeHolder);
       return items.find(item => item.value !== undefined && item.value.id !== "");
     },
     async withProgress(_options, action) { return action(); },
@@ -77,6 +90,7 @@ Module._load = function(request, parent, isMain) {
 };
 const { ComputeConnection } = require(sourceRoot + "/vscode/computeConnection.js");
 const { LakehousePanel } = require(sourceRoot + "/vscode/lakehousePanel.js");
+const { LakehousesView } = require(sourceRoot + "/vscode/lakehousesView.js");
 const { LakehouseBindingStore } = require(sourceRoot + "/vscode/lakehouseBindingStore.js");
 const { readComputeProfile, writeComputeProfile } = require(sourceRoot + "/core/computeProfile.js");
 const { getLakehouseAttachments } = require(sourceRoot + "/core/notebookCodec.js");
@@ -95,15 +109,23 @@ function deferred() {
 }
 function refreshFixture() {
   const response = deferred(), started = deferred();
+  let capacityRequests = 0, workspaceRequests = 0;
   const api = { async request(options) {
     if (options.path === "/capacities") {
+      capacityRequests += 1;
+      if (capacityRequests > 1) return { body: { value: [{
+        id: legacyCapacityId, displayName: "Capacity " + legacyCapacityId.slice(0, 8), sku: "", region: "", state: "Unknown"
+      }] } };
       started.resolve();
       return response.promise;
     }
     if (options.path === "/v1.0/myorg/capacities") return { body: { value: [] } };
-    if (options.path === "/workspaces") return { body: { value: [
-      { id: workspaceId, displayName: "Workspace", capacityId }
-    ] } };
+    if (options.path === "/workspaces") {
+      workspaceRequests += 1;
+      return { body: { value: [
+        { id: workspaceId, displayName: "Workspace", capacityId: workspaceRequests === 1 ? capacityId : legacyCapacityId }
+      ] } };
+    }
     if (options.path.endsWith("/lakehouses")) return { body: { value: [
       { id: nextLakehouseId, displayName: "New host" }
     ] } };
@@ -118,6 +140,25 @@ function refreshFixture() {
     id: capacityId, displayName: "Actual capacity", sku: "F8", state: "Active"
   }] } });
   return { connection, refresh, started: started.promise, finish };
+}
+function hostFixture(state = "Active") {
+  const api = { async request(options) {
+    if (options.path === "/capacities") return { body: { value: [{
+      id: capacityId, displayName: "Actual capacity", sku: "F8", region: "West Europe", state
+    }] } };
+    if (options.path === "/v1.0/myorg/capacities") return { body: { value: [] } };
+    if (options.path === "/workspaces") return { body: { value: [{
+      id: workspaceId, displayName: "Workspace", capacityId
+    }] } };
+    if (options.path.endsWith("/lakehouses")) return { body: { value: [{
+      id: nextLakehouseId, displayName: "New host"
+    }] } };
+    if (options.path.endsWith("/environments")) return { body: { value: [{
+      id: nextEnvironmentId, displayName: "New environment"
+    }] } };
+    throw new Error("Unexpected request: " + options.path);
+  } };
+  return new ComputeConnection(api, temp, async () => tenantId);
 }
 async function panelFixture(bound = true) {
   const bindings = new LakehouseBindingStore(temp);
@@ -166,13 +207,110 @@ test("capacity-name refresh does not reconnect after disconnect", () => {
   `);
 });
 
-test("capacity-name refresh does not restore a superseded capacity", () => {
+test("connecting selects a host and derives its capacity from the workspace", () => {
+  runConsumer(`
+    fs.writeFileSync(localFile, writeComputeProfile(undefined, {
+      tenantId, capacityId: legacyCapacityId, capacityName: "Legacy capacity"
+    }));
+    const connection = hostFixture();
+    assert.equal(await connection.connect(), true);
+    assert.deepEqual(await connection.current(), {
+      tenantId,
+      capacityId,
+      capacityName: "Actual capacity",
+      sku: "F8",
+      workspaceId,
+      workspaceName: "Workspace",
+      lakehouseId: nextLakehouseId,
+      lakehouseName: "New host",
+      environmentId: nextEnvironmentId,
+      environmentName: "New environment"
+    });
+    assert.ok(quickPickTitles.some(title => /workspace/i.test(title)));
+  `);
+});
+
+test("a legacy capacity-only profile is not a connected execution host", () => {
+  runConsumer(`
+    fs.writeFileSync(localFile, writeComputeProfile(undefined, {
+      tenantId, capacityId, capacityName: "Legacy capacity"
+    }));
+    const connection = hostFixture();
+    await connection.refreshStatus();
+    assert.deepEqual(
+      executedCommands.find(args => args[0] === "setContext" && args[1] === "fabricConnect.computeConnected"),
+      ["setContext", "fabricConnect.computeConnected", false]
+    );
+  `);
+});
+
+test("Lakehouses remain browsable without a selected execution host", () => {
+  runConsumer(`
+    const bindings = new LakehouseBindingStore(temp);
+    const api = { async request(options) {
+      if (options.path === "/capacities") return { body: { value: [{
+        id: capacityId, displayName: "Actual capacity", sku: "F8", region: "West Europe", state: "Active"
+      }] } };
+      if (options.path === "/v1.0/myorg/capacities") return { body: { value: [] } };
+      if (options.path === "/workspaces") return { body: { value: [{
+        id: workspaceId, displayName: "Workspace", capacityId
+      }] } };
+      throw new Error("Unexpected request: " + options.path);
+    } };
+    const view = new LakehousesView(
+      api,
+      async () => tenantId,
+      bindings
+    );
+    view.setTarget(notebookUri);
+    const children = await view.getChildren();
+    const workspace = children.find(node => node.kind === "workspace" && node.workspace.id === workspaceId);
+    assert.ok(workspace);
+    assert.equal(view.getTreeItem(workspace).description, "F8 · Actual capacity");
+    assert.ok(!children.some(node => node.kind === "message" && /Connect/i.test(node.label)));
+    view.dispose();
+  `);
+});
+
+test("logical Lakehouse binding searches every accessible workspace", () => {
+  runConsumer(`
+    const otherWorkspaceId = legacyCapacityId;
+    notebook.metadata.fabricRoot = { metadata: { dependencies: { lakehouse: {
+      default_lakehouse: "00000000-0000-0000-0000-000000000000",
+      default_lakehouse_name: "New host",
+      known_lakehouses: []
+    } } } };
+    const bindings = new LakehouseBindingStore(temp);
+    const api = { async request(options) {
+      if (options.path === "/workspaces") return { body: { value: [
+        { id: workspaceId, displayName: "First", capacityId },
+        { id: otherWorkspaceId, displayName: "Second", capacityId: legacyCapacityId }
+      ] } };
+      if (options.path === "/workspaces/" + workspaceId + "/lakehouses") {
+        return { body: { value: [] } };
+      }
+      if (options.path === "/workspaces/" + otherWorkspaceId + "/lakehouses") {
+        return { body: { value: [{ id: nextLakehouseId, displayName: "New host" }] } };
+      }
+      throw new Error("Unexpected request: " + options.path);
+    } };
+    const view = new LakehousesView(api, async () => tenantId, bindings);
+    await view.bindDefault(notebookUri);
+    assert.deepEqual(await bindings.get(notebookUri), {
+      workspaceId: otherWorkspaceId,
+      workspaceName: "Second",
+      lakehouseId: nextLakehouseId,
+      lakehouseName: "New host"
+    });
+    view.dispose();
+  `);
+});
+
+test("capacity-name refresh does not overwrite a newly selected execution host", () => {
   runConsumer(`
     const fixture = refreshFixture();
     await fixture.started;
-    await fixture.connection.connect({
-      id: nextLakehouseId, displayName: "Other capacity", sku: "F16", region: "", state: "Active"
-    });
+    await fixture.connection.connect();
     const selected = await fixture.connection.current();
     fixture.finish();
     await fixture.refresh;
@@ -190,7 +328,7 @@ test("capacity-name refresh preserves a newly selected host and Environment", ()
     const current = await fixture.connection.current();
     assert.equal(current.lakehouseId, nextLakehouseId);
     assert.equal(current.environmentId, nextEnvironmentId);
-    assert.equal(current.capacityName, "Actual capacity");
+    assert.equal(current.capacityName, "Capacity " + legacyCapacityId.slice(0, 8));
   `);
 });
 

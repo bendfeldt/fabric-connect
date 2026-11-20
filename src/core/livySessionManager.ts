@@ -48,8 +48,11 @@ export interface LivyStatementResult {
 
 export interface LivySessionSetup {
   readonly key: string;
-  readonly createStatement: () => Promise<{ code: string; kind: string }>;
-  readonly cleanup?: () => Promise<void>;
+  readonly requiresFreshSession?: boolean;
+  readonly createStatements: () => AsyncIterable<{
+    code: string;
+    kind: string;
+  }>;
 }
 
 export interface ILivySessionManager {
@@ -334,18 +337,29 @@ export class LivySessionManager implements ILivySessionManager {
     setup?: LivySessionSetup,
   ): Promise<LivyStatementResult> {
     this.throwIfCancelled(token, target);
-    const session = this.getOrCreateSession(target, token, diagnostics);
-    const sessionId = await diagnostics.measure(
-      "session.acquire",
-      () => session,
-    );
+    const key = sessionKey(target);
+    const previousSession = this.sessions.get(key);
+    const previousSessionId = this.store.get(key);
+    let session = this.getOrCreateSession(target, token, diagnostics);
+    let sessionId = await diagnostics.measure("session.acquire", () => session);
+    const reusedSession =
+      previousSessionId === sessionId ||
+      (previousSessionId === undefined && previousSession === session);
+    if (
+      setup?.requiresFreshSession === true &&
+      reusedSession &&
+      this.activeSetupFor(target, sessionId) !== setup.key
+    ) {
+      await this.stopSession(target);
+      session = this.getOrCreateSession(target, token, diagnostics);
+      sessionId = await diagnostics.measure("session.acquire", () => session);
+    }
     if (setup !== undefined) {
       if (this.activeSetupFor(target, sessionId) !== setup.key) {
         this.clearSetupState(target, sessionId);
-        let result: LivyStatementResult;
-        try {
-          const statement = await setup.createStatement();
-          result = await this.executeStatement(
+        for await (const statement of setup.createStatements()) {
+          this.throwIfCancelled(token, target);
+          const result = await this.executeStatement(
             target,
             sessionId,
             session,
@@ -355,11 +369,9 @@ export class LivySessionManager implements ILivySessionManager {
             diagnostics,
             "module-setup",
           );
-        } finally {
-          await setup.cleanup?.().catch(() => undefined);
-        }
-        if (result.status !== "ok") {
-          return { ...result, setupFailed: true };
+          if (result.status !== "ok") {
+            return { ...result, setupFailed: true };
+          }
         }
         this.activeSetups.set(this.setupCacheKey(target, sessionId), setup.key);
         this.store.set(

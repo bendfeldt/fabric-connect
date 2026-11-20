@@ -12,9 +12,9 @@ This reference describes current source; entries under
 - **Local-first** — your code (notebooks, modules, jobs, queries) lives in
   your repo. Fabric Connect runs it on Fabric and never publishes, deploys,
   creates or changes workspace items.
-- **Compute connection** — the capacity this repo runs on (section 5),
-  plus a host Lakehouse picked when first needed, saved per machine in
-  `.fabric/local.json`.
+- **Execution host** — the workspace and Lakehouse where Spark code without a
+  Lakehouse of its own runs (section 5), saved per machine in
+  `.fabric/local.json`. The workspace determines the capacity.
 - **Host Lakehouse** — the Lakehouse a Spark session runs on. Relative
   paths (`Files/…`) and unqualified table names resolve against it.
 - **Target** (optional) — a named mapping from a folder in your repo to a Fabric
@@ -32,8 +32,8 @@ This reference describes current source; entries under
 
 ## 1. Configure targets (optional)
 
-You don't need targets to get started: the compute connection (section 5)
-is enough for code without its own Lakehouse; queries pick their own item
+You don't need targets to get started: the execution host (section 5) is
+enough for code without its own Lakehouse; queries pick their own item
 targets. Add folder targets for tenant context, the Manage Lakehouses
 panel's workspace, or a Spark Job Definition's bound default Lakehouse.
 A notebook default's workspace comes from its metadata or local binding,
@@ -124,9 +124,9 @@ the same time. If the saved account is no longer signed in to VS Code, the
 status bar shows a warning and you are asked to sign in when Fabric
 Connect next needs a token.
 
-The explorer, API notebooks, `Fabric: Connect to Compute` and query files
+The explorer, API notebooks, `Fabric: Select Execution Host…` and query files
 use the repo's sign-in; if the repo is not signed in yet, they start the
-sign-in first. A compute connection keeps the tenant it was made in, and
+sign-in first. An execution host keeps the tenant it was selected in, and
 notebooks mapped by `.fabric/targets.json` use their target's tenant —
 all with the repo's account.
 
@@ -146,7 +146,7 @@ title) switches back. In the text view:
 
 - **▷ Run Cell | Run All Above** sit above each `# CELL` block, **Run
   All** on the first line. Cells run on the notebook's own host (its
-  default Lakehouse or local binding, else the connected compute), in the
+  default Lakehouse or local binding, else the selected execution host), in the
   same Livy session as the notebook editor. Unsaved edits run.
 - Output goes to the **Fabric Connect: Run** output channel; `display()`
   and SQL tables also open in **Fabric Results** beside the editor. **Run
@@ -177,7 +177,7 @@ Portal compatibility is a tested guarantee, not an aspiration:
 
 With a Fabric notebook active, run **`Fabric: Manage Lakehouses for
 Active Notebook`**. This separate panel lists Lakehouses in the folder's
-target workspace, or the connected compute's host workspace if unmapped.
+target workspace, or the selected execution host's workspace if unmapped.
 With neither available it reports a target-configuration error; connecting
 only a capacity does not supply a panel workspace. Use the **Lakehouses**
 side bar below to browse the capacity's workspaces. In the panel you can:
@@ -196,9 +196,9 @@ notebook selected in **Repo** (named in the view title):
 
 - **Attached to this notebook** — its Lakehouses, the default first with a
   yellow star.
-- One group per workspace on the **connected capacity**, each listing its
-  Lakehouses when expanded; attached ones are checked. Not connected: a
-  **Connect** link instead of a list.
+- One group per **accessible workspace**, each listing its
+  Lakehouses when expanded; attached ones are checked. Signed out: a
+  **Sign In** link instead of a list.
 - Inline buttons: **Attach to Notebook** (+), **Set as Default Lakehouse**
   (star) and **Detach from Notebook** (×). Several Lakehouses can be
   attached; the first one attached becomes the default, and the default
@@ -222,37 +222,27 @@ editor, `Ctrl+Z` there undoes the change. Repo lists a notebook's attached Lakeh
 read-only (default starred); change them in the Lakehouses view. Fabric
 Connect never creates a Lakehouse.
 
-## 5. Connect to compute
-
-Fabric Connect is local-first: your code lives in your repo, and you
-connect the repo once to the Fabric compute it runs on — like attaching a
-Databricks Connect project to a cluster. Run **`Fabric: Connect to
-Compute`** (or click the Fabric item in the status bar) and pick:
-
-1. the **capacity** — the capacity that is billed. The list holds every
-   capacity your workspaces run on (the connected one first). SKU, region
-   and state show when you have rights on the capacity itself; otherwise
-   it is named `Capacity <id prefix>`. A capacity known to be paused is
-   refused.
-
-That is all: no workspace or Lakehouse is asked. The plug button on
-Configuration → Compute does the same (and changes the capacity later);
-so does **Connect to This Capacity** on a capacity in the Explorer side
-bar's Fabric view.
+## 5. Select an execution host
 
 Code without a Lakehouse of its own (a plain `.py`/`.sql` file, a
-selection, a table preview, a notebook with no default Lakehouse) also
-needs a **host Lakehouse**, because Livy only starts Spark sessions on a
-Lakehouse. The first time such code runs you pick one — the Lakehouses of
-the capacity's workspaces, grouped by workspace — and optionally an
-**Environment**; it is saved and reused. Change it with **Change Host
-Lakehouse…** (the pencil on Configuration → Compute → Host Lakehouse, or
-`Fabric: Change Host Lakehouse…`). Connecting another capacity drops a
-host on the old one.
+selection, a table preview, a notebook with no default Lakehouse) needs a
+Lakehouse execution host because Livy starts Spark sessions on a Lakehouse.
+Run **`Fabric: Select Execution Host…`** (or click the execution-host item in
+the status bar), then pick:
 
-The connection is saved under `"compute"` in your gitignored
-`.fabric/local.json` (the extension warns if that file isn't in your root
-`.gitignore`). **`Fabric: Disconnect from Compute`** removes it.
+1. a **workspace**; its capacity, SKU and state are shown as context;
+2. a **Lakehouse** in that workspace;
+3. optionally, an **Environment**.
+
+The workspace determines the capacity. A workspace on a known paused
+capacity is refused; there is no separate capacity-selection step. The host
+is saved and reused until you select another one.
+
+The selection is saved under the compatibility key `"compute"` in your
+gitignored `.fabric/local.json` (the extension warns if that file is not in
+your root `.gitignore`). **`Fabric: Disconnect Execution Host`** removes it.
+A legacy tenant-and-capacity-only value is readable but incomplete: it does
+not enable execution and the UI asks for a complete host.
 
 **Notebooks from git: bind the default Lakehouse.** Fabric's git
 integration "stores logical identifiers for attached resources in
@@ -269,7 +259,7 @@ notebook instead of guessing. A default whose ID is the `logicalId` of a
 as not bound too. The quickest fix is **Bind Lakehouse…** (in the
 notification shown when a cell fails, on the status bar item, or the link
 button on the warning row): it looks for a Lakehouse with the name the
-notebook keeps (e.g. `lh_analytics`) in the connected capacity's
+notebook keeps (e.g. `lh_analytics`) in accessible
 workspaces, like Fabric's Lakehouse auto-binding, and asks before binding
 (or lets you pick when several workspaces have one).
 
@@ -309,17 +299,17 @@ metadata — the remote workspace a folder is mapped to in `targets.json`
 does not change that (it only decides the tenant). If an older notebook's
 metadata has no workspace for its default Lakehouse, running it says so:
 click **Set as Default** on it in the Lakehouses view to write it.
-Anything without its own Lakehouse runs on the connected compute. Relative paths such as `Files/…` and unqualified table
+Anything without its own Lakehouse runs on the selected execution host. Relative paths such as `Files/…` and unqualified table
 names resolve against that host, so a second status-bar item shows which
-one is in effect for the active notebook. When falling back to connected
-compute, a folder target in a different tenant is refused. This check does
+one is in effect for the active notebook. When falling back to the execution
+host, a folder target in a different tenant is refused. This check does
 not apply when the notebook supplies its own default Lakehouse.
 
 **Lakehouses are never created by the extension.** They are
 infrastructure: create them in the Fabric portal (or with your
-infrastructure tooling). If the connected capacity's accessible workspaces have no
+infrastructure tooling). If the accessible workspaces have no
 Lakehouse, picking a host fails with guidance to create one in the portal.
-Connecting the capacity itself does not require a host. Every write that would change a workspace item —
+Browsing capacities does not select an execution host. Every write that would change a workspace item —
 creating any item (Lakehouses included), updating or deleting items,
 definition updates, job runs, git and deployment APIs — is blocked in code
 before any request leaves your machine.
@@ -327,7 +317,7 @@ before any request leaves your machine.
 ## 6. Run cells
 
 Cells run on the notebook's **default Lakehouse** (section 4), or on the
-connected compute when it has none (section 5). Supported cell languages and their Livy session
+the selected execution host when it has none (section 5). Supported cell languages and their Livy session
 kinds:
 
 | Language | Livy kind |
@@ -368,7 +358,7 @@ Session behavior:
 
 To end a session explicitly, run **`Fabric: Stop Livy Session`** with the
 notebook active; with no Fabric notebook active, it stops the session that
-plain files run on (the connected capacity's host Lakehouse).
+plain files run on (the selected execution host).
 **`Fabric: Restart Livy Session`** stops the notebook's session and starts a
 fresh one. **`Fabric: Show Livy Sessions`** lists the active sessions on the
 host Lakehouse (including ones left running by other windows) and stops the
@@ -462,7 +452,7 @@ The Databricks Connect workflow: edit locally, run on Fabric.
 - **`Fabric: Run File on Fabric`** (▷ in the editor title, or Explorer
   context menu) runs a whole `.py`, `.sql`, `.scala` or `.r` file;
   **`Fabric: Run Selection on Fabric`** runs the selection (or the current
-  line). Files run on the connected compute (section 5; a folder
+  line). Files run on the selected execution host (section 5; a folder
   target in another tenant is refused), in the same session as your
   notebooks on that host. `%run` and cell magics work as in notebooks.
   Output (text, `display()` tables as text) appears in the **Fabric
@@ -482,18 +472,11 @@ The Databricks Connect workflow: edit locally, run on Fabric.
   - **Local** — your working tree. The source folders are
     `fabric-connect.sourceRoots` if set, else the folders `pyproject.toml`
     names (setuptools `packages.find.where` or `package-dir`, Hatch wheel
-    `packages`, Poetry `packages.from`), else `src`.
+    `packages`, Poetry `packages.from`), else `src`. If none exists, no package
+    bundle is staged; local notebook `%run` references still expand from the
+    working tree.
 
-  - **Wheel** — choose a readable `.whl` inside the workspace. The
-    resource-scoped `fabric-connect.localWheel` setting stores its relative
-    path. Before first use for each session and content hash, the extension
-    stages it below `Files/.fabric-connect/` and runs `%pip
-install --force-reinstall`; dependencies use the package sources
-    configured for the Fabric session. It deletes the scratch file after
-    setup on a best-effort basis. This never publishes or modifies a Fabric
-    Environment. Switching into or out of Wheel mode or selecting another
-    wheel replaces the active session and clears its in-memory state. Direct
-    Livy `%pip` and driver/executor behavior remain a live release gate.
+  - **Wheel** — select a readable `.whl` inside the workspace. Fabric Connect treats every direct sibling `.whl` as its offline wheelhouse. It streams these files to the Livy driver in sequential 256 KiB chunks, verifies size and SHA-256 remotely, and installs with pip restricted to that wheelhouse; missing transitive wheels fail before your code runs. Only pure-Python wheels with `Root-Is-Purelib: true` and platform tag `any` are supported. Native modules and `.pth` files are rejected. The installed target is zipped and distributed with Spark `addPyFile`; ZIP imports do not support packages that require unpacked filesystem resources. Wheel bytes never go to OneLake but are retained in driver-local temporary storage for the session lifetime. This transfer has no total-size cap. Remote mode continues to use only the published Fabric Environment.
 
   When an import fails on Remote for a package that is also in your repo
   (e.g. `cannot import name 'entity' from 'analytics'`, because the
@@ -512,7 +495,7 @@ install --force-reinstall`; dependencies use the package sources
   `SparkJobDefinitionV1.json`. A bound default Lakehouse ID uses the folder
   target's workspace because job settings do not name a workspace;
   without a suitable target, it fails rather than guessing. With no bound
-  default it uses the compute host. The main file comes from the folder's `Main/`
+  default it uses the execution host. The main file comes from the folder's `Main/`
   (or next to the settings file) and libraries from `Libs/` — local files
   only. They are staged to the scratch folder and submitted as a Livy
   batch, and deleted when the job ends or Fabric provably did not accept the
@@ -560,13 +543,13 @@ the query endpoint is allowed, and a Kusto token is only ever sent to a
 Explorer and Source Control), the way the Databricks extension works. Its
 views:
 
-- **Configuration** — the account and tenant the repo signs in with, and
-  its compute (capacity; host Lakehouse and Environment once picked). The
+- **Configuration** — the account and tenant the repo signs in with, and its
+  execution host (workspace, Lakehouse, derived capacity and optional Environment). The
   inline buttons sign in, sign out, switch tenant, connect or disconnect.
-  **Switch Tenant** lists the current, recently used and compute tenants,
+  **Switch Tenant** lists the current and recently used tenants,
   **Find tenants on my account…** and **Enter tenant ID or domain…**;
   every view follows the tenant you pick.
-- **Capacity name** — Configuration → Compute → Capacity shows the
+- **Capacity name** — Configuration → Execution host → Capacity shows the
   capacity's real name. It comes from Fabric's capacity list, else Power
   BI's. Both only give it to people with rights on the capacity itself;
   otherwise it reads `Capacity <id prefix>`, the tooltip says why (and,
@@ -584,7 +567,7 @@ views:
   `node_modules` are left out. Click a **Notebook** to open it in the
   Fabric notebook editor. The play button (or right-click → **Run on
   Fabric**) runs a notebook (all cells) or a Spark Job Definition. The
-  view title shows the connected compute (or _no compute_). The tree
+  view title shows the selected execution host (or _no execution host_). The tree
   follows file changes.
   Right-click an item → **Open .platform** to see the file, or **Edit
   Item Metadata…** to change its display name and description: the edit
@@ -596,7 +579,7 @@ views:
 
 **Explorer side bar.** The **Fabric** view in VS Code's Explorer side bar
 stays, with the same tree in one place. It browses the tenant the
-repo is signed in to (or, before it signs in, the compute connection's
+repo is signed in to (or, before it signs in, the execution host's
 tenant): **Capacities** (SKU, region, state) →
 workspaces on each → items grouped by type; **Workspaces without a
 capacity**; and the tenant's **Connections**. Lakehouses expand into their
@@ -607,7 +590,7 @@ Right-click actions:
 - **Copy ID / Name / OneLake Path** (`abfss://…`).
 - **Copy SQL Connection String** (Lakehouse, Warehouse, SQL endpoint) —
   paste it into the Microsoft `mssql` extension for T-SQL.
-- **Preview Table** — the first 100 rows, read on the connected compute's
+- **Preview Table** — the first 100 rows, read on the execution host's
   Spark session and shown in the Fabric Results panel.
 - **Preview File** — the first 64 KB of a text file, opened as an untitled
   document.
@@ -681,7 +664,6 @@ not guarantee cleanup; see [Security and data](security.md).
 | `Fabric: Sign Out`                                 | This repo forgets its sign-in                                  |
 | `Fabric: Account…`                                 | Account menu (the status bar item)                             |
 | `Fabric: Name This Capacity…`                      | Save a local name when the real capacity name is not visible   |
-| `Fabric: Connect to This Capacity`                 | Connect from a capacity row in the Explorer Fabric view        |
 | `Fabric: Open File as Fabric Notebook`             | Open any `.ipynb` with the Fabric notebook editor              |
 | `Fabric: Manage Lakehouses for Active Notebook`    | Browse, attach/detach Lakehouses; set the default              |
 | `Fabric: Bind Notebook's Default Lakehouse…`       | Bind the default locally without editing notebook metadata     |
@@ -693,7 +675,7 @@ not guarantee cleanup; see [Security and data](security.md).
 | `Fabric: Run Cell`                                 | Run a source-text cell from its code lens                      |
 | `Fabric: Run All Above`                            | Run preceding source-text code cells and the current cell      |
 | `Fabric: Python Modules (Local, Wheel, or Remote)` | Select working-tree, workspace-wheel, or installed packages    |
-| `Fabric: Stop Livy Session`                        | Stop the active notebook's (or compute host's) Livy session    |
+| `Fabric: Stop Livy Session`                        | Stop the active notebook's (or execution host's) Livy session  |
 | `Fabric: Restart Livy Session`                     | Stop and immediately start a fresh session                     |
 | `Fabric: Show Livy Sessions`                       | List active sessions on the host Lakehouse; stop selected ones |
 | `Fabric: Run File on Fabric`                       | Run the active (or selected) Python/SQL/Scala/R file           |
@@ -702,9 +684,8 @@ not guarantee cleanup; see [Security and data](security.md).
 | `Fabric: Run Query File`                           | Run a `.kql` / `.dax` / `.graphql` file against its bound item |
 | `Fabric: Change Query Target`                      | Re-pick the item a query file runs against                     |
 | `Fabric: New API Notebook`                         | Open a new `.fabnb` REST API notebook                          |
-| `Fabric: Connect to Compute`                       | Pick the capacity to run on                                    |
-| `Fabric: Change Host Lakehouse…`                   | Pick the host Lakehouse (→ Environment) on that capacity       |
-| `Fabric: Disconnect from Compute`                  | Remove the saved compute connection                            |
+| `Fabric: Select Execution Host…`                   | Pick a workspace, Lakehouse and optional Environment           |
+| `Fabric: Disconnect Execution Host`                | Remove the saved execution host                                |
 
 View actions use shorter labels: Repo has **Refresh**, **Run on Fabric**,
 **Open .platform** and **Edit Item Metadata…**; Lakehouses has **Refresh**,
@@ -722,7 +703,7 @@ Lakehouse Livy. Use the **Variable library** row in Configuration or run
 **Fabric: Variable Library** to select a library and the non-secret variable
 names to forward to Python notebook cells. The picker displays names only,
 never values. It uses the active Fabric notebook's configured workspace, or
-the connected compute host workspace when no Fabric notebook is active. The
+the selected execution host workspace when no Fabric notebook is active. The
 selection is saved at workspace scope; choose **None / Clear selection** to
 remove it. Cancelling either picker leaves the current setting unchanged.
 
@@ -776,8 +757,8 @@ cases:
   and never committed.
 - **"Sign-in to tenant … was cancelled or consent was declined."** — run
   `Fabric: Sign In` again and complete the Microsoft prompt.
-- **"… has no Lakehouse of its own and this repo is not connected to
-  Fabric compute"** — run `Fabric: Connect to Compute`, or attach a default
+- **"… has no Lakehouse of its own and no execution host is selected"** — run
+  `Fabric: Select Execution Host…`, or attach a default
   Lakehouse with `Fabric: Manage Lakehouses for Active Notebook`.
 - **"Blocked '…' request: Fabric Connect is local-first…"** — the
   extension refused a write that would change a workspace. This is by
@@ -796,7 +777,7 @@ cases:
   explain why Fabric ended the session; retain the correlation ID if
   repeated termination requires service-side investigation.
 - **"Refusing to run '…': its folder's target … belongs to a different
-  tenant"** — connect to compute in the target's tenant, or move the file.
+  tenant"** — select an execution host in the target's tenant, or move the file.
 - **"Cannot expand '%run …'"** — the named notebook must exist in the repo
   with that `displayName` in its `.platform` file, exactly once, and the
   inlined cells must be Python.

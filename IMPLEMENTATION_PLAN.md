@@ -10,6 +10,7 @@ includes them.
 
 ## Implemented
 
+- **Notebook-only Local mode:** explicit Local Python module mode no longer fails when source-root discovery finds no package folders; staging becomes a no-op and existing recursive local `%run` expansion remains responsible for referenced Fabric source notebooks. Explicit invalid source roots still fail validation. Live VS Code/Fabric validation remains unverified.
 - **Local notebook execution bridge:** notebook-scoped Livy sessions and module
   scratch paths; a private module-level execution descriptor in notebook and
   source-cell paths; opt-in selected active Variable Library values using the
@@ -107,6 +108,12 @@ milestone or outstanding stacked-PR merge instruction in this tracker.
 The native `node:test` suites exercise core behavior through scripted seams,
 and manifest/consumer tests use VS Code API stand-ins. They do not replace a
 running VS Code host or live Fabric verification.
+
+Notebook-only Local mode validation: the focused regression failed first with
+the reported no-source-folder error, then passed after the fix. TypeScript
+compilation, all 392 native tests, changed-file Prettier checks,
+`git diff --check`, and the independent adversarial review passed. A live
+VS Code/Fabric run of the Aquavilla notebook was not performed.
 
 Local notebook execution bridge validation: TypeScript compilation, all 357
 native tests, changed-file Prettier checks and the required independent
@@ -271,14 +278,23 @@ smoke step (docs/testing.md) was not run.
 - Evidence: `npm run compile -- --pretty false` passed; the focused target/session/module-picker suites passed (114 tests); the full `npm test` suite passed (372 tests); Prettier checks passed for changed task files.
 - Independent adversarial review passed. Live VS Code/Fabric smoke test remains unavailable and is needed to validate picker-driven session replacement against a real Fabric notebook.
 
-## Select a local Python wheel (2026-11-18)
+## OneLake-free Local Wheel installation (2026-11-20)
 
-- Added `wheel` mode, resource-scoped `fabric-connect.localWheel`, a workspace-only `.whl` picker, consistent wheel labels, content hashing, scratch upload/install/cleanup, and keyed session setup that blocks user code on installation failure. Switching into or out of Wheel mode or choosing another wheel restarts only the tracked Livy session.
-- Updated user, security, architecture, testing, README and Unreleased release documentation. Existing `plan.md` was preserved because it belongs to the prior task; the supplied approved plan was the goal contract.
-- Evidence: `npm run compile` passed. `npm test` ran 377 tests: 376 passed; the unrelated local-listener test fails with sandbox `EPERM` on `127.0.0.1`. Explicit Prettier checks pass for changed files; repository-wide `npm run format:check` reports only the pre-existing untracked `.serena/project.yml`. Independent review found the live platform gate is a release blocker.
-- Audit fixes: preserved the original wheel filename inside its unique scratch folder so pip can parse it; changed session setup persistence to one active key so A → B → A reinstalls A; and made pulled item definitions appear only after every file is written, cleaning temporary folders on failure. The previous `{ sessionId, keys }` setup cache is ignored and safely rebuilt.
-- Audit-fix evidence: `npm run compile` passed; focused wheel/Livy/Explorer/UI suites passed 99 tests; full `npm test` passed all 380 tests. Adversarial review found target collisions for numeric Livy IDs, stale active state after a failed setup switch, and hidden temporary-folder cleanup failures; setup cache identity now includes the full target, changed setup attempts clear the previous active marker before running, and cleanup failures report the leftover path and recovery action. The final independent adversarial review passed. Live Fabric validation remains unavailable.
-- Release gate: no live Fabric workspace was used. Direct Livy `%pip` compatibility, native-wheel driver/executor imports, dependency resolution, and scratch cleanup remain unverified. Do not ship Wheel mode until the authorized acceptance checks in `docs/testing.md` pass; on failure, report the platform limitation and do not downgrade native support silently.
+- Replaced the earlier OneLake-staged/per-executor-pip approach with streamed sibling-wheelhouse transfer through sequential Livy statements. Wheel bytes are reconstructed and hash-verified in driver-local session storage; pip resolves dependencies only from that wheelhouse.
+- Driver installs only pure-Python wheels, rejects native and `.pth` outputs, then distributes one hash-named ZIP with Spark `addPyFile`. A one-task manifest sentinel preflight checks distribution but does not prove every executor imported the ZIP. Remote mode remains attached-Environment-only; Spark job staging remains unchanged.
+- Setup now uses `createStatements(): AsyncIterable`, executes statements in order, and blocks user code after cancellation/failure. A changed or absent active wheelhouse setup key replaces the tracked session. Session temporary files are retained; no cleanup callback removes them prematurely.
+- Updated README, manifest text, changelog, architecture, security, user and testing guides. No new setting, dependency, command, upload endpoint or public API.
+- Evidence: `npm run compile -- --pretty false` passed; all 88 focused Livy, wheel-stager, generated-code and execution-UI tests passed; generated PySpark statements parse successfully; and Prettier plus `git diff --check` pass. Full `npm test` passes 385 of 386 tests; the unrelated real-loopback contract test fails with sandbox `listen EPERM` on `127.0.0.1`. Independent adversarial review passed; live Fabric acceptance remains unavailable and required before release. Transfer is unbounded; measure live statement and wheelhouse limits before deciding whether to add a cap.
+
+## Self-contained local development rebuild (2026-11-20)
+
+- Updated the repeat-build recipe in `docs/local-build.md` to recompute its
+  base version and require an explicit next unused development build number,
+  so it also works in a fresh terminal session.
+- Evidence: with `BASE` and `DEV` initially unset, the documented calculation
+  produced a complete next-patch development version ending in `-dev.6`;
+  Prettier passed for both changed documentation files; `npm test` passed all
+  386 tests; and the independent adversarial review passed.
 
 ## Required Marketplace publishing (2026-11-19)
 
@@ -305,3 +321,27 @@ smoke step (docs/testing.md) was not run.
   Marketplace policy creation, the first OIDC upload, and verification of the
   Marketplace listing. No branch push, policy, live Fabric call or release was
   performed.
+
+## Lakehouse-first execution host (2026-11-20)
+
+- Replaced capacity-first selection with one atomic workspace → Lakehouse →
+  optional Environment flow. Capacity identity, name and SKU are derived from
+  the selected workspace; a known inactive capacity is rejected.
+- Treats only complete host profiles as connected. Existing capacity-only
+  `"compute"` values remain readable for compatibility but do not set connected
+  context or enable host-dependent execution.
+- Kept the `"compute"` storage key and existing command IDs as hidden aliases;
+  visible commands, Configuration, status, walkthrough and recovery text use
+  execution-host terminology.
+- Lakehouses now browse and bind across all accessible workspaces after sign-in,
+  independent of execution-host selection. Notebook defaults and local bindings
+  continue to run without a saved host.
+- Added regression coverage for atomic host selection, legacy local state,
+  Configuration context, hidden command compatibility, all-workspace browsing
+  and logical Lakehouse binding.
+- Evidence: the focused host/configuration/manifest/workspace suite passed all
+  69 tests; `npm test` passed all 392 tests after allowing the existing
+  loopback-only fetch-contract test to bind `127.0.0.1`; changed-file Prettier
+  and `git diff --check` passed; the independent adversarial review passed.
+- Evidence gap: no live VS Code/Fabric picker or execution smoke test was run;
+  it requires an authorized tenant and extension host.

@@ -309,11 +309,99 @@ export function describeModules(
   };
 }
 
-export function wheelInstallCode(wheelUri: string): string {
-  return `%pip install --force-reinstall ${JSON.stringify(wheelUri)}`;
+export interface WheelFileManifest {
+  readonly fileName: string;
+  readonly size: number;
+  readonly sha256: string;
 }
 
-/** The hint added to an import error when the package is also local. */
+export function wheelInitializeCode(
+  contentHash: string,
+  files: readonly WheelFileManifest[],
+): string {
+  return `import pathlib, tempfile
+root = pathlib.Path(tempfile.gettempdir()) / "fabric-connect" / ${JSON.stringify(contentHash)} / "wheelhouse"
+root.mkdir(parents=True, exist_ok=True)
+for name in ${JSON.stringify(files.map((file) => file.fileName))}:
+    (root / name).write_bytes(b"")`;
+}
+
+// shortcut: wheelhouse transfer is unbounded, add a cap after live Fabric limits are measured.
+export function wheelChunkCode(
+  contentHash: string,
+  fileName: string,
+  offset: number,
+  dataBase64: string,
+): string {
+  return `import base64, pathlib, tempfile
+path = pathlib.Path(tempfile.gettempdir()) / "fabric-connect" / ${JSON.stringify(contentHash)} / "wheelhouse" / ${JSON.stringify(fileName)}
+with path.open("r+b") as wheel:
+    wheel.seek(${offset})
+    wheel.write(base64.b64decode(${JSON.stringify(dataBase64)}))`;
+}
+
+export function wheelInstallCode(
+  selectedWheel: string,
+  contentHash: string,
+  files: readonly WheelFileManifest[],
+): string {
+  const manifest = JSON.stringify(files);
+  const sentinel = `_fabric_connect_manifest_${contentHash}`;
+  return `import hashlib, pathlib, shutil, subprocess, sys, tempfile, zipfile
+from email.parser import Parser
+
+content_hash = ${JSON.stringify(contentHash)}
+manifest = ${manifest}
+selected_wheel = ${JSON.stringify(selectedWheel)}
+root = pathlib.Path(tempfile.gettempdir()) / "fabric-connect" / content_hash
+wheelhouse = root / "wheelhouse"
+for item in manifest:
+    path = wheelhouse / item["fileName"]
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(262144), b""):
+            size += len(chunk)
+            digest.update(chunk)
+    if size != item["size"] or digest.hexdigest() != item["sha256"]:
+        raise RuntimeError("Transferred wheel failed size or SHA-256 verification: " + item["fileName"])
+
+wheel_path = wheelhouse / selected_wheel
+with zipfile.ZipFile(wheel_path) as wheel:
+    metadata_files = [name for name in wheel.namelist() if name.endswith(".dist-info/WHEEL")]
+    if len(metadata_files) != 1:
+        raise RuntimeError("Selected wheel has invalid WHEEL metadata.")
+    metadata = Parser().parsestr(wheel.read(metadata_files[0]).decode("utf-8"))
+    tags = metadata.get_all("Tag", [])
+    if metadata.get("Root-Is-Purelib", "").lower() != "true" or not tags or any(tag.rsplit("-", 1)[-1] != "any" for tag in tags):
+        raise RuntimeError("Only pure-Python wheels with platform tag 'any' are supported.")
+
+target = root / "installed"
+if target.exists():
+    shutil.rmtree(target)
+subprocess.run([sys.executable, "-m", "pip", "install", "--no-index", "--find-links", str(wheelhouse), "--target", str(target), "--ignore-installed", str(wheel_path)], check=True)
+for path in target.rglob("*"):
+    if path.is_file() and (path.suffix.lower() in {".so", ".pyd", ".dll", ".dylib", ".pth"} or ".so." in path.name.lower()):
+        raise RuntimeError("Wheel installation contains an unsupported native or .pth file: " + path.name)
+if str(target) not in sys.path:
+    sys.path.insert(0, str(target))
+
+sentinel = target / ${JSON.stringify(sentinel + ".py")}
+sentinel.write_text("MANIFEST_HASH = " + repr(content_hash) + "\\n", encoding="utf-8")
+archive = root / (content_hash + ".zip")
+with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:
+    for path in target.rglob("*"):
+        if path.is_file():
+            bundle.write(path, path.relative_to(target).as_posix())
+spark.sparkContext.addPyFile(str(archive))
+def _fabric_connect_preflight(_):
+    import importlib
+    module = importlib.import_module(${JSON.stringify(sentinel)})
+    if module.MANIFEST_HASH != content_hash:
+        raise RuntimeError("Spark worker loaded a mismatched wheel manifest.")
+    return module.MANIFEST_HASH
+assert spark.sparkContext.parallelize([0], 1).map(_fabric_connect_preflight).collect() == [content_hash]`;
+}
 export function localModuleHint(
   packageName: string,
   localPath: string,

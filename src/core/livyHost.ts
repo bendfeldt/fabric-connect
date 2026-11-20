@@ -9,7 +9,7 @@
  *     set as default). A mapped folder's target does not change that
  *     workspace (user feedback 2026-10-02); it only supplies the tenant.
  *  2. Anything without its own Lakehouse (a notebook with none attached, a
- *     plain .py/.sql file, a job) runs on the connected capacity's host
+ *     plain .py/.sql file, a job) runs on the selected execution host
  *     Lakehouse; when none is picked yet, `HostLakehouseNeededError` lets
  *     the editor ask for one.
  *  3. Neither → a loud error naming both fixes. There is no silent default.
@@ -78,7 +78,7 @@ function resolveHost(input: LivyHostInput): LivyHost {
         remediation:
           name === undefined
             ? "In the Fabric side bar's Lakehouses view, attach a Lakehouse (or Set as Default) for this notebook; that writes its real IDs into the notebook."
-            : `Click 'Bind Lakehouse…' to find '${name}' on the connected capacity, or Set as Default in the Lakehouses view; that writes its real IDs into the notebook.`,
+            : `Click 'Bind Lakehouse…' to find '${name}' in an accessible workspace, or Set as Default in the Lakehouses view; that writes its real IDs into the notebook.`,
         ...(name === undefined ? {} : { lakehouseName: name }),
       },
     );
@@ -132,13 +132,13 @@ function resolveHost(input: LivyHostInput): LivyHost {
   }
 
   if (compute === undefined) {
-    throw new ComputeError(
-      `Cannot run '${input.entity}': it has no Lakehouse of its own and this repo is not connected to Fabric compute.`,
+    throw new HostLakehouseNeededError(
+      `Cannot run '${input.entity}': it has no Lakehouse of its own and no execution host is selected.`,
       {
         operation: "resolve Livy host",
         entity: input.entity,
         remediation:
-          "Run 'Fabric: Connect to Compute' to pick a capacity and host Lakehouse, or (for a notebook) attach a default Lakehouse with 'Fabric: Manage Lakehouses for Active Notebook'.",
+          "Run 'Fabric: Select Execution Host…', or (for a notebook) attach a default Lakehouse with 'Fabric: Manage Lakehouses for Active Notebook'.",
       },
     );
   }
@@ -147,24 +147,24 @@ function resolveHost(input: LivyHostInput): LivyHost {
     target.tenantId.toLowerCase() !== compute.tenantId.toLowerCase()
   ) {
     throw new ComputeError(
-      `Refusing to run '${input.entity}': its folder's target '${target.targetName}' belongs to a different tenant than the connected compute.`,
+      `Refusing to run '${input.entity}': its folder's target '${target.targetName}' belongs to a different tenant than the selected execution host.`,
       {
         operation: "resolve Livy host",
         entity: input.entity,
         remediation:
-          "Run 'Fabric: Connect to Compute' and pick compute in the target's tenant, or move the file out of that target's folder.",
+          "Run 'Fabric: Select Execution Host…' in the target's tenant, or move the file out of that target's folder.",
       },
     );
   }
   const hosted = computeHost(compute);
   if (hosted === undefined) {
     throw new HostLakehouseNeededError(
-      `Cannot run '${input.entity}': it has no Lakehouse of its own and no host Lakehouse is picked for the connected capacity.`,
+      `Cannot run '${input.entity}': it has no Lakehouse of its own and no execution host is selected.`,
       {
         operation: "resolve Livy host",
         entity: input.entity,
         remediation:
-          "Pick a host Lakehouse ('Change Host Lakehouse…' in the Fabric side bar's Configuration), or (for a notebook) set a default Lakehouse in the Lakehouses view.",
+          "Run 'Fabric: Select Execution Host…', or (for a notebook) set a default Lakehouse in the Lakehouses view.",
       },
     );
   }
@@ -172,7 +172,7 @@ function resolveHost(input: LivyHostInput): LivyHost {
 }
 
 /**
- * The connected capacity's host Lakehouse, where code without a Lakehouse
+ * The selected execution host, where code without a Lakehouse
  * of its own runs; undefined without compute or a picked host.
  */
 export function computeHost(
@@ -192,7 +192,7 @@ export function computeHost(
         : { environmentId: hosted.environmentId }),
     },
     source: "compute",
-    label: `${hosted.lakehouseName ?? "host Lakehouse"} (connected capacity's host)`,
+    label: `${hosted.lakehouseName ?? "host Lakehouse"} (selected execution host)`,
   };
 }
 
@@ -266,7 +266,7 @@ export function diagnoseLivyHost(
   const fix =
     source === "notebook"
       ? "Set another default Lakehouse for the notebook in the Lakehouses view."
-      : "Pick another host Lakehouse ('Change Host Lakehouse…' in Configuration).";
+      : "Select another execution host in Configuration.";
   if (probe.workspace === "missing" || probe.workspace === "forbidden") {
     return {
       why:
@@ -309,7 +309,7 @@ function checkedHost(host: LivyHost, entity: string): LivyHost {
           remediation:
             host.source === "notebook"
               ? "Set a default Lakehouse for the notebook in the Lakehouses view."
-              : "Pick a host Lakehouse again ('Change Host Lakehouse…' in Configuration).",
+              : "Select the execution host again in Configuration.",
         },
       );
     }

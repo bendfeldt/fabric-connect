@@ -200,7 +200,7 @@ test("a capacity label is validated, read back and shown instead of the listed n
 
 test("the compute label shows names, never IDs", () => {
   const label = describeCompute(PROFILE);
-  assert.equal(label, "dev-cap F4 · Sandbox / scratch");
+  assert.equal(label, "Sandbox / scratch · dev-cap F4");
   assert.doesNotMatch(label, new RegExp(WS));
   assert.equal(describeCompute(withoutHost(PROFILE)), "dev-cap F4");
 });
@@ -589,7 +589,7 @@ test("the notebook's Environment is used only in the host workspace", () => {
   assert.equal(other.target.environmentId, undefined);
 });
 
-test("code without a Lakehouse runs on the connected compute and its Environment", () => {
+test("code without a Lakehouse runs on the selected execution host", () => {
   const host = resolveLivyHost({
     entity: "job.py",
     compute: { ...PROFILE, environmentId: ENV },
@@ -603,13 +603,13 @@ test("code without a Lakehouse runs on the connected compute and its Environment
   });
 });
 
-test("code without a Lakehouse on a capacity with no host asks for one", () => {
+test("legacy capacity-only state asks for an execution host", () => {
   assert.throws(
     () => resolveLivyHost({ entity: "job.py", compute: withoutHost(PROFILE) }),
     (error: unknown) =>
       error instanceof HostLakehouseNeededError &&
       error instanceof ComputeError &&
-      /host Lakehouse/.test(error.message),
+      /execution host/.test(error.message),
   );
   // A notebook with its own default Lakehouse needs no host.
   assert.equal(
@@ -622,12 +622,13 @@ test("code without a Lakehouse on a capacity with no host asks for one", () => {
   );
 });
 
-test("no Lakehouse and no compute is a loud error naming both fixes", () => {
+test("no Lakehouse and no execution host names both fixes", () => {
   assert.throws(
     () => resolveLivyHost({ entity: "job.py" }),
     (error: unknown) =>
+      error instanceof HostLakehouseNeededError &&
       error instanceof ComputeError &&
-      /Connect to Compute/.test(error.message) &&
+      /Select Execution Host/.test(error.message) &&
       /Manage Lakehouses/.test(error.message),
   );
 });
@@ -805,7 +806,7 @@ test("a failed start is explained by the host's workspace, capacity or Lakehouse
       { workspace: "forbidden", lakehouse: "unknown" },
       "compute",
     )?.next ?? "",
-    /Change Host Lakehouse/,
+    /execution host/,
   );
   assert.match(
     diagnoseLivyHost({ workspace: "found", lakehouse: "found" }, "notebook")
@@ -836,7 +837,7 @@ test("a failed start is explained by the host's workspace, capacity or Lakehouse
   );
 });
 
-test("the compute host to stop is the one plain files run on, Environment included", () => {
+test("the execution host to stop is the one plain files run on, Environment included", () => {
   const compute = {
     tenantId: "87654321-4321-4321-4321-cba987654321",
     capacityId: "99999999-8888-7777-6666-555555555555",
@@ -853,7 +854,7 @@ test("the compute host to stop is the one plain files run on, Environment includ
       environmentId: compute.environmentId,
     },
     source: "compute",
-    label: "Host (connected capacity's host)",
+    label: "Host (selected execution host)",
   };
   assert.deepEqual(computeHost(compute), expected);
   assert.deepEqual(resolveLivyHost({ entity: "load.py", compute }), expected);

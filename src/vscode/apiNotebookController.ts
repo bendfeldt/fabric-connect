@@ -165,7 +165,7 @@ export class ApiNotebookController implements vscode.Disposable {
           {
             operation: "run API cell",
             remediation:
-              "Run 'Fabric: Sign In' or 'Fabric: Connect to Compute' first.",
+              "Run 'Fabric: Sign In' or select an execution host first.",
           },
         );
       }

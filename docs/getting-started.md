@@ -113,31 +113,22 @@ logs.
 > tenants by name; VS Code asks once to allow Azure Resource Manager
 > access, used only for that list) or enter a tenant ID or domain.
 
-## 4. Connect the repo to Fabric compute
+## 4. Select an execution host
 
-This is the Databricks Connect moment: you choose, once, where your code
-runs.
+Spark code without a Lakehouse of its own needs a Lakehouse execution host.
 
-1. Run **Fabric: Connect to Compute** (or click **Fabric: connect compute**
+1. Run **Fabric: Select Execution Host…** (or click the execution-host item
    in the status bar).
-2. Sign in if the repo isn't signed in yet; compute is connected in the
-   repo's tenant.
-3. Pick the **capacity**. Each entry shows its SKU (e.g. `F8`), region and
-   state; a paused capacity is refused — resume it in Azure first. That is
-   all you pick here.
+2. Sign in if the repo is not signed in yet.
+3. Pick a **workspace**, then a **Lakehouse**, and optionally an
+   **Environment**. The workspace's capacity and SKU are shown for context
+   and saved as derived metadata; there is no separate capacity choice.
 
-The first time you run code without a Lakehouse of its own (a plain `.py`
-file, or a notebook with no default Lakehouse), you also pick a **host
-Lakehouse** on that capacity — Spark sessions run there, and relative
-paths such as `Files/raw/sales.csv` resolve against it — and optionally an
-**Environment**. It is saved and reused; **Fabric: Change Host
-Lakehouse…** changes it.
-
-The status bar now shows something like
-`Fabric: dev-capacity F8` (plus `· Sandbox / scratch` once a host
-Lakehouse is picked). The choice is saved under
-`"compute"` in `.fabric/local.json`; run **Fabric: Disconnect from
-Compute** to remove it.
+The status bar shows the workspace and Lakehouse. The complete choice is
+saved under the compatibility key `"compute"` in `.fabric/local.json`.
+Run **Fabric: Disconnect Execution Host** to remove it. An older file that
+contains only tenant and capacity is treated as not selected and is upgraded
+when you choose a host.
 
 ## 5. Run your first notebook
 
@@ -159,13 +150,13 @@ Compute** to remove it.
    If a git-synced notebook shows _default Lakehouse not bound_, click
    **Bind Lakehouse…** to pick the corresponding physical Lakehouse. The
    binding stays in `.fabric/local.json`; the notebook is unchanged.
-   Without a default, pick a host Lakehouse when prompted.
+   Without a default, select an execution host when prompted.
 
-4. Look at the second status-bar item, e.g. `Livy: scratch (connected
-compute)`. It tells you which Lakehouse the notebook runs on:
+4. Look at the second status-bar item, e.g. `Livy: scratch (selected
+execution host)`. It tells you which Lakehouse the notebook runs on:
    - a notebook with a **default Lakehouse** or local binding runs there,
      in that Lakehouse's workspace;
-   - a notebook without one runs on the connected compute's host.
+   - a notebook without one runs on the selected execution host.
 
    Use the Fabric side bar's **Lakehouses** view to attach, detach or change
    the default. These actions edit and save notebook metadata, unlike
@@ -236,7 +227,7 @@ Open any `.py`, `.sql`, `.scala` or `.r` file:
 
 Output — printed text, and `display()` / `%%sql` results as text tables —
 appears in the **Fabric Connect: Run** output channel. Files run on the
-connected compute. Runs share a session when tenant, workspace, Lakehouse and
+the selected execution host. Runs share a session when tenant, workspace, Lakehouse and
 optional Environment match, regardless of statement language. Python
 variables/imports remain in that session's Python interpreter; another
 language does not automatically expose them.
@@ -249,7 +240,7 @@ Run Spark Job Definition**.
 - Settings (arguments, main class, libraries, default Lakehouse,
   Environment) come from `SparkJobDefinitionV1.json`.
 - A bound default Lakehouse in those settings needs a folder target for
-  its workspace. Without a bound default, the job uses the compute host.
+  its workspace. Without a bound default, the job uses the execution host.
   See [optional targets](#12-optional-map-folders-to-workspaces-dev--test--prod).
 - The **main file comes from the repo**: `Main/<file>`, or next to the
   settings file. Library files come from `Libs/`. Libraries referenced by
@@ -306,9 +297,9 @@ Connection String**.
 ## 10. Explore Fabric and pull items into the repo
 
 Click the **Fabric** icon in the Activity Bar. Its **Configuration** view
-shows what the repo signs in as and its compute (switch the tenant from
+shows what the repo signs in as and its execution host (switch the tenant from
 its Tenant row), **Repo** shows your working tree and runs it on the
-connected compute, and **Lakehouses** attaches Lakehouses to a notebook.
+the selected execution host, and **Lakehouses** attaches Lakehouses to a notebook.
 The **Fabric** view in the Explorer side bar browses everything:
 
 - **Capacities** → workspaces → items grouped by type;
@@ -317,7 +308,7 @@ The **Fabric** view in the Explorer side bar browses everything:
 
 Lakehouses expand into their OneLake **Files** and **Tables**. Right-click:
 
-- **Preview Table** — first 100 rows, read on your connected compute;
+- **Preview Table** — first 100 rows, read on the execution host;
 - **Preview File** — the start of a text file;
 - **Copy ID / Name / OneLake Path / SQL Connection String**;
 - **Open in Fabric** — the workspace in the portal;
@@ -353,8 +344,8 @@ mutations can change data with your permissions. Save as `.fabnb` to keep it.
 
 ## 12. Optional: map folders to workspaces (dev / test / prod)
 
-Compute is enough for code without its own Lakehouse. A valid notebook
-default can also run with only sign-in, without connecting compute.
+An execution host is enough for code without its own Lakehouse. A valid
+notebook default can run with only sign-in and no selected execution host.
 Add **targets** to assign folders a tenant, supply a workspace for the
 Manage Lakehouses panel, or resolve a Spark Job Definition's bound default.
 Targets do **not** relocate a notebook's default Lakehouse.
@@ -382,7 +373,7 @@ says which workspace that target means on this machine:
   "targets": {
     "sales": { "workspaceId": "11111111-1111-1111-1111-111111111111" }
   },
-  "compute": { "…": "written by Connect to Compute" }
+  "compute": { "…": "written by Select Execution Host" }
 }
 ```
 
@@ -394,12 +385,12 @@ machine-local dev/test Lakehouse choices without a notebook git diff.
 For an SJD with a bound `defaultLakehouseArtifactId`, the target workspace
 is used because its settings do not carry a workspace. `notebook` is the
 only registered target `itemType`; it is not a file execution-mode setting.
-If code uses the compute host and the folder target has a different
+If code uses the execution host and the folder target has a different
 tenant, execution is refused rather than borrowing another tenant's host.
 
 ## Your daily loop
 
-1. Open the repo — the status bar shows the connected compute.
+1. Open the repo — the status bar shows the selected execution host.
 2. Edit notebooks, modules and queries locally; commit with git as usual.
 3. Run cells, files, jobs and queries on Fabric from the editor.
 4. Stop the session when you're done (or let it time out).
@@ -412,15 +403,15 @@ tenant, execution is refused rather than borrowing another tenant's host.
 Every error says what failed, why, what it concerns and what to do next —
 read it first. The most common ones:
 
-| Message starts with                                     | Do this                                                           |
-| ------------------------------------------------------- | ----------------------------------------------------------------- |
-| "… has no Lakehouse of its own and … not connected"     | Run **Fabric: Connect to Compute**, or attach a default Lakehouse |
-| "Capacity '…' is Inactive"                              | Resume the capacity in the Azure portal                           |
-| "Workspace '…' has no Lakehouse to host Spark sessions" | Create a Lakehouse in the Fabric portal, then connect again       |
-| "Failed to start a Livy session …"                      | Check capacity state and your Contributor access to the workspace |
-| "Refusing to run '…' … different tenant"                | Connect to compute in the tenant of the folder's target           |
-| "Cannot expand '%run …'"                                | Check the notebook's `displayName` in its `.platform` file        |
-| "Blocked '…' request: Fabric Connect is local-first"    | Expected: the extension never changes workspaces                  |
+| Message starts with                                     | Do this                                                               |
+| ------------------------------------------------------- | --------------------------------------------------------------------- |
+| "… has no Lakehouse of its own and … no execution host" | Run **Fabric: Select Execution Host…**, or attach a default Lakehouse |
+| "Capacity '…' is Inactive"                              | Resume the capacity in the Azure portal                               |
+| "Workspace '…' has no Lakehouse to host Spark sessions" | Create a Lakehouse in the Fabric portal, then connect again           |
+| "Failed to start a Livy session …"                      | Check capacity state and your Contributor access to the workspace     |
+| "Refusing to run '…' … different tenant"                | Select a host in the tenant of the folder's target                    |
+| "Cannot expand '%run …'"                                | Check the notebook's `displayName` in its `.platform` file            |
+| "Blocked '…' request: Fabric Connect is local-first"    | Expected: the extension never changes workspaces                      |
 
 More in the [user guide's troubleshooting section](user-guide.md#troubleshooting).
 Set `fabric-connect.debugLogging` to `true` to see a redacted trace of

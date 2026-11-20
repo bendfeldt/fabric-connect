@@ -6,6 +6,7 @@
  */
 
 import * as crypto from "node:crypto";
+import { constants as fsConstants, createReadStream } from "node:fs";
 import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -25,6 +26,8 @@ import {
   scratchFolder,
   sourceRootsFromPyproject,
   stagedFileName,
+  wheelChunkCode,
+  wheelInitializeCode,
   wheelInstallCode,
 } from "../core/moduleStaging";
 import { type OneLakeClient, abfssUri } from "../core/oneLakeClient";
@@ -105,76 +108,137 @@ export class ModuleStager {
     return selected.length === 0 ? undefined : path.basename(selected);
   }
 
-  private async prepareWheel(target: LivyTarget): Promise<LivySessionSetup> {
+  private async prepareWheel(): Promise<LivySessionSetup> {
     if (this.workspaceRoot === undefined) {
-      throw new StagingError("Select a workspace before using a local wheel.", {
+      throw new StagingError("Select workspace before using local wheel.", {
         operation: "stage local wheel",
         remediation:
-          "Open the repository folder, then select a wheel with 'Fabric: Python Modules'.",
+          "Open repository folder, then select wheel with 'Fabric: Python Modules'.",
       });
     }
     const relative = vscode.workspace
       .getConfiguration("fabric-connect")
       .get<string>("localWheel", "");
     if (relative.length === 0) {
-      throw new StagingError("No local wheel is selected.", {
+      throw new StagingError("No local wheel selected.", {
         operation: "stage local wheel",
         remediation: "Run 'Fabric: Python Modules' and choose 'Local wheel…'.",
       });
     }
-    const candidate = path.resolve(this.workspaceRoot, relative);
-    let filePath: string;
-    let bytes: Uint8Array;
+    const selectedPath = path.resolve(this.workspaceRoot, relative);
+    const files: Array<{
+      fileName: string;
+      size: number;
+      sha256: string;
+      path: string;
+    }> = [];
+    let selectedWheel: string;
     try {
-      const rootPath = await fs.realpath(this.workspaceRoot);
-      filePath = await fs.realpath(candidate);
-      const rel = path.relative(rootPath, filePath);
-      if (
-        rel === ".." ||
-        rel.startsWith(`..${path.sep}`) ||
-        path.isAbsolute(rel)
-      ) {
-        throw new Error("The selected wheel resolves outside the workspace.");
+      const workspace = await fs.realpath(this.workspaceRoot);
+      const resolvedSelected = await fs.realpath(selectedPath);
+      selectedWheel = path.basename(resolvedSelected);
+      const siblingDirectory = path.dirname(resolvedSelected);
+      const entries = await fs.readdir(siblingDirectory, {
+        withFileTypes: true,
+      });
+      for (const entry of entries) {
+        if (!entry.name.toLowerCase().endsWith(".whl")) continue;
+        const candidate = await fs.realpath(
+          path.join(siblingDirectory, entry.name),
+        );
+        const workspaceRelative = path.relative(workspace, candidate);
+        if (
+          workspaceRelative === ".." ||
+          workspaceRelative.startsWith(".." + path.sep) ||
+          path.isAbsolute(workspaceRelative)
+        ) {
+          throw new Error(
+            "Wheel '" + entry.name + "' resolves outside the workspace.",
+          );
+        }
+        if (!(await fs.stat(candidate)).isFile()) {
+          throw new Error("Wheel '" + entry.name + "' is not a regular file.");
+        }
+        await fs.access(candidate, fsConstants.R_OK);
+        const digest = crypto.createHash("sha256");
+        let size = 0;
+        for await (const chunk of createReadStream(candidate, {
+          highWaterMark: 256 * 1024,
+        })) {
+          size += chunk.length;
+          digest.update(chunk);
+        }
+        files.push({
+          fileName: entry.name,
+          size,
+          sha256: digest.digest("hex"),
+          path: candidate,
+        });
       }
-      if (path.extname(filePath).toLowerCase() !== ".whl") {
-        throw new Error("The selected file is not a .whl wheel.");
+      if (!files.some((file) => file.fileName === selectedWheel)) {
+        throw new Error(
+          "The selected wheel is not a direct sibling in its wheelhouse.",
+        );
       }
-      if (!(await fs.stat(filePath)).isFile()) {
-        throw new Error("The selected wheel is not a regular file.");
-      }
-      bytes = new Uint8Array(await fs.readFile(filePath));
     } catch (cause) {
-      throw new StagingError(`Cannot read selected wheel '${relative}'.`, {
+      throw new StagingError("Cannot read selected wheel '" + relative + "'.", {
         operation: "stage local wheel",
         entity: relative,
         remediation:
-          "Restore a readable .whl file inside this workspace, then select it again with 'Fabric: Python Modules'.",
+          "Restore readable .whl files inside the workspace, then select the wheel again.",
         cause,
       });
     }
-    const hash = crypto.createHash("sha256").update(bytes).digest("hex");
-    const scratchName = `wheel-${crypto.randomBytes(8).toString("hex")}`;
-    const relPath = `${this.stagedFolder(scratchName)}/${stagedFileName(path.basename(filePath))}`;
+    files.sort((left, right) =>
+      left.fileName < right.fileName
+        ? -1
+        : left.fileName > right.fileName
+          ? 1
+          : 0,
+    );
+    const manifest = files.map(({ fileName, size, sha256 }) => ({
+      fileName,
+      size,
+      sha256,
+    }));
+    const hashInput = JSON.stringify([
+      selectedWheel,
+      ...manifest.map((file) => [file.fileName, file.sha256]),
+    ]);
+    const contentHash = crypto
+      .createHash("sha256")
+      .update(hashInput)
+      .digest("hex");
     return {
-      key: `wheel:${hash}`,
-      createStatement: async () => {
-        await this.oneLake.uploadFile(
-          {
-            tenantId: target.tenantId,
-            workspaceId: target.workspaceId,
-            itemId: target.lakehouseId,
-          },
-          relPath,
-          bytes,
-        );
-        return {
-          code: wheelInstallCode(
-            abfssUri(target.workspaceId, target.lakehouseId, relPath),
-          ),
+      key: "wheel:" + contentHash,
+      requiresFreshSession: true,
+      createStatements: async function* () {
+        yield {
+          code: wheelInitializeCode(contentHash, manifest),
+          kind: "pyspark",
+        };
+        for (const file of files) {
+          let offset = 0;
+          for await (const chunk of createReadStream(file.path, {
+            highWaterMark: 256 * 1024,
+          })) {
+            yield {
+              code: wheelChunkCode(
+                contentHash,
+                file.fileName,
+                offset,
+                chunk.toString("base64"),
+              ),
+              kind: "pyspark",
+            };
+            offset += chunk.length;
+          }
+        }
+        yield {
+          code: wheelInstallCode(selectedWheel, contentHash, manifest),
           kind: "pyspark",
         };
       },
-      cleanup: () => this.deleteStaged(target, scratchName),
     };
   }
 
@@ -224,20 +288,10 @@ export class ModuleStager {
   async prepare(target: LivyTarget): Promise<LivySessionSetup | undefined> {
     const mode = this.mode();
     if (mode === "remote") return undefined;
-    if (mode === "wheel") return this.prepareWheel(target);
+    if (mode === "wheel") return this.prepareWheel();
     if (this.workspaceRoot === undefined) return undefined;
     const roots = await this.sourceRoots();
-    if (roots.length === 0) {
-      throw new StagingError(
-        "Cannot stage local modules: no source folder was found in this repo.",
-        {
-          operation: "stage local modules",
-          entity: `workspace folder ${path.basename(this.workspaceRoot)}`,
-          remediation:
-            "Set 'fabric-connect.sourceRoots' (e.g. [\"src\"]), or run 'Fabric: Python Modules' and pick Remote.",
-        },
-      );
-    }
+    if (roots.length === 0) return undefined;
     const bundle = await bundleModules(
       {
         listFiles: listFilesRecursive,
@@ -251,14 +305,16 @@ export class ModuleStager {
     }
     return {
       key: `local:${bundle.hash}`,
-      createStatement: async () => ({
-        code: moduleImportCode(
-          Buffer.from(bundle.zip).toString("base64"),
-          bundleFileName(bundle.hash),
-          bundle.topLevel,
-        ),
-        kind: "pyspark",
-      }),
+      createStatements: async function* () {
+        yield {
+          code: moduleImportCode(
+            Buffer.from(bundle.zip).toString("base64"),
+            bundleFileName(bundle.hash),
+            bundle.topLevel,
+          ),
+          kind: "pyspark",
+        };
+      },
     };
   }
 
@@ -367,7 +423,7 @@ export class ModuleStager {
           detail:
             packages.length > 0
               ? `Import your working tree (${packages.join(", ")}), sent to the session before Python runs.`
-              : "Import your working tree, sent to the session before Python runs.",
+              : "No local packages found; local notebook %run still uses the working tree.",
         },
         {
           label: "Remote",

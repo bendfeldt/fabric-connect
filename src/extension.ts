@@ -12,7 +12,11 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { executionContextCode } from "./core/executionContext";
-import { type ComputeProfile, describeCompute } from "./core/computeProfile";
+import {
+  type ComputeProfile,
+  describeCompute,
+  hostOf,
+} from "./core/computeProfile";
 import { FabricApiClient } from "./core/fabricApiClient";
 import { ExecutionDiagnostics } from "./core/executionDiagnostics";
 import { computeHost, probeLivyHost } from "./core/livyHost";
@@ -167,7 +171,7 @@ export function activate(context: vscode.ExtensionContext): void {
     requireTenant,
   );
   const compute = () => computeConnection.current();
-  // The compute connection's tenant is offered when switching tenant.
+  // The execution host's tenant is offered when switching tenant.
   computeTenant = async () => {
     const profile = await compute();
     return profile === undefined ? [] : [{ id: profile.tenantId }];
@@ -272,11 +276,10 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   );
   // Lakehouses attached to the active (or Repo-selected) notebook, offered
-  // from the workspaces on the connected capacity.
+  // from accessible workspaces in the selected tenant.
   const lakehousesView = new LakehousesView(
     apiClient,
-    async () => signIn.tenant() ?? (await compute())?.tenantId,
-    () => computeConnection.connectedCapacityId(),
+    async () => signIn.tenant(),
     bindingStore,
     attachmentSources,
     oneLake,
@@ -292,7 +295,7 @@ export function activate(context: vscode.ExtensionContext): void {
         : path.basename(path.dirname(notebook.fsPath));
   };
   describeLakehousesTarget(lakehousesView.currentTarget());
-  // The working tree, run on the connected compute (named in the title).
+  // The working tree, run on the selected execution host (named in the title).
   const repoView = new RepoView(
     workspaceRoot,
     (id) => lakehousesView.nameOf(id),
@@ -308,8 +311,9 @@ export function activate(context: vscode.ExtensionContext): void {
     } catch {
       // The status bar and Configuration view report an invalid file.
     }
+    const hosted = profile === undefined ? undefined : hostOf(profile);
     repoTree.description =
-      profile === undefined ? "no compute" : describeCompute(profile);
+      hosted === undefined ? "no execution host" : describeCompute(hosted);
   };
   void describeRepoTarget();
   const codeRunner = new CodeRunner(
@@ -575,7 +579,7 @@ export function activate(context: vscode.ExtensionContext): void {
             : computeHost(await compute());
         if (host === undefined) {
           void vscode.window.showWarningMessage(
-            "No Livy session to stop: open a Fabric notebook, or connect to compute ('Fabric: Connect to Compute') and pick a host Lakehouse ('Change Host Lakehouse…' in Configuration), then run this command again.",
+            "No Livy session to stop: open the Fabric notebook whose session is running, or select an execution host and run host-dependent code before trying again.",
           );
           return;
         }
@@ -643,7 +647,7 @@ export function activate(context: vscode.ExtensionContext): void {
               computeHost(await compute())?.target;
         if (host === undefined) {
           void vscode.window.showWarningMessage(
-            "Open a Fabric notebook, or pick a host Lakehouse ('Change Host Lakehouse…' in Configuration), so there is a Lakehouse to list sessions for.",
+            "Open a Fabric notebook, or select an execution host in Configuration, so there is a Lakehouse to list sessions for.",
           );
           return;
         }

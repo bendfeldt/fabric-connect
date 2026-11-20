@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import Module from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
 import { test } from "node:test";
 
-test("wheel selection is workspace-scoped, hashed and staged ephemerally", async () => {
+test("wheel selection streams a workspace-contained sibling wheelhouse", async () => {
   const originalLoad = (
     Module as unknown as {
       _load: (request: string, parent: unknown, isMain: boolean) => unknown;
@@ -18,8 +19,8 @@ test("wheel selection is workspace-scoped, hashed and staged ephemerally", async
   };
   let selectedMode = "wheel";
   let selectedFile: string | undefined;
-  const uploaded: Array<{ path: string; bytes: Uint8Array }> = [];
-  const deleted: string[] = [];
+  let uploadCount = 0;
+  let deleteCount = 0;
   const vscode = {
     ConfigurationTarget: { Workspace: 2 },
     workspace: {
@@ -46,62 +47,47 @@ test("wheel selection is workspace-scoped, hashed and staged ephemerally", async
       ? vscode
       : originalLoad.call(this, request, parent, isMain);
   };
-
   const root = await fs.mkdtemp(
     path.join(os.tmpdir(), "fabric-connect-wheel-"),
   );
   const wheel = path.join(root, "dist", "sample-1.0-py3-none-any.whl");
-  const outside = `${root}-outside.whl`;
+  const dependency = path.join(path.dirname(wheel), "dep-1.0-py3-none-any.whl");
+  const outside = root + "-outside.whl";
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { ModuleStager } = require("../src/vscode/moduleStager") as {
-      ModuleStager: new (...args: never[]) => object;
-    };
+    const { ModuleStager } =
+      require("../src/vscode/moduleStager") as typeof import("../src/vscode/moduleStager");
     const stager = Object.create(ModuleStager.prototype) as {
       workspaceRoot: string;
-      runId: string;
       oneLake: {
-        uploadFile: (
-          target: unknown,
-          relPath: string,
-          bytes: Uint8Array,
-        ) => Promise<void>;
-        deleteDirectory: (target: unknown, relPath: string) => Promise<void>;
+        uploadFile: (...args: unknown[]) => Promise<void>;
+        deleteDirectory: (...args: unknown[]) => Promise<void>;
       };
       localPackages: () => Promise<Map<string, string>>;
       pickMode: () => Promise<unknown>;
-      prepare: (target: unknown) => Promise<{
-        key: string;
-        createStatement: () => Promise<{ code: string; kind: string }>;
-        cleanup?: () => Promise<void>;
-      }>;
+      prepare: (
+        target: unknown,
+      ) => Promise<import("../src/core/livySessionManager").LivySessionSetup>;
       describe: () => Promise<{ label: string }>;
     };
     stager.workspaceRoot = root;
-    stager.runId = "run-test";
-    stager.localPackages = async () => new Map();
     stager.oneLake = {
-      uploadFile: async (_target, relPath, bytes) => {
-        uploaded.push({ path: relPath, bytes });
+      uploadFile: async () => {
+        uploadCount++;
       },
-      deleteDirectory: async (_target, relPath) => {
-        deleted.push(relPath);
+      deleteDirectory: async () => {
+        deleteCount++;
       },
     };
-
+    stager.localPackages = async () => new Map();
     assert.equal(await stager.pickMode(), undefined);
-    assert.equal(state.pythonModules, "remote");
-    assert.equal(state.localWheel, "");
-
     await fs.mkdir(path.dirname(wheel), { recursive: true });
-    await fs.writeFile(wheel, "wheel bytes v1");
+    const selectedBytes = Buffer.alloc(256 * 1024 + 17, 0x5a);
+    const dependencyBytes = Buffer.from("dependency wheel bytes");
+    await fs.writeFile(wheel, selectedBytes);
+    await fs.writeFile(dependency, dependencyBytes);
     selectedFile = wheel;
-    const transition = (await stager.pickMode()) as {
-      previous: string;
-      selected: string;
-      wheelChanged: boolean;
-    };
-    assert.deepEqual(transition, {
+    assert.deepEqual(await stager.pickMode(), {
       previous: "remote",
       selected: "wheel",
       wheelChanged: true,
@@ -112,54 +98,85 @@ test("wheel selection is workspace-scoped, hashed and staged ephemerally", async
       (await stager.describe()).label,
       "Wheel · sample-1.0-py3-none-any.whl",
     );
-
-    const first = await stager.prepare({
-      tenantId: "tenant",
-      workspaceId: "workspace",
-      lakehouseId: "lakehouse",
-    });
-    const statement = await first.createStatement();
-    assert.match(statement.code, /^%pip install --force-reinstall /);
-    assert.equal(statement.kind, "pyspark");
-    assert.equal(path.basename(uploaded[0].path), path.basename(wheel));
-    assert.equal(Buffer.from(uploaded[0].bytes).toString(), "wheel bytes v1");
-    const concurrent = await stager.prepare({
-      tenantId: "tenant",
-      workspaceId: "workspace",
-      lakehouseId: "lakehouse",
-    });
-    await concurrent.createStatement();
-    assert.notEqual(uploaded[0].path, uploaded[1].path);
-    await first.cleanup?.();
-    await concurrent.cleanup?.();
-    assert.equal(deleted.length, 2);
-    assert.notEqual(deleted[0], deleted[1]);
-
-    await fs.writeFile(wheel, "wheel bytes v2, same path and version");
-    const second = await stager.prepare({
-      tenantId: "tenant",
-      workspaceId: "workspace",
-      lakehouseId: "lakehouse",
-    });
-    assert.notEqual(second.key, first.key);
-
+    const setup = await stager.prepare({});
+    const statements = [];
+    for await (const statement of setup.createStatements())
+      statements.push(statement);
+    assert.equal(setup.requiresFreshSession, true);
+    assert.match(
+      statements[0].code,
+      /dep-1\.0-py3-none-any\.whl.*sample-1\.0-py3-none-any\.whl/s,
+    );
+    const dataStatements = statements.slice(1, -1);
+    assert.equal(dataStatements.length, 3);
+    const reconstructed = new Map<string, Buffer[]>();
+    const sizes = new Map<string, number>();
+    for (const statement of dataStatements) {
+      const fileName = statement.code.match(/"wheelhouse" \/ "([^"]+)"/)?.[1];
+      const offset = Number(statement.code.match(/seek\((\d+)\)/)?.[1]);
+      const encoded = statement.code.match(/b64decode\("([^"]+)"\)/)?.[1];
+      assert.ok(fileName);
+      assert.ok(encoded);
+      assert.equal(offset, sizes.get(fileName) ?? 0);
+      const chunk = Buffer.from(encoded, "base64");
+      const chunks = reconstructed.get(fileName) ?? [];
+      chunks.push(chunk);
+      reconstructed.set(fileName, chunks);
+      sizes.set(fileName, offset + chunk.length);
+    }
+    assert.deepEqual(
+      Buffer.concat(reconstructed.get("dep-1.0-py3-none-any.whl")!),
+      dependencyBytes,
+    );
+    assert.deepEqual(
+      Buffer.concat(reconstructed.get("sample-1.0-py3-none-any.whl")!),
+      selectedBytes,
+    );
+    assert.equal(
+      sizes.get("sample-1.0-py3-none-any.whl"),
+      selectedBytes.length,
+    );
+    assert.match(
+      statements.at(-1)!.code,
+      new RegExp(createHash("sha256").update(selectedBytes).digest("hex")),
+    );
+    assert.match(
+      statements.at(-1)!.code,
+      new RegExp(createHash("sha256").update(dependencyBytes).digest("hex")),
+    );
+    assert.match(statements.at(-1)!.code, /--no-index/);
+    assert.match(statements.at(-1)!.code, /addPyFile/);
+    assert.doesNotMatch(
+      statements.map((item) => item.code).join("\n"),
+      /abfss|notebookutils|sitecustomize|%pip/,
+    );
+    const same = await stager.prepare({});
+    assert.equal(same.key, setup.key);
+    await fs.writeFile(wheel, "selected wheel changed");
+    const selectedChanged = await stager.prepare({});
+    assert.notEqual(selectedChanged.key, setup.key);
+    await fs.writeFile(dependency, "dependency changed");
+    assert.notEqual((await stager.prepare({})).key, selectedChanged.key);
+    assert.equal(uploadCount, 0);
+    assert.equal(deleteCount, 0);
     await fs.writeFile(outside, "outside");
+    const externalLink = path.join(
+      path.dirname(wheel),
+      "external-1.0-py3-none-any.whl",
+    );
+    await fs.symlink(outside, externalLink);
+    await assert.rejects(stager.prepare({}), /Cannot read selected wheel/);
+    await fs.rm(externalLink);
     selectedFile = outside;
     await assert.rejects(stager.pickMode(), /Cannot use/);
-    assert.equal(state.pythonModules, "wheel");
     assert.equal(state.localWheel, "dist/sample-1.0-py3-none-any.whl");
-
     const notWheel = path.join(root, "not-a-wheel.txt");
     await fs.writeFile(notWheel, "not a wheel");
     selectedFile = notWheel;
     await assert.rejects(stager.pickMode(), /Cannot use/);
-    assert.equal(state.localWheel, "dist/sample-1.0-py3-none-any.whl");
-
     await fs.rm(wheel);
-    await assert.rejects(
-      stager.prepare({ tenantId: "t", workspaceId: "w", lakehouseId: "l" }),
-      /Cannot read selected wheel/,
-    );
+    selectedFile = wheel;
+    await assert.rejects(stager.prepare({}), /Cannot read selected wheel/);
   } finally {
     loader._load = originalLoad;
     await fs.rm(root, { recursive: true, force: true });

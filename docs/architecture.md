@@ -19,7 +19,7 @@ the stable VS Code API. Wiring is explicit; there is no DI container.
 | Layer         | Responsibilities and representative modules                                                                                                                              |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `src/core/`   | VS Code-independent codecs, validated configuration, API/write policy, host resolution, session lifecycle, queries, item indexing, module bundles and Spark job requests |
-| `src/vscode/` | VS Code authentication, filesystem/state adapters, notebook and text execution, compute selection, local bindings, views, webviews and module staging                    |
+| `src/vscode/` | VS Code authentication, filesystem/state adapters, notebook and text execution, execution-host selection, local bindings, views, webviews and module staging             |
 | `test/`       | Native `node:test` tests, scripted HTTP and VS Code stand-ins; no live tenant needed                                                                                     |
 
 Shared types in `src/core/types.ts` include `IAuthProvider`, `ITargetResolver`,
@@ -51,9 +51,9 @@ Spark Job Definition items.
 
 ### Host and tenant resolution
 
-Connecting to compute saves a **capacity**, not a mandatory workspace or host.
-A host Lakehouse and optional Environment are picked when code without its own
-Lakehouse first needs them. Changing capacity drops a host on the old capacity.
+Selecting an execution host saves a **workspace and Lakehouse**, plus an
+optional Environment. The workspace's capacity is derived metadata used for
+status, validation and billing context; it is not a separate selection.
 
 Notebook execution uses these rules:
 
@@ -62,15 +62,16 @@ Notebook execution uses these rules:
 2. Otherwise the notebook's default Lakehouse and its **metadata workspace**
    are used. Missing workspace metadata is an error, not a target-workspace
    fallback. An unbound placeholder/logical default is refused instead of
-   silently running against the compute host.
-3. With no default, use the connected capacity's saved host, prompting for one
-   when needed. No compute connection is an actionable error.
+   silently running against the execution host.
+3. With no default, use the selected execution host, prompting for one when
+   needed. A legacy capacity-only profile is incomplete and does not enable
+   execution.
 
-The tenant comes from the mapped folder target, else the repo sign-in, else
-compute. When using compute, a mapped target in a different tenant is refused.
-A valid notebook default can run without a compute connection when its tenant
-is known. Its own host workspace determines billing; selecting a capacity does
-not relocate that default.
+The tenant comes from the mapped folder target, else the repo sign-in, else the
+execution host. When using the execution host, a mapped target in a different
+tenant is refused. A valid notebook default can run without an execution host
+when its tenant is known. Its own host workspace determines billing; another
+selected execution host does not relocate that default.
 
 The `.platform` item index identifies local logical IDs. Fabric documents the
 use of logical identifiers for attached notebook resources in
@@ -80,7 +81,7 @@ Local bindings bridge those IDs to physical Lakehouses on this machine.
 **Spark Job Definitions differ:** their settings provide a default Lakehouse ID
 but no workspace. If that ID is bound, the folder's target workspace supplies
 the workspace; without a suitable target execution fails. A job with no bound
-default uses the compute host. Main files and libraries are staged and submitted
+default uses the execution host. Main files and libraries are staged and submitted
 as a Livy batch, separate from interactive notebook state.
 
 ### Sessions, modules and fidelity
@@ -106,10 +107,8 @@ as a Livy batch, separate from interactive notebook state.
   bundle. A content-hashed name makes resending unchanged sources a no-op in
   the session. Remote mode stages nothing; switching to it does not undo
   prior staging in an already-running session.
-- Local wheel mode hashes the workspace file and stages it beneath the
-  OneLake scratch prefix. Livy installs it before user code; setup is keyed
-  by session ID and content hash, and failures block that cell. Direct Livy
-  `%pip` plus driver/executor behavior remains a live release gate.
+- Local Wheel mode discovers direct sibling wheels as a strict offline wheelhouse, streams their bytes through sequential Livy statements in 256 KiB chunks, reconstructs and hash-verifies them in driver-local temporary storage, and installs the selected pure-Python wheel with pip restricted to that wheelhouse. The driver adds the installed target to `sys.path`, packages it as a ZIP, and distributes it with `SparkContext.addPyFile`; one Spark task checks a unique manifest sentinel. This preflight does not visit every executor: Spark `addPyFile` behavior covers reused and future workers. Wheel bytes are never written to OneLake. Temporary wheel files remain for the Livy session lifetime. Remote mode continues using the attached Fabric Environment and never uses the local wheelhouse. Setup failure or cancellation blocks user code and leaves setup inactive; a later attempt replaces the session. Pure-Python wheels only; native extensions, meaningful `.pth` files, unpacked-resource assumptions, network dependency resolution and total transfer caps are unsupported. shortcut: wheelhouse transfer is unbounded, add a cap after live Fabric limits are measured.
+
 - Module bundles live on the driver and end with the session; Spark job files are removed by their own run
   once the job has ended, its cancellation was accepted (a 404 on the
   cancel counts as accepted: the batch is gone) or Fabric provably did
